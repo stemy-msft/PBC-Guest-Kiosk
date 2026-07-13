@@ -41,3 +41,24 @@ class VisitorResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PrintJobResponse(BaseModel):
+    id: int
+    visitor_id: int
+    badge_path: str
+    status: str
+    printer_name: Optional[str] = None
+    error_message: Optional[str] = None
+    created_time: datetime
+    claimed_time: Optional[datetime] = None
+    completed_time: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PrintJobStatusUpdate(BaseModel):
+    status: str
+    printer_name: Optional[str] = None
+    error_message: Optional[str] = None

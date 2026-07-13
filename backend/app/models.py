@@ -1,4 +1,5 @@
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
 
 from .database import Base
 
@@ -30,3 +31,23 @@ class Visitor(Base):
 
     badge_printed = Column(Boolean, nullable=False, default=False)
     badge_printed_time = Column(DateTime, nullable=True)
+
+    print_jobs = relationship("PrintJob", back_populates="visitor")
+
+
+class PrintJob(Base):
+    __tablename__ = "print_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    visitor_id = Column(Integer, ForeignKey("visitors.id"), nullable=False, index=True)
+
+    badge_path = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="Pending")
+    printer_name = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_time = Column(DateTime, nullable=False)
+    claimed_time = Column(DateTime, nullable=True)
+    completed_time = Column(DateTime, nullable=True)
+
+    visitor = relationship("Visitor", back_populates="print_jobs")
