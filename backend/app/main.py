@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from PIL import Image, ImageOps
 
 from .database import Base, engine
 from .dependencies import get_db
@@ -173,15 +174,14 @@ def upload_photo(
     )
 
     if visitor is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Visitor not found",
-        )
+        raise HTTPException(status_code=404, detail="Visitor not found")
 
     file_path = PHOTO_DIR / f"{visitor_id}.jpg"
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    image = Image.open(file.file)
+    image = ImageOps.exif_transpose(image)
+    image = image.convert("RGB")
+    image.save(file_path, format="JPEG", quality=92)
 
     visitor.photo_path = str(file_path)
     visitor.badge_path = None
@@ -190,7 +190,6 @@ def upload_photo(
     db.refresh(visitor)
 
     return visitor
-
 
 @app.post("/api/visitors/{visitor_id}/badge", response_model=VisitorResponse)
 def generate_badge(
@@ -230,34 +229,36 @@ def generate_badge(
     return visitor
 
 
-@app.get("/api/visitors/{visitor_id}/badge-image")
-def get_badge_image(
-    visitor_id: int,
+@app.get("/api/print-jobs/{print_job_id}/badge-image")
+def get_print_job_badge_image(
+    print_job_id: int,
     db: Session = Depends(get_db),
 ):
-    visitor = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
+    print_job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == print_job_id)
         .first()
     )
 
-    if visitor is None:
+    if print_job is None:
         raise HTTPException(
             status_code=404,
-            detail="Visitor not found",
+            detail="Print job not found",
         )
 
-    if not visitor.badge_path:
+    badge_path = Path(print_job.badge_path)
+
+    if not badge_path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Badge not generated",
+            detail="Badge image file not found",
         )
 
     return FileResponse(
-        visitor.badge_path,
+        path=badge_path,
         media_type="image/png",
+        filename=f"print-job-{print_job_id}.png",
     )
-
 
 @app.post(
     "/api/visitors/{visitor_id}/print",
