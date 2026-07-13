@@ -1,52 +1,31 @@
 const API_BASE = "http://192.168.0.210:8000";
 
-async function handleResponse(response, errorMessage) {
-  if (!response.ok) {
-    throw new Error(errorMessage);
-  }
 
-  return await response.json();
-}
-
-export async function getActiveVisitors() {
-  const response = await fetch(`${API_BASE}/api/visitors/active`);
-  return await handleResponse(response, "Failed to load active visitors");
-}
-
-export async function createVisitor(visitorData) {
-  const response = await fetch(`${API_BASE}/api/visitors`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(visitorData),
-  });
-
-  return await handleResponse(response, "Failed to create visitor");
-}
-
-export async function uploadPhoto(visitorId, file) {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(`${API_BASE}/api/visitors/${visitorId}/photo`, {
-    method: "POST",
-    body: formData,
-  });
-
-  return await handleResponse(response, "Failed to upload photo");
-}
-
-export async function generateBadge(visitorId) {
+export async function bulkCheckout() {
   const response = await fetch(
-    `${API_BASE}/api/visitors/${visitorId}/badge`,
+    `${API_BASE}/api/visitors/bulk-checkout`,
     {
       method: "POST",
     }
   );
 
   if (!response.ok) {
-    throw new Error("Failed to generate badge");
+    throw new Error("Failed to perform bulk checkout");
+  }
+
+  return await response.json();
+}
+
+export async function checkoutVisitor(visitorId) {
+  const response = await fetch(
+    `${API_BASE}/api/visitors/${visitorId}/checkout`,
+    {
+      method: "PUT",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to check out visitor");
   }
 
   return await response.json();
@@ -65,4 +44,68 @@ export async function createPrintJob(visitorId) {
   }
 
   return await response.json();
+}
+
+export async function createVisitor(visitorData) {
+  const response = await fetch(`${API_BASE}/api/visitors`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(visitorData),
+  });
+
+  return await handleResponse(response, "Failed to create visitor");
+}
+
+export async function findVisitors(firstName, lastName) {
+  const response = await fetch(
+    `${API_BASE}/api/visitors/find?first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}`
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to find visitor");
+  }
+
+  return await response.json();
+}
+
+export async function generateBadge(visitorId) {
+  const response = await fetch(
+    `${API_BASE}/api/visitors/${visitorId}/badge`,
+    {
+      method: "POST",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to generate badge");
+  }
+
+  return await response.json();
+}
+
+export async function getActiveVisitors() {
+  const response = await fetch(`${API_BASE}/api/visitors/active`);
+  return await handleResponse(response, "Failed to load active visitors");
+}
+
+async function handleResponse(response, errorMessage) {
+  if (!response.ok) {
+    throw new Error(errorMessage);
+  }
+
+  return await response.json();
+}
+
+export async function uploadPhoto(visitorId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/visitors/${visitorId}/photo`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return await handleResponse(response, "Failed to upload photo");
 }

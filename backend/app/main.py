@@ -1,12 +1,13 @@
-from datetime import datetime
-from pathlib import Path
 import shutil
 
+from datetime import datetime
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from pathlib import Path
 from PIL import Image, ImageOps
+from sqlalchemy import or_, func
+from sqlalchemy.orm import Session
 
 from .database import Base, engine
 from .dependencies import get_db
@@ -91,7 +92,6 @@ def create_visitor(
 
     return db_visitor
 
-
 @app.get("/api/visitors", response_model=list[VisitorResponse])
 def get_visitors(db: Session = Depends(get_db)):
     return (
@@ -110,6 +110,62 @@ def get_active_visitors(db: Session = Depends(get_db)):
         .all()
     )
 
+
+@app.post("/api/visitors/bulk-checkout")
+def bulk_checkout(db: Session = Depends(get_db)):
+    active_visitors = (
+        db.query(Visitor)
+        .filter(Visitor.check_out_time.is_(None))
+        .all()
+    )
+
+    checkout_time = datetime.utcnow()
+
+    for visitor in active_visitors:
+        visitor.check_out_time = checkout_time
+        visitor.check_out_method = "Bulk Checkout"
+
+    db.commit()
+
+    return {
+        "checked_out_count": len(active_visitors),
+        "check_out_time": checkout_time,
+        "method": "Bulk Checkout",
+    }
+
+
+@app.get("/api/visitors/find", response_model=list[VisitorResponse])
+def find_visitors(
+    first_name: str = "",
+    last_name: str = "",
+    db: Session = Depends(get_db),
+):
+    query = db.query(Visitor).filter(
+        Visitor.check_out_time == None
+    )
+
+    filters = []
+
+    if first_name.strip():
+        filters.append(
+            func.lower(Visitor.first_name).contains(
+                first_name.strip().lower()
+            )
+        )
+
+    if last_name.strip():
+        filters.append(
+            func.lower(Visitor.last_name).contains(
+                last_name.strip().lower()
+            )
+        )
+
+    if filters:
+        query = query.filter(or_(*filters))
+    else:
+        return []
+
+    return query.all()
 
 @app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
 def checkout_visitor(
@@ -136,30 +192,6 @@ def checkout_visitor(
         db.refresh(visitor)
 
     return visitor
-
-
-@app.post("/api/visitors/bulk-checkout")
-def bulk_checkout(db: Session = Depends(get_db)):
-    active_visitors = (
-        db.query(Visitor)
-        .filter(Visitor.check_out_time.is_(None))
-        .all()
-    )
-
-    checkout_time = datetime.utcnow()
-
-    for visitor in active_visitors:
-        visitor.check_out_time = checkout_time
-        visitor.check_out_method = "Bulk Checkout"
-
-    db.commit()
-
-    return {
-        "checked_out_count": len(active_visitors),
-        "check_out_time": checkout_time,
-        "method": "Bulk Checkout",
-    }
-
 
 @app.post("/api/visitors/{visitor_id}/photo", response_model=VisitorResponse)
 def upload_photo(
@@ -229,41 +261,7 @@ def generate_badge(
     return visitor
 
 
-@app.get("/api/print-jobs/{print_job_id}/badge-image")
-def get_print_job_badge_image(
-    print_job_id: int,
-    db: Session = Depends(get_db),
-):
-    print_job = (
-        db.query(PrintJob)
-        .filter(PrintJob.id == print_job_id)
-        .first()
-    )
-
-    if print_job is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Print job not found",
-        )
-
-    badge_path = Path(print_job.badge_path)
-
-    if not badge_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Badge image file not found",
-        )
-
-    return FileResponse(
-        path=badge_path,
-        media_type="image/png",
-        filename=f"print-job-{print_job_id}.png",
-    )
-
-@app.post(
-    "/api/visitors/{visitor_id}/print",
-    response_model=PrintJobResponse,
-)
+@app.post("/api/visitors/{visitor_id}/print",response_model=PrintJobResponse)
 def create_print_job(
     visitor_id: int,
     db: Session = Depends(get_db),
@@ -300,10 +298,38 @@ def create_print_job(
     return print_job
 
 
-@app.get(
-    "/api/print-jobs",
-    response_model=list[PrintJobResponse],
-)
+@app.get("/api/print-jobs/{print_job_id}/badge-image")
+def get_print_job_badge_image(
+    print_job_id: int,
+    db: Session = Depends(get_db),
+):
+    print_job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == print_job_id)
+        .first()
+    )
+
+    if print_job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print job not found",
+        )
+
+    badge_path = Path(print_job.badge_path)
+
+    if not badge_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Badge image file not found",
+        )
+
+    return FileResponse(
+        path=badge_path,
+        media_type="image/png",
+        filename=f"print-job-{print_job_id}.png",
+    )
+
+@app.get("/api/print-jobs",response_model=list[PrintJobResponse])
 def get_print_jobs(
     db: Session = Depends(get_db),
 ):
@@ -314,10 +340,7 @@ def get_print_jobs(
     )
 
 
-@app.get(
-    "/api/print-jobs/pending",
-    response_model=list[PrintJobResponse],
-)
+@app.get("/api/print-jobs/pending",response_model=list[PrintJobResponse])
 def get_pending_print_jobs(
     db: Session = Depends(get_db),
 ):
@@ -329,10 +352,7 @@ def get_pending_print_jobs(
     )
 
 
-@app.put(
-    "/api/print-jobs/{print_job_id}/claim",
-    response_model=PrintJobResponse,
-)
+@app.put("/api/print-jobs/{print_job_id}/claim",response_model=PrintJobResponse)
 def claim_print_job(
     print_job_id: int,
     printer_name: str = "Unspecified Printer",
@@ -366,10 +386,7 @@ def claim_print_job(
     return print_job
 
 
-@app.put(
-    "/api/print-jobs/{print_job_id}/status",
-    response_model=PrintJobResponse,
-)
+@app.put("/api/print-jobs/{print_job_id}/status",response_model=PrintJobResponse)
 def update_print_job_status(
     print_job_id: int,
     status_update: PrintJobStatusUpdate,
