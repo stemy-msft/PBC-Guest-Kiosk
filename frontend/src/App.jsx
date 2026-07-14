@@ -528,8 +528,7 @@ export default function App() {
 
 
 
-
-
+// Styles
 const styles = {
   backButton: {
     background: "white",

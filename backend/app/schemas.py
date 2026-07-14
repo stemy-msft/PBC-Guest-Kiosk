@@ -4,6 +4,38 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class PrintJobResponse(BaseModel):
+    id: int
+    visitor_id: int
+    badge_path: str
+    status: str
+    printer_name: Optional[str] = None
+    error_message: Optional[str] = None
+    created_time: datetime
+    claimed_time: Optional[datetime] = None
+    completed_time: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PrintJobStatusUpdate(BaseModel):
+    status: str
+    printer_name: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class VisitorCreate(BaseModel):
     first_name: str
     last_name: str
@@ -43,22 +75,6 @@ class VisitorResponse(BaseModel):
         from_attributes = True
 
 
-class PrintJobResponse(BaseModel):
-    id: int
-    visitor_id: int
-    badge_path: str
-    status: str
-    printer_name: Optional[str] = None
-    error_message: Optional[str] = None
-    created_time: datetime
-    claimed_time: Optional[datetime] = None
-    completed_time: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
-class PrintJobStatusUpdate(BaseModel):
-    status: str
-    printer_name: Optional[str] = None
-    error_message: Optional[str] = None
+

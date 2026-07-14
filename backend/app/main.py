@@ -1,24 +1,32 @@
 import shutil
 
+from app.auth import (STAFF_USERNAME,STAFF_PASSWORD,create_access_token,)
 from datetime import datetime
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pathlib import Path
 from PIL import Image, ImageOps
+from pydantic import BaseModel
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
+from .auth import STAFF_USERNAME
 from .database import Base, engine
 from .dependencies import get_db
 from .models import PrintJob, Visitor
 from .schemas import (
+    LoginRequest,
+    LoginResponse,
     PrintJobResponse,
     PrintJobStatusUpdate,
     VisitorCreate,
     VisitorResponse,
 )
 from .services.badge_service import generate_visitor_badge
+
+
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -62,7 +70,27 @@ def root():
 def health():
     return {
         "status": "healthy",
+        "staff_user": STAFF_USERNAME,
     }
+
+
+@app.post("/api/auth/login",response_model=LoginResponse)
+def login(request: LoginRequest):
+    if (
+        request.username != STAFF_USERNAME
+        or request.password != STAFF_PASSWORD
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+        )
+
+    token = create_access_token(request.username)
+
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+    )
 
 
 @app.post("/api/visitors", response_model=VisitorResponse)
