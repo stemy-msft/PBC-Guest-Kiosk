@@ -4,9 +4,10 @@ import {
   checkoutVisitor,
   createPrintJob,
   createVisitor,
+   findVisitors,
   generateBadge,
   getActiveVisitors,
-  findVisitors,
+  login,
   uploadPhoto,
 } from "./api";
 
@@ -19,27 +20,20 @@ export default function App() {
   const [checkoutResults, setCheckoutResults] = useState([]);
   const [contactName, setContactName] = useState("");
   const [firstName, setFirstName] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastName, setLastName] = useState("");
+  const [password, setPassword] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [screen, setScreen] = useState("home");
-  const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
+  const [username, setUsername] = useState("");
   const [visitorType, setVisitorType] = useState("Parent");
 
 
 
-  async function loadActiveVisitors() {
-    try {
-      const visitors = await getActiveVisitors();
-      setActiveVisitors(visitors);
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    }
-  }
 
   async function handleBulkCheckout() {
   const confirmed = window.confirm(
@@ -74,6 +68,8 @@ export default function App() {
 
   async function handleCheckIn() {
     try {
+      setBusy(true);
+
       const visitor = await createVisitor({
         first_name: firstName,
         last_name: lastName,
@@ -100,9 +96,6 @@ export default function App() {
         "Your visitor badge is being printed. Please wear it while on campus."
       );
 
-      await checkoutVisitor(visitorId);
-      await loadActiveVisitors();
-
       setScreen("success");
 
       setTimeout(() => {
@@ -113,11 +106,13 @@ export default function App() {
         setContactName("");
         setPhotoFile(null);
         setPhotoPreview(null);
+        setBusy(false);
 
         setScreen("home");
       }, 5000);
     } catch (error) {
       console.error(error);
+      setBusy(false);
       alert(error.message);
     }
   }
@@ -160,6 +155,17 @@ export default function App() {
     }
   }
 
+  function handlePhotoChange(event) {
+    const file = event.target.files[0];
+
+    if (!file) {
+      return;
+    }
+
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }  
+
   async function handleReprintBadge(visitorId) {
     try {
       await createPrintJob(visitorId);
@@ -180,6 +186,25 @@ export default function App() {
     }
   }
 
+  async function handleStaffLogin() {
+    try {
+      const result = await login(username, password);
+
+      localStorage.setItem(
+        "access_token",
+        result.access_token
+      );
+
+      setIsAuthenticated(true);
+
+      await loadActiveVisitors();
+
+      setScreen("staff");
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
   async function loadActiveVisitors() {
     try {
       const visitors = await getActiveVisitors();
@@ -189,17 +214,6 @@ export default function App() {
       alert(error.message);
     }
   }
-
-  function handlePhotoChange(event) {
-    const file = event.target.files[0];
-
-    if (!file) {
-      return;
-    }
-
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
-  }  
 
 
 
@@ -408,6 +422,27 @@ export default function App() {
 
   // Staff Screen
   if (screen === "staff") {
+    if (!isAuthenticated) {
+      return (
+        <div style={styles.page}>
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>Authentication Required</h1>
+
+            <p style={styles.instructions}>
+              Please sign in to access the staff dashboard.
+            </p>
+
+            <button
+              style={styles.printButton}
+              onClick={() => setScreen("staff-login")}
+            >
+              Go To Login
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={styles.page}>
         <button
@@ -486,6 +521,43 @@ export default function App() {
     );
   }
 
+  if (screen === "staff-login") {
+    return (
+      <div style={styles.page}>
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>Staff Login</h1>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Username</label>
+            <input
+              style={styles.input}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+            />
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              style={styles.input}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+
+          <button
+            style={styles.printButton}
+            onClick={handleStaffLogin}
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+
   // App() Return
   return (
     <div style={styles.page}>
@@ -512,10 +584,7 @@ export default function App() {
 
       <button
         style={styles.staffButton}
-        onClick={async () => {
-          await loadActiveVisitors();
-          setScreen("staff");
-        }}
+        onClick={() => setScreen("staff-login")}
       >
         Staff Login
       </button>
@@ -534,7 +603,9 @@ const styles = {
     background: "white",
     border: "1px solid #d1d5db",
     borderRadius: "12px",
+    color: "#111827",
     cursor: "pointer",
+    fontWeight: 600,
     left: "20px",
     padding: "12px 18px",
     position: "absolute",
@@ -595,9 +666,11 @@ const styles = {
     backgroundColor: "#f9fafb",
     border: "1px solid #d1d5db",
     borderRadius: "14px",
+    color: "#111827",
     fontSize: "1.2rem",
     height: "64px",
     padding: "0 20px",
+    caretColor: "#111827",
   },
 
   instructions: {

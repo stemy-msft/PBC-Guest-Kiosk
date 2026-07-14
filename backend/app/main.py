@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
-from .auth import STAFF_USERNAME
+from .auth import STAFF_USERNAME, get_current_user
 from .database import Base, engine
 from .dependencies import get_db
 from .models import PrintJob, Visitor
@@ -24,8 +24,6 @@ from .schemas import (
     VisitorResponse,
 )
 from .services.badge_service import generate_visitor_badge
-
-
 
 
 Base.metadata.create_all(bind=engine)
@@ -130,11 +128,13 @@ def get_visitors(db: Session = Depends(get_db)):
 
 
 @app.get("/api/visitors/active", response_model=list[VisitorResponse])
-def get_active_visitors(db: Session = Depends(get_db)):
+def get_active_visitors(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return (
         db.query(Visitor)
-        .filter(Visitor.check_out_time.is_(None))
-        .order_by(Visitor.check_in_time.desc())
+        .filter(Visitor.check_out_time == None)
         .all()
     )
 
