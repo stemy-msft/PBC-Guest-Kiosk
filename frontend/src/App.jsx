@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   bulkCheckout,
   checkoutVisitor,
@@ -32,8 +32,21 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [visitorType, setVisitorType] = useState("Parent");
 
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    const savedUsername = localStorage.getItem("username");
 
+    if (token) {
+      setIsAuthenticated(true);
 
+      if (savedUsername) {
+        setUsername(savedUsername);
+      }
+
+      setScreen("staff");
+      loadActiveVisitors();
+    }
+  }, []);
 
   async function handleBulkCheckout() {
   const confirmed = window.confirm(
@@ -155,18 +168,6 @@ export default function App() {
     }
   }
 
-  async function handleStaffCheckout(visitorId) {
-    try {
-      await checkoutVisitor(visitorId);
-
-      await loadActiveVisitors();
-
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    }
-  }
-
   function handlePhotoChange(event) {
     const file = event.target.files[0];
 
@@ -198,14 +199,24 @@ export default function App() {
     }
   }
 
+  async function handleStaffCheckout(visitorId) {
+    try {
+      await checkoutVisitor(visitorId);
+
+      await loadActiveVisitors();
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
   async function handleStaffLogin() {
     try {
       const result = await login(username, password);
 
-      localStorage.setItem(
-        "access_token",
-        result.access_token
-      );
+      localStorage.setItem("access_token", result.access_token);
+      localStorage.setItem("username", username);
 
       setIsAuthenticated(true);
 
@@ -468,15 +479,29 @@ export default function App() {
           <h1 style={styles.formTitle}>Staff Dashboard</h1>
 
           <p style={styles.instructions}>
+            <strong>Logged in as {username}</strong>
+            <br />
             {activeVisitors.length} active visitor(s) currently on campus.
           </p>
 
-          <div style={{ marginBottom: "24px" }}>
+          <div style={styles.dashboardButtonRow}>
             <button
-              style={styles.photoButton}
+              style={styles.staffActionButton}
               onClick={loadActiveVisitors}
             >
               Refresh Visitors
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => {
+                localStorage.removeItem("access_token");
+                localStorage.removeItem("username");
+                setIsAuthenticated(false);
+                setScreen("home");
+              }}
+            >
+              Logout
             </button>
 
             <button
@@ -485,6 +510,7 @@ export default function App() {
             >
               Bulk Checkout
             </button>
+
           </div>
 
           {activeVisitors.map((visitor) => (
@@ -492,6 +518,7 @@ export default function App() {
               key={visitor.id}
               style={styles.resultCard}
             >
+
               <h3>
                 {visitor.first_name} {visitor.last_name}
               </h3>
@@ -513,19 +540,21 @@ export default function App() {
                 {new Date(visitor.check_in_time).toLocaleString()}
               </p>
 
-              <button
-                style={styles.photoButton}
-                onClick={() => handleReprintBadge(visitor.id)}
-              >
-                Reprint Badge
-              </button>
+              <div style={styles.visitorActionRow}>
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => handleReprintBadge(visitor.id)}
+                >
+                  Reprint Badge
+                </button>
 
-              <button
-                style={styles.photoButton}
-                onClick={() => handleStaffCheckout(visitor.id)}
-              >
-                Check Out Visitor
-              </button>
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => handleStaffCheckout(visitor.id)}
+                >
+                  Check Out Visitor
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -617,9 +646,11 @@ const styles = {
     borderRadius: "12px",
     color: "#111827",
     cursor: "pointer",
+    fontSize: "1rem",
     fontWeight: 600,
     left: "20px",
-    padding: "12px 18px",
+    minWidth: "120px",
+    padding: "16px 24px",
     position: "absolute",
     top: "20px",
   },
@@ -637,6 +668,14 @@ const styles = {
     gap: "40px",
     justifyContent: "space-between",
     width: "100%",
+  },
+
+  dashboardButtonRow: {
+    display: "flex",
+    gap: "16px",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    marginBottom: "24px",
   },
 
   fieldGroup: {
@@ -797,6 +836,20 @@ const styles = {
     width: "320px",
   },
 
+  staffActionButton: {
+    backgroundColor: "#2563eb",
+    border: "none",
+    borderRadius: "16px",
+    color: "white",
+    cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 600,
+    height: "56px",
+    minWidth: "180px",
+    flex: "1 1 220px",
+    padding: "0 24px",
+  },
+
   staffButton: {
     background: "none",
     border: "none",
@@ -821,5 +874,14 @@ const styles = {
     lineHeight: 1,
     margin: 0,
   },
+
+  visitorActionRow: {
+  display: "flex",
+  justifyContent: "center",
+  gap: "16px",
+  flexWrap: "wrap",
+  marginTop: "16px",
+  },
+
 
 };

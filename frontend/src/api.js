@@ -96,6 +96,11 @@ export async function getActiveVisitors() {
 }
 
 async function handleResponse(response, errorMessage) {
+  if (response.status === 401) {
+    localStorage.removeItem("access_token");
+    window.location.reload();
+  }
+
   if (!response.ok) {
     throw new Error(errorMessage);
   }
