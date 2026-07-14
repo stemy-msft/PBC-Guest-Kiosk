@@ -75,7 +75,7 @@ def health():
 @app.post("/api/auth/login",response_model=LoginResponse)
 def login(request: LoginRequest):
     if (
-        request.username != STAFF_USERNAME
+        request.username.strip().lower() != STAFF_USERNAME.strip().lower()
         or request.password != STAFF_PASSWORD
     ):
         raise HTTPException(
@@ -83,7 +83,7 @@ def login(request: LoginRequest):
             detail="Invalid username or password",
         )
 
-    token = create_access_token(request.username)
+    token = create_access_token(STAFF_USERNAME)
 
     return LoginResponse(
         access_token=token,

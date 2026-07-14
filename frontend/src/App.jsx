@@ -117,7 +117,7 @@ export default function App() {
     }
   }
 
-  async function handleCheckout(visitorId) {
+  async function handleGuestCheckout(visitorId) {
     try {
       await checkoutVisitor(visitorId);
 
@@ -149,6 +149,18 @@ export default function App() {
       );
 
       setCheckoutResults(results);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleStaffCheckout(visitorId) {
+    try {
+      await checkoutVisitor(visitorId);
+
+      await loadActiveVisitors();
+
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -408,7 +420,7 @@ export default function App() {
 
               <button
                 style={styles.printButton}
-                onClick={() => handleCheckout(visitor.id)}
+                onClick={() => handleGuestCheckout(visitor.id)}
               >
                 Check Out Visitor
               </button>
@@ -510,7 +522,7 @@ export default function App() {
 
               <button
                 style={styles.photoButton}
-                onClick={() => handleCheckout(visitor.id)}
+                onClick={() => handleStaffCheckout(visitor.id)}
               >
                 Check Out Visitor
               </button>
