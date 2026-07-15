@@ -27,6 +27,5 @@ dist-ssr
 .venv/
 __pycache__/
 *.db
-uploads/
-print-jobs/
-downloaded-badges/
+backend/uploads/
+!backend/uploads/badges/28.png
