@@ -5,6 +5,9 @@ from pathlib import Path
 
 import requests
 
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
 
 API_BASE = os.environ.get("PBC_API_BASE", "http://192.168.0.210:8000").rstrip("/")
 PRINTER_NAME = os.environ.get("PBC_PRINTER_NAME", "QL800_BROTHER")

@@ -39,34 +39,6 @@ Expected:
 
 ---
 
-# Print Agent Fails With "os.startfile"
-
-## Error
-
-```text
-module 'os' has no attribute 'startfile'
-```
-
-## Cause
-
-Windows-only printing code running on Linux.
-
-## Fix
-
-Use the updated print agent that prints through:
-
-```bash
-lp
-```
-
-instead of:
-
-```python
-os.startfile()
-```
-
----
-
 # Print Jobs Never Print
 
 ## Check Queue
