@@ -12,8 +12,9 @@ class Visitor(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     visitor_type = Column(String, nullable=False)
-    church = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    church = Column(String, nullable=True)
 
     purpose = Column(String, nullable=False)
     host_type = Column(String, nullable=False)
@@ -32,15 +33,23 @@ class Visitor(Base):
     badge_printed = Column(Boolean, nullable=False, default=False)
     badge_printed_time = Column(DateTime, nullable=True)
 
-    print_jobs = relationship("PrintJob", back_populates="visitor")
-
+    print_jobs = relationship(
+        "PrintJob",
+        back_populates="visitor",
+        cascade="all, delete-orphan"
+    )
 
 class PrintJob(Base):
     __tablename__ = "print_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    visitor_id = Column(Integer, ForeignKey("visitors.id"), nullable=False, index=True)
-
+    visitor_id = Column(
+        Integer,
+        ForeignKey(
+            "visitors.id",
+            ondelete="CASCADE"
+        )
+    )
     badge_path = Column(String, nullable=False)
     status = Column(String, nullable=False, default="Pending")
     printer_name = Column(String, nullable=True)

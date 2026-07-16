@@ -306,6 +306,29 @@ def checkin_again(
             detail="Visitor not found",
         )
 
+    # Prevent duplicate active check-ins.
+    # This currently matches by first/last name only.
+    # Future enhancement: use visitor history/person identity tracking.
+    existing_active = (
+        db.query(Visitor)
+        .filter(
+            Visitor.id != original.id,
+            Visitor.first_name == original.first_name,
+            Visitor.last_name == original.last_name,
+            Visitor.check_out_time.is_(None),
+        )
+        .first()
+    )
+
+    if existing_active:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{original.first_name} {original.last_name} "
+                f"is already checked in."
+            ),
+        )
+
     new_visitor = Visitor(
         first_name=original.first_name,
         last_name=original.last_name,
@@ -332,6 +355,40 @@ def checkin_again(
     db.refresh(new_visitor)
 
     return new_visitor
+
+
+@app.get("/api/visitors/{visitor_id}/history")
+def get_visitor_history(
+    visitor_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    history = (
+        db.query(Visitor)
+        .filter(
+            Visitor.first_name == visitor.first_name,
+            Visitor.last_name == visitor.last_name,
+        )
+        .order_by(Visitor.check_in_time.desc())
+        .all()
+    )
+
+    return {
+        "visit_count": len(history),
+        "history": history,
+    }
 
 
 @app.post("/api/visitors/bulk-checkout")
@@ -632,3 +689,5 @@ def create_print_job(
     db.refresh(print_job)
 
     return print_job
+
+

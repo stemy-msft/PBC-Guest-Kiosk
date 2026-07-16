@@ -177,6 +177,17 @@ TCP 0.0.0.0:8000 LISTENING
 
 ---
 
+# Database issues/cleanup
+
+## Background
+
+App is currently using SQLite as the backend database
+
+
+
+
+---
+
 # Validate Complete System
 
 A healthy deployment should successfully perform:

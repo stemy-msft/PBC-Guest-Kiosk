@@ -109,3 +109,24 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+@keyframes scanline {
+  0% {
+    transform: translateY(-20px);
+  }
+
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes flicker {
+  0%   { opacity: 0.45; }
+  5%   { opacity: 0.36; }
+  10%  { opacity: 0.42; }
+  15%  { opacity: 0.39; }
+  20%  { opacity: 0.48; }
+  100% { opacity: 0.45; }
+}
+
+

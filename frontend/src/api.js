@@ -179,3 +179,21 @@ export async function getVisitor(visitorId) {
 
   return await handleResponse(response, "Failed to load visitor");
 }
+
+export async function getVisitorHistory(visitorId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/visitors/${visitorId}/history`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return await handleResponse(
+    response,
+    "Failed to load visitor history"
+  );
+}
