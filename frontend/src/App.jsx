@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   bulkCheckout,
   checkInAgain,
@@ -18,6 +18,9 @@ export default function App() {
 
   const [activeVisitors, setActiveVisitors] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const canvasRef = useRef(null);
   const [checkoutFirstName, setCheckoutFirstName] = useState("");
   const [checkoutLastName, setCheckoutLastName] = useState("");
   const [checkoutResults, setCheckoutResults] = useState([]);
@@ -26,10 +29,12 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
+
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [returningPhotoFile, setReturningPhotoFile] = useState(null);
+  const [returningPhotoPreview, setReturningPhotoPreview] = useState(null);
   const [returningVisitor, setReturningVisitor] = useState({
     first_name: "",
     last_name: "",
@@ -40,12 +45,14 @@ export default function App() {
   const [screen, setScreen] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [selectedCamera, setSelectedCamera] = useState("");
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
   const [username, setUsername] = useState("");
+  const [videoDevices, setVideoDevices] = useState([]);
+  const videoRef = useRef(null);
   const [visitorType, setVisitorType] = useState("Parent");
-
 
 
 
@@ -64,6 +71,63 @@ export default function App() {
       loadActiveVisitors();
     }
   }, []);
+
+  useEffect(() => {
+    if (cameraOpen && cameraStream && videoRef.current) {
+      console.log("Attaching stream");
+
+      videoRef.current.srcObject = cameraStream;
+
+      videoRef.current.play().catch((error) => {
+        console.error("Video play error:", error);
+      });
+    }
+  }, [cameraOpen, cameraStream]);
+
+
+  function capturePhoto() {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (!video || !canvas) {
+          console.log("video or canvas missing");
+          return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const context = canvas.getContext("2d");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+          if (!blob) {
+              return;
+          }
+
+          const file = new File(
+              [blob],
+              "visitor-photo.jpg",
+              { type: "image/jpeg" }
+          );
+
+          const previewUrl = URL.createObjectURL(file);
+
+          setReturningPhotoFile(file);
+          setReturningPhotoPreview(previewUrl);
+
+          closeCamera();
+      }, "image/jpeg", 0.95);
+  }
+
+  function closeCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+    }
+
+    setCameraStream(null);
+    setCameraOpen(false);
+  }
 
   async function handleBulkCheckout() {
   const confirmed = window.confirm(
@@ -333,6 +397,95 @@ async function handleSubmitReturningVisitor() {
     }
   }
 
+  async function loadCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+
+      const cameras = devices.filter(
+        (device) => device.kind === "videoinput"
+      );
+
+      setVideoDevices(cameras);
+
+      if (cameras.length > 0) {
+        const preferred =
+          cameras.find((c) => c.label.includes("LifeCam")) ||
+          cameras.find((c) => c.label.includes("Surface Camera")) ||
+          cameras[0];
+
+        setSelectedCamera(preferred.deviceId);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function openCamera() {
+    try {
+      if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+      ) {
+        document
+          .getElementById("returningPhotoInput")
+          ?.click();
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+
+      setCameraStream(stream);
+      setCameraOpen(true);
+    } catch (error) {
+      console.error(error);
+
+      document
+        .getElementById("returningPhotoInput")
+        ?.click();
+    }
+  }
+
+  async function switchCamera(deviceId) {
+    if (!deviceId) {
+      return;
+    }
+
+    try {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+      }
+
+      setSelectedCamera(deviceId);
+      setCameraStream(null);
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: {
+            exact: deviceId,
+          },
+        },
+        audio: false,
+      });
+
+      setCameraStream(stream);
+    } catch (error) {
+      console.error("Camera switch failed:", error);
+
+      alert(
+        "That camera could not be started. It may already be in use or unavailable. Please choose another camera."
+      );
+    }
+  }
 
 
   // Check-in Screen
@@ -446,8 +599,18 @@ async function handleSubmitReturningVisitor() {
 
               <button
                 style={styles.photoButton}
-                onClick={() => document.getElementById("photoInput").click()}
-              >
+                onClick={() => {
+                  const supportsGetUserMedia =
+                    navigator.mediaDevices &&
+                    typeof navigator.mediaDevices.getUserMedia === "function";
+
+                  if (supportsGetUserMedia) {
+                    openCamera();
+                  } else {
+                    document.getElementById("photoInput").click();
+                  }
+                }}
+                >
                 Take Visitor Photo
               </button>
             </div>
@@ -806,150 +969,232 @@ async function handleSubmitReturningVisitor() {
     );
   }
 
-  // Returning Check-in
-  if (screen === "returning-checkin") {
-    return (
-      <div style={styles.page}>
-        <button
-          style={styles.backButton}
-          onClick={() => setScreen("visitor-detail")}
-        >
-          ← Visitor Details
-        </button>
+// Returning Visitor Check-In Screen
+if (screen === "returning-checkin") {
+  const existingPhotoUrl = selectedVisitor?.photo_path
+    ? `${import.meta.env.VITE_API_BASE || ""}/${selectedVisitor.photo_path.replaceAll("\\", "/")}`
+    : null;
 
-        <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>
-            Returning Visitor Check-In
-          </h1>
+  const displayedPhoto = returningPhotoPreview || existingPhotoUrl;
 
-          <p style={styles.instructions}>
-            Review the visitor information and make any updates before
-            printing a new badge.
-          </p>
+  return (
+    <div style={styles.page}>
+      <button
+        style={styles.backButton}
+        onClick={() => setScreen("visitor-detail")}
+      >
+        ← Visitor Details
+      </button>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>First Name</label>
-            <input
-              style={styles.input}
-              value={returningVisitor.first_name}
-              readOnly
-            />
-          </div>
+      <div style={styles.formContainer}>
+        <h1 style={styles.formTitle}>Returning Visitor Check-In</h1>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Last Name</label>
-            <input
-              style={styles.input}
-              value={returningVisitor.last_name}
-              readOnly
-            />
-          </div>
+        <p style={styles.instructions}>
+          Review visitor information and make updates before printing a new badge.
+        </p>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Visitor Type</label>
-            <select
-              style={styles.input}
-              value={returningVisitor.visitor_type}
-              onChange={(e) =>
-                setReturningVisitor({
-                  ...returningVisitor,
-                  visitor_type: e.target.value,
-                })
-              }
-            >
-              <option>Parent</option>
-              <option>Grandparent</option>
-              <option>Family Member</option>
-              <option>Vendor/Service</option>
-              <option>Friend</option>
-              <option>Minister</option>
-              <option>Board Member</option>
-              <option>Other Guest</option>
-            </select>
-          </div>
+        <div style={styles.contentContainer}>
+          <div style={styles.formColumn}>
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>First Name</label>
+              <input
+                style={styles.input}
+                value={returningVisitor.first_name}
+                readOnly
+              />
+            </div>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Purpose</label>
-            <select
-              style={styles.input}
-              value={returningVisitor.purpose}
-              onChange={(e) =>
-                setReturningVisitor({
-                  ...returningVisitor,
-                  purpose: e.target.value,
-                })
-              }
-            >
-              <option>Visiting Camper</option>
-              <option>Dinner</option>
-              <option>Family Night</option>
-              <option>Awards Ceremony</option>
-              <option>Talent Show</option>
-              <option>Vendor Delivery</option>
-              <option>Service Call</option>
-            </select>
-          </div>
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Last Name</label>
+              <input
+                style={styles.input}
+                value={returningVisitor.last_name}
+                readOnly
+              />
+            </div>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Camper or Contact Name</label>
-            <input
-              style={styles.input}
-              value={returningVisitor.host_name}
-              onChange={(e) =>
-                setReturningVisitor({
-                  ...returningVisitor,
-                  host_name: e.target.value,
-                })
-              }
-            />
-          </div>
-
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Visitor Photo</label>
-
-            <div style={styles.dashboardButtonRow}>
-              <button
-                style={styles.staffActionButton}
-                type="button"
-                onClick={() => setReturningPhotoFile(null)}
-              >
-                Use Existing Photo
-              </button>
-
-              <button
-                style={styles.staffActionButton}
-                onClick={() =>
-                  document.getElementById("returningPhotoInput").click()
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Visitor Type</label>
+              <select
+                style={styles.input}
+                value={returningVisitor.visitor_type}
+                onChange={(event) =>
+                  setReturningVisitor({
+                    ...returningVisitor,
+                    visitor_type: event.target.value,
+                  })
                 }
               >
-                Retake Photo
-              </button>
+                <option>Parent</option>
+                <option>Grandparent</option>
+                <option>Family Member</option>
+                <option>Vendor/Service</option>
+                <option>Friend</option>
+                <option>Minister</option>
+                <option>Board Member</option>
+                <option>Other Guest</option>
+              </select>
+            </div>
 
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Purpose</label>
+              <select
+                style={styles.input}
+                value={returningVisitor.purpose}
+                onChange={(event) =>
+                  setReturningVisitor({
+                    ...returningVisitor,
+                    purpose: event.target.value,
+                  })
+                }
+              >
+                <option>Visiting Camper</option>
+                <option>Dinner</option>
+                <option>Family Night</option>
+                <option>Awards Ceremony</option>
+                <option>Talent Show</option>
+                <option>Vendor Delivery</option>
+                <option>Service Call</option>
+              </select>
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Camper or Contact Name</label>
               <input
-                id="returningPhotoInput"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: "none" }}
-                onChange={(e) =>
-                  setReturningPhotoFile(
-                    e.target.files?.[0] || null
-                  )
+                style={styles.input}
+                value={returningVisitor.host_name}
+                onChange={(event) =>
+                  setReturningVisitor({
+                    ...returningVisitor,
+                    host_name: event.target.value,
+                  })
                 }
               />
             </div>
           </div>
 
-          <button
-            style={styles.printButton}
-            onClick={handleSubmitReturningVisitor}
-          >
-            Print Visitor Badge
-          </button>
+          <div style={styles.photoColumn}>
+            <input
+              id="returningPhotoInput"
+              type="file"
+              accept="image/*"
+              capture="user"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+
+                if (!file) {
+                  return;
+                }
+
+                const previewUrl = URL.createObjectURL(file);
+
+                setReturningPhotoFile(file);
+                setReturningPhotoPreview(previewUrl);
+
+                console.log("returningPhotoPreview set:", previewUrl);
+              }}
+            />
+
+            <div style={styles.photoPlaceholder}>
+              {displayedPhoto ? (
+                <img
+                  src={displayedPhoto}
+                  alt="Visitor Preview"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: "18px",
+                  }}
+                />
+              ) : (
+                "Photo Preview"
+              )}
+            </div>
+
+            <button
+              style={styles.photoButton}
+              onClick={() => {
+                const supportsGetUserMedia =
+                  navigator.mediaDevices &&
+                  typeof navigator.mediaDevices.getUserMedia === "function";
+
+                if (supportsGetUserMedia) {
+                  openCamera();
+                } else {
+                  document.getElementById("returningPhotoInput").click();
+                }
+              }}
+            >
+              Retake Visitor Photo
+            </button>
+          </div>
         </div>
+
+        <button
+          style={styles.printButton}
+          onClick={handleSubmitReturningVisitor}
+          disabled={busy}
+        >
+          {busy ? "Printing Badge..." : "Print Visitor Badge"}
+        </button>
       </div>
-    );
-  }
+
+      {cameraOpen && (
+        <div style={styles.cameraOverlay}>
+          <div style={styles.cameraPanel}>
+            <h2 style={styles.formTitle}>Take Visitor Photo</h2>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Camera</label>
+              <select
+                style={styles.input}
+                value={selectedCamera}
+                onChange={(event) => switchCamera(event.target.value)}
+              >
+                {videoDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || "Camera"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={styles.cameraVideo}
+            />
+
+            <canvas
+              ref={canvasRef}
+              style={{ display: "none" }}
+            />
+
+            <div style={styles.dashboardButtonRow}>
+              <button
+                style={styles.staffActionButton}
+                onClick={capturePhoto}
+              >
+                Capture Photo
+              </button>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={closeCamera}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 
   // Staff Login
