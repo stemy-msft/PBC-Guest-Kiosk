@@ -4,10 +4,12 @@ import {
   checkoutVisitor,
   createPrintJob,
   createVisitor,
-   findVisitors,
+  findVisitors,
   generateBadge,
   getActiveVisitors,
+  getVisitor,
   login,
+  searchVisitors,
   uploadPhoto,
 } from "./api";
 
@@ -27,6 +29,9 @@ export default function App() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [screen, setScreen] = useState("home");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
   const [username, setUsername] = useState("");
@@ -162,6 +167,29 @@ export default function App() {
       );
 
       setCheckoutResults(results);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleVisitorSearch() {
+    try {
+      const results = await searchVisitors(searchQuery);
+
+      setSearchResults(results);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleVisitorSelect(visitorId) {
+    try {
+      const visitor = await getVisitor(visitorId);
+
+      setSelectedVisitor(visitor);
+      setScreen("visitor-detail");
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -495,6 +523,17 @@ export default function App() {
             <button
               style={styles.staffActionButton}
               onClick={() => {
+                setSearchResults([]);
+                setSearchQuery("");
+                setScreen("visitor-search");
+              }}
+            >
+              Visitor Search
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => {
                 localStorage.removeItem("access_token");
                 localStorage.removeItem("username");
                 setIsAuthenticated(false);
@@ -557,6 +596,145 @@ export default function App() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "visitor-search") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>Visitor Search</h1>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>
+              Search Visitor
+            </label>
+
+            <input
+              style={styles.input}
+              value={searchQuery}
+              onChange={(event) =>
+                setSearchQuery(event.target.value)
+              }
+            />
+          </div>
+
+          <button
+            style={styles.photoButton}
+            onClick={handleVisitorSearch}
+          >
+            Search
+          </button>
+
+          {searchResults.map((visitor) => (
+            <div
+              key={visitor.id}
+              style={styles.resultCard}
+            >
+              <h3>
+                {visitor.first_name}{" "}
+                {visitor.last_name}
+              </h3>
+
+              <p>{visitor.visitor_type}</p>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={() =>
+                  handleVisitorSelect(visitor.id)
+                }
+              >
+                View Details
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+
+  if (screen === "visitor-detail") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("visitor-search")}
+        >
+          ← Search Results
+        </button>
+
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>Visitor Details</h1>
+
+          <div style={styles.resultCard}>
+
+            {selectedVisitor.photo_path && (
+              <img
+                src={`${import.meta.env.VITE_API_BASE}alright/${selectedVisitor.photo_path}`}
+                alt="Visitor"
+                style={styles.visitorPhoto}
+              />
+            )}
+
+            <h2 style={styles.detailName}>
+              {selectedVisitor.first_name}{" "}
+              {selectedVisitor.last_name}
+            </h2>
+
+            <p>
+              <strong>Visitor Type:</strong>{" "}
+              {selectedVisitor.visitor_type}
+            </p>
+
+            <p>
+              <strong>Purpose:</strong>{" "}
+              {selectedVisitor.purpose}
+            </p>
+
+            <p>
+              <strong>Contact:</strong>{" "}
+              {selectedVisitor.host_name}
+            </p>
+
+            <p>
+              <strong>Checked In:</strong>{" "}
+              {new Date(
+                selectedVisitor.check_in_time
+              ).toLocaleString()}
+            </p>
+          </div>
+
+          <div style={styles.dashboardButtonRow}>
+            <button
+              style={styles.staffActionButton}
+              onClick={() =>
+                handleReprintBadge(selectedVisitor.id)
+              }
+            >
+              Reprint Badge
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() =>
+                alert(
+                  "Returning Visitor Check-In coming in next phase."
+                )
+              }
+            >
+              Check In Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -676,6 +854,14 @@ const styles = {
     justifyContent: "center",
     flexWrap: "wrap",
     marginBottom: "24px",
+  },
+
+  detailName: {
+    color: "#111827",
+    fontSize: "2rem",
+    fontWeight: 700,
+    marginTop: 0,
+    marginBottom: "16px",
   },
 
   fieldGroup: {
@@ -882,6 +1068,16 @@ const styles = {
   flexWrap: "wrap",
   marginTop: "16px",
   },
+
+  visitorPhoto: {
+    width: "240px",
+    height: "320px",
+    objectFit: "cover",
+    borderRadius: "16px",
+    border: "1px solid #d1d5db",
+    marginBottom: "20px",
+    backgroundColor: "#e5e7eb",
+  }, 
 
 
 };

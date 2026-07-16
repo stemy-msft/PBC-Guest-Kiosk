@@ -161,6 +161,16 @@ Build production version:
 npm run build
 ```
 
+# Backend Configuration
+
+Create the file if it does not exist.
+
+Example:
+
+```env
+VITE_API_BASE=http://192.168.0.210:8000
+```
+
 ---
 
 # Print Agent Setup

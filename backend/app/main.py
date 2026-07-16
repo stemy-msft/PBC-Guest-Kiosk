@@ -1,17 +1,20 @@
-import shutil
-
-from app.auth import (STAFF_USERNAME,STAFF_PASSWORD,create_access_token,)
 from datetime import datetime
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
-from pydantic import BaseModel
-from sqlalchemy import or_, func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from .auth import STAFF_USERNAME, get_current_user
+from .auth import (
+    STAFF_PASSWORD,
+    STAFF_USERNAME,
+    create_access_token,
+    get_current_user,
+)
 from .database import Base, engine
 from .dependencies import get_db
 from .models import PrintJob, Visitor
@@ -48,6 +51,8 @@ BADGE_DIR = UPLOAD_DIR / "badges"
 PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 BADGE_DIR.mkdir(parents=True, exist_ok=True)
 
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
 VALID_PRINT_JOB_STATUSES = {
     "Pending",
     "Printing",
@@ -72,7 +77,7 @@ def health():
     }
 
 
-@app.post("/api/auth/login",response_model=LoginResponse)
+@app.post("/api/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
     if (
         request.username.strip().lower() != STAFF_USERNAME.strip().lower()
@@ -89,241 +94,6 @@ def login(request: LoginRequest):
         access_token=token,
         token_type="bearer",
     )
-
-
-@app.post("/api/visitors", response_model=VisitorResponse)
-def create_visitor(
-    visitor: VisitorCreate,
-    db: Session = Depends(get_db),
-):
-    db_visitor = Visitor(
-        first_name=visitor.first_name,
-        last_name=visitor.last_name,
-        visitor_type=visitor.visitor_type,
-        church=visitor.church,
-        phone=visitor.phone,
-        purpose=visitor.purpose,
-        host_type=visitor.host_type,
-        host_name=visitor.host_name,
-        vehicle_plate=visitor.vehicle_plate,
-        notes=visitor.notes,
-        expected_departure_time=visitor.expected_departure_time,
-        check_in_time=datetime.utcnow(),
-        badge_printed=False,
-    )
-
-    db.add(db_visitor)
-    db.commit()
-    db.refresh(db_visitor)
-
-    return db_visitor
-
-@app.get("/api/visitors", response_model=list[VisitorResponse])
-def get_visitors(db: Session = Depends(get_db)):
-    return (
-        db.query(Visitor)
-        .order_by(Visitor.check_in_time.desc())
-        .all()
-    )
-
-
-@app.get("/api/visitors/active", response_model=list[VisitorResponse])
-def get_active_visitors(
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return (
-        db.query(Visitor)
-        .filter(Visitor.check_out_time == None)
-        .all()
-    )
-
-
-@app.post("/api/visitors/bulk-checkout")
-def bulk_checkout(db: Session = Depends(get_db)):
-    active_visitors = (
-        db.query(Visitor)
-        .filter(Visitor.check_out_time.is_(None))
-        .all()
-    )
-
-    checkout_time = datetime.utcnow()
-
-    for visitor in active_visitors:
-        visitor.check_out_time = checkout_time
-        visitor.check_out_method = "Bulk Checkout"
-
-    db.commit()
-
-    return {
-        "checked_out_count": len(active_visitors),
-        "check_out_time": checkout_time,
-        "method": "Bulk Checkout",
-    }
-
-
-@app.get("/api/visitors/find", response_model=list[VisitorResponse])
-def find_visitors(
-    first_name: str = "",
-    last_name: str = "",
-    db: Session = Depends(get_db),
-):
-    query = db.query(Visitor).filter(
-        Visitor.check_out_time == None
-    )
-
-    filters = []
-
-    if first_name.strip():
-        filters.append(
-            func.lower(Visitor.first_name).contains(
-                first_name.strip().lower()
-            )
-        )
-
-    if last_name.strip():
-        filters.append(
-            func.lower(Visitor.last_name).contains(
-                last_name.strip().lower()
-            )
-        )
-
-    if filters:
-        query = query.filter(or_(*filters))
-    else:
-        return []
-
-    return query.all()
-
-@app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
-def checkout_visitor(
-    visitor_id: int,
-    db: Session = Depends(get_db),
-):
-    visitor = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
-        .first()
-    )
-
-    if visitor is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Visitor not found",
-        )
-
-    if visitor.check_out_time is None:
-        visitor.check_out_time = datetime.utcnow()
-        visitor.check_out_method = "Manual Checkout"
-
-        db.commit()
-        db.refresh(visitor)
-
-    return visitor
-
-@app.post("/api/visitors/{visitor_id}/photo", response_model=VisitorResponse)
-def upload_photo(
-    visitor_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
-    visitor = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
-        .first()
-    )
-
-    if visitor is None:
-        raise HTTPException(status_code=404, detail="Visitor not found")
-
-    file_path = PHOTO_DIR / f"{visitor_id}.jpg"
-
-    image = Image.open(file.file)
-    image = ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
-    image.save(file_path, format="JPEG", quality=92)
-
-    visitor.photo_path = str(file_path)
-    visitor.badge_path = None
-
-    db.commit()
-    db.refresh(visitor)
-
-    return visitor
-
-@app.post("/api/visitors/{visitor_id}/badge", response_model=VisitorResponse)
-def generate_badge(
-    visitor_id: int,
-    db: Session = Depends(get_db),
-):
-    visitor = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
-        .first()
-    )
-
-    if visitor is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Visitor not found",
-        )
-
-    if not visitor.photo_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Visitor photo must be uploaded first",
-        )
-
-    badge_path = BADGE_DIR / f"{visitor_id}.png"
-
-    generate_visitor_badge(
-        visitor,
-        badge_path,
-    )
-
-    visitor.badge_path = str(badge_path)
-
-    db.commit()
-    db.refresh(visitor)
-
-    return visitor
-
-
-@app.post("/api/visitors/{visitor_id}/print",response_model=PrintJobResponse)
-def create_print_job(
-    visitor_id: int,
-    db: Session = Depends(get_db),
-):
-    visitor = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
-        .first()
-    )
-
-    if visitor is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Visitor not found",
-        )
-
-    if not visitor.badge_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Badge must be generated first",
-        )
-
-    print_job = PrintJob(
-        visitor_id=visitor.id,
-        badge_path=visitor.badge_path,
-        status="Pending",
-        created_time=datetime.utcnow(),
-    )
-
-    db.add(print_job)
-    db.commit()
-    db.refresh(print_job)
-
-    return print_job
 
 
 @app.get("/api/print-jobs/{print_job_id}/badge-image")
@@ -357,7 +127,8 @@ def get_print_job_badge_image(
         filename=f"print-job-{print_job_id}.png",
     )
 
-@app.get("/api/print-jobs",response_model=list[PrintJobResponse])
+
+@app.get("/api/print-jobs", response_model=list[PrintJobResponse])
 def get_print_jobs(
     db: Session = Depends(get_db),
 ):
@@ -368,7 +139,7 @@ def get_print_jobs(
     )
 
 
-@app.get("/api/print-jobs/pending",response_model=list[PrintJobResponse])
+@app.get("/api/print-jobs/pending", response_model=list[PrintJobResponse])
 def get_pending_print_jobs(
     db: Session = Depends(get_db),
 ):
@@ -380,7 +151,7 @@ def get_pending_print_jobs(
     )
 
 
-@app.put("/api/print-jobs/{print_job_id}/claim",response_model=PrintJobResponse)
+@app.put("/api/print-jobs/{print_job_id}/claim", response_model=PrintJobResponse)
 def claim_print_job(
     print_job_id: int,
     printer_name: str = "Unspecified Printer",
@@ -414,7 +185,7 @@ def claim_print_job(
     return print_job
 
 
-@app.put("/api/print-jobs/{print_job_id}/status",response_model=PrintJobResponse)
+@app.put("/api/print-jobs/{print_job_id}/status", response_model=PrintJobResponse)
 def update_print_job_status(
     print_job_id: int,
     status_update: PrintJobStatusUpdate,
@@ -441,10 +212,7 @@ def update_print_job_status(
         )
 
     print_job.status = normalized_status
-    print_job.printer_name = (
-        status_update.printer_name
-        or print_job.printer_name
-    )
+    print_job.printer_name = status_update.printer_name or print_job.printer_name
     print_job.error_message = status_update.error_message
 
     if normalized_status == "Completed":
@@ -460,6 +228,310 @@ def update_print_job_status(
             visitor.badge_printed = True
             visitor.badge_printed_time = print_job.completed_time
 
+    db.commit()
+    db.refresh(print_job)
+
+    return print_job
+
+
+@app.post("/api/visitors", response_model=VisitorResponse)
+def create_visitor(
+    visitor: VisitorCreate,
+    db: Session = Depends(get_db),
+):
+    db_visitor = Visitor(
+        first_name=visitor.first_name,
+        last_name=visitor.last_name,
+        visitor_type=visitor.visitor_type,
+        church=visitor.church,
+        phone=visitor.phone,
+        purpose=visitor.purpose,
+        host_type=visitor.host_type,
+        host_name=visitor.host_name,
+        vehicle_plate=visitor.vehicle_plate,
+        notes=visitor.notes,
+        expected_departure_time=visitor.expected_departure_time,
+        check_in_time=datetime.utcnow(),
+        badge_printed=False,
+    )
+
+    db.add(db_visitor)
+    db.commit()
+    db.refresh(db_visitor)
+
+    return db_visitor
+
+
+@app.get("/api/visitors", response_model=list[VisitorResponse])
+def get_visitors(
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Visitor)
+        .order_by(Visitor.check_in_time.desc())
+        .all()
+    )
+
+
+@app.get("/api/visitors/active", response_model=list[VisitorResponse])
+def get_active_visitors(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Visitor)
+        .filter(Visitor.check_out_time.is_(None))
+        .order_by(Visitor.check_in_time.desc())
+        .all()
+    )
+
+
+@app.post("/api/visitors/bulk-checkout")
+def bulk_checkout(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    active_visitors = (
+        db.query(Visitor)
+        .filter(Visitor.check_out_time.is_(None))
+        .all()
+    )
+
+    checkout_time = datetime.utcnow()
+
+    for visitor in active_visitors:
+        visitor.check_out_time = checkout_time
+        visitor.check_out_method = "Bulk Checkout"
+
+    db.commit()
+
+    return {
+        "checked_out_count": len(active_visitors),
+        "check_out_time": checkout_time,
+        "method": "Bulk Checkout",
+    }
+
+
+@app.get("/api/visitors/find", response_model=list[VisitorResponse])
+def find_visitors(
+    first_name: str = "",
+    last_name: str = "",
+    db: Session = Depends(get_db),
+):
+    query = db.query(Visitor).filter(
+        Visitor.check_out_time.is_(None)
+    )
+
+    filters = []
+
+    if first_name.strip():
+        filters.append(
+            func.lower(Visitor.first_name).contains(
+                first_name.strip().lower()
+            )
+        )
+
+    if last_name.strip():
+        filters.append(
+            func.lower(Visitor.last_name).contains(
+                last_name.strip().lower()
+            )
+        )
+
+    if filters:
+        query = query.filter(or_(*filters))
+    else:
+        return []
+
+    return (
+        query
+        .order_by(Visitor.check_in_time.desc())
+        .all()
+    )
+
+
+@app.get("/api/visitors/search", response_model=list[VisitorResponse])
+def search_visitors(
+    q: str = "",
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    search_value = q.strip()
+
+    if not search_value:
+        return []
+
+    search_term = f"%{search_value.lower()}%"
+
+    return (
+        db.query(Visitor)
+        .filter(
+            or_(
+                func.lower(Visitor.first_name).like(search_term),
+                func.lower(Visitor.last_name).like(search_term),
+                func.lower(Visitor.phone).like(search_term),
+                func.lower(Visitor.church).like(search_term),
+                func.lower(Visitor.purpose).like(search_term),
+                func.lower(Visitor.host_name).like(search_term),
+                func.lower(Visitor.vehicle_plate).like(search_term),
+                func.lower(Visitor.notes).like(search_term),
+            )
+        )
+        .order_by(Visitor.check_in_time.desc())
+        .all()
+    )
+
+
+@app.get("/api/visitors/{visitor_id}", response_model=VisitorResponse)
+def get_visitor(
+    visitor_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    return visitor
+
+
+@app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
+def checkout_visitor(
+    visitor_id: int,
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    if visitor.check_out_time is None:
+        visitor.check_out_time = datetime.utcnow()
+        visitor.check_out_method = "Manual Checkout"
+
+        db.commit()
+        db.refresh(visitor)
+
+    return visitor
+
+
+@app.post("/api/visitors/{visitor_id}/photo", response_model=VisitorResponse)
+def upload_photo(
+    visitor_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    file_path = PHOTO_DIR / f"{visitor_id}.jpg"
+
+    image = Image.open(file.file)
+    image = ImageOps.exif_transpose(image)
+    image = image.convert("RGB")
+    image.save(file_path, format="JPEG", quality=92)
+
+    visitor.photo_path = file_path.as_posix()
+    visitor.badge_path = None
+
+    db.commit()
+    db.refresh(visitor)
+
+    return visitor
+
+
+@app.post("/api/visitors/{visitor_id}/badge", response_model=VisitorResponse)
+def generate_badge(
+    visitor_id: int,
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    if not visitor.photo_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Visitor photo must be uploaded first",
+        )
+
+    badge_path = BADGE_DIR / f"{visitor_id}.png"
+
+    generate_visitor_badge(
+        visitor,
+        badge_path,
+    )
+
+    visitor.badge_path = badge_path.as_posix()
+
+    db.commit()
+    db.refresh(visitor)
+
+    return visitor
+
+
+@app.post("/api/visitors/{visitor_id}/print", response_model=PrintJobResponse)
+def create_print_job(
+    visitor_id: int,
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    if not visitor.badge_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Badge must be generated first",
+        )
+
+    print_job = PrintJob(
+        visitor_id=visitor.id,
+        badge_path=visitor.badge_path,
+        status="Pending",
+        created_time=datetime.utcnow(),
+    )
+
+    db.add(print_job)
     db.commit()
     db.refresh(print_job)
 

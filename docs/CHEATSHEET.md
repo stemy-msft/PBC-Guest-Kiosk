@@ -9,7 +9,7 @@ In some cases, only a portion of the settings are shown below.
 
 # .\.env
 
-## This controls backend and frontend environment
+## This controls backend environment
 
 STAFF_USERNAME=staff                                        <-- initial username
 STAFF_PASSWORD=ChangeMeNow123!                              <-- initial password
@@ -18,6 +18,13 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=480
 DATABASE_URL=sqlite:///data/kiosk.db3                       <-- sqlite database on backend
 PRINT_AGENT_URL=http://kiosk-printer.domain.local:8001      <-- name/ip of RP print server
+
+# .\frontend\.env
+
+## This controls the frontend environment
+
+VITE_API_BASE=http://kiosk-backend.domain.local:8000        <-- name/ip of backend
+
 
 # .\print-agent\.env
 
