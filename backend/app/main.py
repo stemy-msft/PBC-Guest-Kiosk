@@ -23,6 +23,7 @@ from .schemas import (
     LoginResponse,
     PrintJobResponse,
     PrintJobStatusUpdate,
+    ReturningVisitorCheckInRequest,
     VisitorCreate,
     VisitorResponse,
 )
@@ -177,7 +178,7 @@ def claim_print_job(
 
     print_job.status = "Printing"
     print_job.printer_name = printer_name
-    print_job.claimed_time = datetime.utcnow()
+    print_job.claimed_time = datetime.now()
 
     db.commit()
     db.refresh(print_job)
@@ -216,7 +217,7 @@ def update_print_job_status(
     print_job.error_message = status_update.error_message
 
     if normalized_status == "Completed":
-        print_job.completed_time = datetime.utcnow()
+        print_job.completed_time = datetime.now()
 
         visitor = (
             db.query(Visitor)
@@ -251,7 +252,7 @@ def create_visitor(
         vehicle_plate=visitor.vehicle_plate,
         notes=visitor.notes,
         expected_departure_time=visitor.expected_departure_time,
-        check_in_time=datetime.utcnow(),
+        check_in_time=datetime.now(),
         badge_printed=False,
     )
 
@@ -286,6 +287,53 @@ def get_active_visitors(
     )
 
 
+@app.post("/api/visitors/{visitor_id}/checkin-again",response_model=VisitorResponse,)
+def checkin_again(
+    visitor_id: int,
+    request: ReturningVisitorCheckInRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    original = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if original is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    new_visitor = Visitor(
+        first_name=original.first_name,
+        last_name=original.last_name,
+        visitor_type=request.visitor_type,
+        church=original.church,
+        phone=original.phone,
+        purpose=request.purpose,
+        host_type=original.host_type,
+        host_name=request.host_name,
+        vehicle_plate=original.vehicle_plate,
+        notes=original.notes,
+        expected_departure_time=None,
+        photo_path=original.photo_path if request.reuse_existing_photo else None,
+        badge_path=None,
+        check_in_time=datetime.now(),
+        check_out_time=None,
+        check_out_method=None,
+        badge_printed=False,
+        badge_printed_time=None,
+    )
+
+    db.add(new_visitor)
+    db.commit()
+    db.refresh(new_visitor)
+
+    return new_visitor
+
+
 @app.post("/api/visitors/bulk-checkout")
 def bulk_checkout(
     current_user: str = Depends(get_current_user),
@@ -297,7 +345,7 @@ def bulk_checkout(
         .all()
     )
 
-    checkout_time = datetime.utcnow()
+    checkout_time = datetime.now()
 
     for visitor in active_visitors:
         visitor.check_out_time = checkout_time
@@ -403,6 +451,54 @@ def get_visitor(
     return visitor
 
 
+@app.post("/api/visitors/{visitor_id}/checkin-again",response_model=VisitorResponse,)
+def checkin_again(
+    visitor_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    original = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if original is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    new_visitor = Visitor(
+        first_name=original.first_name,
+        last_name=original.last_name,
+        visitor_type=original.visitor_type,
+        church=original.church,
+        phone=original.phone,
+        purpose=original.purpose,
+        host_type=original.host_type,
+        host_name=original.host_name,
+        vehicle_plate=original.vehicle_plate,
+        notes=original.notes,
+        expected_departure_time=None,
+
+        photo_path=original.photo_path,
+
+        badge_path=None,
+        badge_printed=False,
+        badge_printed_time=None,
+
+        check_in_time=datetime.now(),
+        check_out_time=None,
+        check_out_method=None,
+    )
+
+    db.add(new_visitor)
+    db.commit()
+    db.refresh(new_visitor)
+
+    return new_visitor
+
 @app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
 def checkout_visitor(
     visitor_id: int,
@@ -420,7 +516,7 @@ def checkout_visitor(
         )
 
     if visitor.check_out_time is None:
-        visitor.check_out_time = datetime.utcnow()
+        visitor.check_out_time = datetime.now()
         visitor.check_out_method = "Manual Checkout"
 
         db.commit()
@@ -528,7 +624,7 @@ def create_print_job(
         visitor_id=visitor.id,
         badge_path=visitor.badge_path,
         status="Pending",
-        created_time=datetime.utcnow(),
+        created_time=datetime.now(),
     )
 
     db.add(print_job)

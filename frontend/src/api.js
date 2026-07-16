@@ -44,6 +44,7 @@ export async function createVisitor(visitorData) {
   return await handleResponse(response, "Failed to create visitor");
 }
 
+
 export async function uploadPhoto(visitorId, file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -76,6 +77,27 @@ export async function createPrintJob(visitorId) {
   );
 
   return await handleResponse(response, "Failed to queue print job");
+}
+
+export async function checkInAgain(visitorId, data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/visitors/${visitorId}/checkin-again`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  return await handleResponse(
+    response,
+    "Failed to check in returning visitor"
+  );
 }
 
 export async function checkoutVisitor(visitorId) {

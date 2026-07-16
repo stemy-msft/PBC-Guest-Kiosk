@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   bulkCheckout,
+  checkInAgain,
   checkoutVisitor,
   createPrintJob,
   createVisitor,
@@ -28,6 +29,14 @@ export default function App() {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [purpose, setPurpose] = useState("Visiting Camper");
+  const [returningPhotoFile, setReturningPhotoFile] = useState(null);
+  const [returningVisitor, setReturningVisitor] = useState({
+    first_name: "",
+    last_name: "",
+    visitor_type: "",
+    purpose: "",
+    host_name: "",
+  });
   const [screen, setScreen] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -36,6 +45,9 @@ export default function App() {
   const [successTitle, setSuccessTitle] = useState("");
   const [username, setUsername] = useState("");
   const [visitorType, setVisitorType] = useState("Parent");
+
+
+
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -135,6 +147,20 @@ export default function App() {
     }
   }
 
+  function handleCheckInAgain(visitor) {
+    setReturningVisitor({
+      first_name: visitor.first_name,
+      last_name: visitor.last_name,
+      visitor_type: visitor.visitor_type,
+      purpose: visitor.purpose,
+      host_name: visitor.host_name,
+    });
+
+    setReturningPhotoFile(null);
+
+    setScreen("returning-checkin");
+  }
+
   async function handleGuestCheckout(visitorId) {
     try {
       await checkoutVisitor(visitorId);
@@ -172,6 +198,47 @@ export default function App() {
       alert(error.message);
     }
   }
+
+async function handleSubmitReturningVisitor() {
+  try {
+    setBusy(true);
+
+    const visitor = await checkInAgain(
+      selectedVisitor.id,
+      {
+        visitor_type: returningVisitor.visitor_type,
+        purpose: returningVisitor.purpose,
+        host_name: returningVisitor.host_name,
+        reuse_existing_photo: !returningPhotoFile,
+      }
+    );
+
+    if (returningPhotoFile) {
+      await uploadPhoto(visitor.id, returningPhotoFile);
+    }
+
+    await generateBadge(visitor.id);
+
+    await createPrintJob(visitor.id);
+
+    setSuccessTitle("Visitor Checked In");
+    setSuccessMessage(
+      "Returning visitor badge has been sent to the printer."
+    );
+
+    setScreen("success");
+
+    setTimeout(() => {
+      setBusy(false);
+      setScreen("staff");
+    }, 3000);
+
+  } catch (error) {
+    console.error(error);
+    setBusy(false);
+    alert(error.message);
+  }
+}
 
   async function handleVisitorSearch() {
     try {
@@ -601,6 +668,7 @@ export default function App() {
     );
   }
 
+  // Visitor Search
   if (screen === "visitor-search") {
     return (
       <div style={styles.page}>
@@ -663,6 +731,7 @@ export default function App() {
   }
 
 
+  // Visitor Details
   if (screen === "visitor-detail") {
     return (
       <div style={styles.page}>
@@ -680,7 +749,7 @@ export default function App() {
 
             {selectedVisitor.photo_path && (
               <img
-                src={`${import.meta.env.VITE_API_BASE}alright/${selectedVisitor.photo_path}`}
+                src={`${import.meta.env.VITE_API_BASE}/${selectedVisitor.photo_path}`}
                 alt="Visitor"
                 style={styles.visitorPhoto}
               />
@@ -726,20 +795,164 @@ export default function App() {
 
             <button
               style={styles.staffActionButton}
-              onClick={() =>
-                alert(
-                  "Returning Visitor Check-In coming in next phase."
-                )
-              }
+              onClick={() => handleCheckInAgain(selectedVisitor)}
             >
               Check In Again
             </button>
+
           </div>
         </div>
       </div>
     );
   }
 
+  // Returning Check-in
+  if (screen === "returning-checkin") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("visitor-detail")}
+        >
+          ← Visitor Details
+        </button>
+
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>
+            Returning Visitor Check-In
+          </h1>
+
+          <p style={styles.instructions}>
+            Review the visitor information and make any updates before
+            printing a new badge.
+          </p>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>First Name</label>
+            <input
+              style={styles.input}
+              value={returningVisitor.first_name}
+              readOnly
+            />
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Last Name</label>
+            <input
+              style={styles.input}
+              value={returningVisitor.last_name}
+              readOnly
+            />
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Visitor Type</label>
+            <select
+              style={styles.input}
+              value={returningVisitor.visitor_type}
+              onChange={(e) =>
+                setReturningVisitor({
+                  ...returningVisitor,
+                  visitor_type: e.target.value,
+                })
+              }
+            >
+              <option>Parent</option>
+              <option>Grandparent</option>
+              <option>Family Member</option>
+              <option>Vendor/Service</option>
+              <option>Friend</option>
+              <option>Minister</option>
+              <option>Board Member</option>
+              <option>Other Guest</option>
+            </select>
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Purpose</label>
+            <select
+              style={styles.input}
+              value={returningVisitor.purpose}
+              onChange={(e) =>
+                setReturningVisitor({
+                  ...returningVisitor,
+                  purpose: e.target.value,
+                })
+              }
+            >
+              <option>Visiting Camper</option>
+              <option>Dinner</option>
+              <option>Family Night</option>
+              <option>Awards Ceremony</option>
+              <option>Talent Show</option>
+              <option>Vendor Delivery</option>
+              <option>Service Call</option>
+            </select>
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Camper or Contact Name</label>
+            <input
+              style={styles.input}
+              value={returningVisitor.host_name}
+              onChange={(e) =>
+                setReturningVisitor({
+                  ...returningVisitor,
+                  host_name: e.target.value,
+                })
+              }
+            />
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Visitor Photo</label>
+
+            <div style={styles.dashboardButtonRow}>
+              <button
+                style={styles.staffActionButton}
+                type="button"
+                onClick={() => setReturningPhotoFile(null)}
+              >
+                Use Existing Photo
+              </button>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={() =>
+                  document.getElementById("returningPhotoInput").click()
+                }
+              >
+                Retake Photo
+              </button>
+
+              <input
+                id="returningPhotoInput"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: "none" }}
+                onChange={(e) =>
+                  setReturningPhotoFile(
+                    e.target.files?.[0] || null
+                  )
+                }
+              />
+            </div>
+          </div>
+
+          <button
+            style={styles.printButton}
+            onClick={handleSubmitReturningVisitor}
+          >
+            Print Visitor Badge
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+
+  // Staff Login
   if (screen === "staff-login") {
     return (
       <div style={styles.page}>

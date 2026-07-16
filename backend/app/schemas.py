@@ -36,6 +36,13 @@ class PrintJobStatusUpdate(BaseModel):
     error_message: Optional[str] = None
 
 
+class ReturningVisitorCheckInRequest(BaseModel):
+    visitor_type: str
+    purpose: str
+    host_name: str
+    reuse_existing_photo: bool = True
+
+
 class VisitorCreate(BaseModel):
     first_name: str
     last_name: str
