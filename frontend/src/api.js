@@ -80,8 +80,10 @@ export async function createPrintJob(visitorId) {
 }
 
 export async function checkInAgain(visitorId, data) {
-  const token = localStorage.getItem("access_token");
+console.log("handleCheckInAgain called");
+console.log(visitor);
 
+  const token = localStorage.getItem("access_token");
   const response = await fetch(
     `${API_BASE}/api/visitors/${visitorId}/checkin-again`,
     {
@@ -197,3 +199,22 @@ export async function getVisitorHistory(visitorId) {
     "Failed to load visitor history"
   );
 }
+
+export async function updateVisitor(id, data) {
+  const token = localStorage.getItem("access_token");
+  const response = await fetch(`${API_BASE}/api/visitors/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to update visitor");
+  }
+
+  return response.json();
+}
+

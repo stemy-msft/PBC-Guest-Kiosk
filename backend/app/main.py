@@ -26,6 +26,7 @@ from .schemas import (
     ReturningVisitorCheckInRequest,
     VisitorCreate,
     VisitorResponse,
+    VisitorUpdateRequest,
 )
 from .services.badge_service import generate_visitor_badge
 
@@ -506,6 +507,40 @@ def get_visitor(
             status_code=404,
             detail="Visitor not found",
         )
+
+    return visitor
+
+@app.put("/api/visitors/{visitor_id}", response_model=VisitorResponse)
+def update_visitor(
+    visitor_id: int,
+    visitor_update: VisitorUpdateRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Visitor not found",
+        )
+
+    visitor.first_name = visitor_update.first_name
+    visitor.last_name = visitor_update.last_name
+    visitor.phone = visitor_update.phone
+    visitor.email = visitor_update.email
+    visitor.vehicle_plate = visitor_update.vehicle_plate
+    visitor.host_name = visitor_update.host_name
+    visitor.purpose = visitor_update.purpose
+    visitor.visitor_type = visitor_update.visitor_type
+    visitor.notes = visitor_update.notes
+
+    db.commit()
+    db.refresh(visitor)
 
     return visitor
 

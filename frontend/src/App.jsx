@@ -13,274 +13,27 @@ import {
   login,
   searchVisitors,
   uploadPhoto,
+  updateVisitor,
 } from "./api";
 
-// Theme Definitions
-const themes = {
-  defaultLight: {
-    background: "#f8fafc",
-    placeholderBackground: "#e5e7eb",
+// This loads the options in the dropdowns
+import { VISITOR_TYPES, VISIT_PURPOSES } from "./constants/options";
 
-    surface: "#ffffff",
-    surfaceSecondary: "#f9fafb",
+// Import the styles from styles.js  
+import { getStyles } from "./constants/styles";
 
-    textPrimary: "#111827",
-    textSecondary: "#6b7280",
-
-    primary: "#2563eb",
-    primaryText: "#ffffff",
-
-    success: "#16a34a",
-    successText: "#ffffff",
-
-    label: "#374151",
-
-    neutral: "#6b7280",
-    neutralText: "#ffffff",
-
-    buttonColor: "#2563eb",
-    buttonText: "#ffffff",
-
-    border: "#d1d5db",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#dc2626",
-    dangerText: "#ffffff",
-  },
-  defaultDark: {
-    background: "#111827",
-    placeholderBackground: "#374151",
-
-    surface: "#1f2937",
-    surfaceSecondary: "#2d3748",
-
-    textPrimary: "#f9fafb",
-    textSecondary: "#d1d5db",
-
-    primary: "#3b82f6",
-    primaryText: "#ffffff",
-
-    success: "#22c55e",
-    successText: "#ffffff",
-
-    label: "#e5e7eb",
-
-    neutral: "#6b7280",
-    neutralText: "#ffffff",
-
-    buttonColor: "#3b82f6",
-    buttonText: "#ffffff",
-
-    border: "#4b5563",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#ef4444",
-    dangerText: "#ffffff",
-  },  
-  campGreen: {
-    background: "#f4f8f2",
-    placeholderBackground: "#dbe8d4",
-
-    surface: "#ffffff",
-    surfaceSecondary: "#f7faf5",
-
-    textPrimary: "#1f2937",
-    textSecondary: "#4b5563",
-
-    primary: "#2f855a",
-    primaryText: "#ffffff",
-
-    success: "#38a169",
-    successText: "#ffffff",
-
-    label: "#2d3748",
-
-    neutral: "#718096",
-    neutralText: "#ffffff",
-
-    buttonColor: "#2f855a",
-    buttonText: "#ffffff",
-
-    border: "#cbd5c0",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#e53e3e",
-    dangerText: "#ffffff",
-  },  
-  lakeBlue: {
-    background: "#eef7fb",
-    placeholderBackground: "#dbeaf2",
-
-    surface: "#ffffff",
-    surfaceSecondary: "#f5fbfe",
-
-    textPrimary: "#1e293b",
-    textSecondary: "#64748b",
-
-    primary: "#0284c7",
-    primaryText: "#ffffff",
-
-    success: "#0891b2",
-    successText: "#ffffff",
-
-    label: "#334155",
-
-    neutral: "#64748b",
-    neutralText: "#ffffff",
-
-    buttonColor: "#0284c7",
-    buttonText: "#ffffff",
-
-    border: "#cbd5e1",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#dc2626",
-    dangerText: "#ffffff",
-  },
-  darkCampfire: {
-    background: "#111827",
-    placeholderBackground: "#374151",
-
-    surface: "#1f2937",
-    surfaceSecondary: "#2d3748",
-
-    textPrimary: "#f9fafb",
-    textSecondary: "#d1d5db",
-
-    primary: "#f59e0b",
-    primaryText: "#111827",
-
-    success: "#22c55e",
-    successText: "#ffffff",
-
-    label: "#e5e7eb",
-
-    neutral: "#6b7280",
-    neutralText: "#ffffff",
-
-    buttonColor: "#f59e0b",
-    buttonText: "#111827",
-
-    border: "#4b5563",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#ef4444",
-    dangerText: "#ffffff",
-  },
-  retroTerminal: {
-    background: "#0d1117",
-    placeholderBackground: "#161b22",
-
-    surface: "#161b22",
-    surfaceSecondary: "#21262d",
-
-    textPrimary: "#58ff8a",
-    textSecondary: "#8b949e",
-
-    primary: "#39ff14",
-    primaryText: "#000000",
-
-    success: "#00ff9d",
-    successText: "#000000",
-
-    label: "#58ff8a",
-
-    neutral: "#6e7681",
-    neutralText: "#ffffff",
-
-    buttonColor: "#39ff14",
-    buttonText: "#000000",
-
-    border: "#30363d",
-
-    fontFamily: "Consolas, monospace",
-
-    danger: "#ff4d4d",
-    dangerText: "#ffffff",
-  },
-  amberTerminal: {
-    background: "#120d05",
-    placeholderBackground: "#2a1c08",
-
-    surface: "#1a1206",
-    surfaceSecondary: "#241807",
-
-    textPrimary: "#ffbf47",
-    textSecondary: "#d6a04a",
-
-    primary: "#ffb000",
-    primaryText: "#1a1206",
-
-    success: "#f59e0b",
-    successText: "#1a1206",
-
-    label: "#ffc857",
-
-    neutral: "#8b6a32",
-    neutralText: "#ffffff",
-
-    buttonColor: "#ffb000",
-    buttonText: "#1a1206",
-
-    border: "#664400",
-
-    fontFamily: "Courier New, monospace",
-
-    danger: "#ff6b35",
-    dangerText: "#ffffff",
-  },
-  clemsonTigers: {
-    background: "#fefaf5",
-    placeholderBackground: "#f2e8dc",
-
-    surface: "#ffffff",
-    surfaceSecondary: "#f7f2fb",
-
-    textPrimary: "#522d80",
-    textSecondary: "#6b5b7a",
-
-    primary: "#f56600",      // Clemson Orange
-    primaryText: "#ffffff",
-
-    success: "#522d80",      // Regalia Purple
-    successText: "#ffffff",
-
-    label: "#522d80",
-
-    neutral: "#8b7a9b",
-    neutralText: "#ffffff",
-
-    buttonColor: "#f56600",
-    buttonText: "#ffffff",
-
-    border: "#d9cfc3",
-
-    fontFamily: "Inter, Arial, sans-serif",
-
-    danger: "#c2410c",
-    dangerText: "#ffffff",
-
-    logoOverlay: "/themes/clemson-paw.png",
-  },
-
-
-};
+// Import the themese from themes.js
+import { themes } from "./constants/themes";
 
 // Change this to switch themes
-const theme = themes.campGreen; 
-
-// This will set the logo overlay for the theme if it exists
+const theme = themes.campGreen; // Change this to switch themes
 
 // This will add some retro feel to CRT themes
 const isCrtTheme =
   theme === themes.retroTerminal ||
   theme === themes.amberTerminal;
 
+const styles = getStyles(theme, isCrtTheme);
 
 
 export default function App() {
@@ -310,10 +63,13 @@ export default function App() {
     last_name: "",
     visitor_type: "",
     purpose: "",
+    host_type: "",
     host_name: "",
     vehicle_plate: "",
     phone: "",
     email: "",
+    notes: "",
+    expected_departure_time: null,
   });
   const [screen, setScreen] = useState("home");
   const [screenHistory, setScreenHistory] = useState([]);
@@ -354,8 +110,6 @@ export default function App() {
 
   useEffect(() => {
     if (cameraOpen && cameraStream && videoRef.current) {
-      console.log("Attaching stream");
-
       videoRef.current.srcObject = cameraStream;
 
       videoRef.current.play().catch((error) => {
@@ -363,6 +117,14 @@ export default function App() {
       });
     }
   }, [cameraOpen, cameraStream]);
+
+  useEffect(() => {
+    if (!selectedVisitor) {
+      return;
+    }
+
+    populateReturningVisitor(selectedVisitor);
+  }, [selectedVisitor]);
 
 
   function getPhotoUrl(photoPath) {
@@ -421,6 +183,7 @@ export default function App() {
       setVisitCount(historyData.visit_count);
       setVisitorHistory(historyData.history);
       setSelectedVisitor(visitor);
+
       setScreen("visitor-detail");
     } catch (error) {
       console.error(error);
@@ -458,6 +221,59 @@ export default function App() {
   function navigateTo(screenName) {
     setScreenHistory((previous) => [...previous, screen]);
     setScreen(screenName);
+  }
+
+  async function handleUpdateVisitorDetails() {
+    try {
+      setBusy(true);
+      const updatedVisitor = await updateVisitor(
+        selectedVisitor.id,
+        {
+          first_name: returningVisitor.first_name,
+          last_name: returningVisitor.last_name,
+          visitor_type: returningVisitor.visitor_type,
+          purpose: returningVisitor.purpose,
+          host_name: returningVisitor.host_name,
+          vehicle_plate: returningVisitor.vehicle_plate,
+          phone: returningVisitor.phone,
+          email: returningVisitor.email,
+          notes: returningVisitor.notes,
+          expected_departure_time: returningVisitor.expected_departure_time,
+        }
+      );
+
+      setSelectedVisitor(updatedVisitor);
+      populateReturningVisitor(updatedVisitor);
+
+      alert("Visitor updated successfully.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function populateReturningVisitor(visitor) {
+    if (!visitor) {
+      return;
+    }
+
+    const hydratedVisitor = {
+      first_name: visitor.first_name ?? "",
+      last_name: visitor.last_name ?? "",
+      visitor_type: visitor.visitor_type ?? "",
+      purpose: visitor.purpose ?? "",
+      host_type: visitor.host_type ?? "",
+      host_name: visitor.host_name ?? "",
+      vehicle_plate: visitor.vehicle_plate ?? "",
+      phone: visitor.phone ?? "",
+      email: visitor.email ?? "",
+      notes: visitor.notes ?? "",
+      expected_departure_time: visitor.expected_departure_time ?? null,
+    };
+
+    setReturningVisitor(hydratedVisitor);
   }
 
 
@@ -574,19 +390,11 @@ export default function App() {
   }
 
   function handleCheckInAgain(visitor) {
-    setReturningVisitor({
-      first_name: visitor.first_name,
-      last_name: visitor.last_name,
-      visitor_type: visitor.visitor_type,
-      purpose: visitor.purpose,
-      host_name: visitor.host_name,
-      vehicle_plate: visitor.vehicle_plate,
-      phone: visitor.phone,
-      email: visitor.email,
-      notes: visitor.notes,
-    });
+    populateReturningVisitor(visitor);
 
     setReturningPhotoFile(null);
+    setReturningPhotoPreview(null);
+    setCheckedInVisitorId(null);
 
     setScreen("returning-checkin");
   }
@@ -987,14 +795,11 @@ async function handleVisitorCheckout(visitorId) {
                     value={visitorType}
                     onChange={(event) => setVisitorType(event.target.value)}
                 >
-                  <option>Parent</option>
-                  <option>Grandparent</option>
-                  <option>Family Member</option>
-                  <option>Vendor/Service</option>
-                  <option>Friend</option>
-                  <option>Minister</option>
-                  <option>Board Member</option>
-                  <option>Other Guest</option>
+                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                    <option key={visitorTypeOption} value={visitorTypeOption}>
+                      {visitorTypeOption}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1005,13 +810,11 @@ async function handleVisitorCheckout(visitorId) {
                     value={purpose}
                     onChange={(event) => setPurpose(event.target.value)}
                 >
-                  <option>Visiting Camper</option>
-                  <option>Dinner</option>
-                  <option>Family Night</option>
-                  <option>Awards Ceremony</option>
-                  <option>Talent Show</option>
-                  <option>Vendor Delivery</option>
-                  <option>Service Call</option>
+                  {VISIT_PURPOSES.map((purposeOption) => (
+                    <option key={purposeOption} value={purposeOption}>
+                      {purposeOption}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1250,7 +1053,6 @@ async function handleVisitorCheckout(visitorId) {
             />
           )}
 
-
           {/* CRT Theme Effects */}
           {isCrtTheme && (
             <>
@@ -1290,7 +1092,6 @@ async function handleVisitorCheckout(visitorId) {
           />
         )}
 
-
         {/* CRT Theme Effects */}
         {isCrtTheme && (
           <>
@@ -1316,6 +1117,7 @@ async function handleVisitorCheckout(visitorId) {
             {activeVisitors.length} active visitor(s) currently on campus.
           </p>
 
+          {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>
             <button
               style={styles.staffActionButton}
@@ -1351,70 +1153,135 @@ async function handleVisitorCheckout(visitorId) {
               style={styles.printButton}
               onClick={handleBulkCheckout}
             >
-              Bulk Checkout
+              Bulk Checkout Active Visitors
             </button>
+
+            <h3 style={styles.screenTitle}>Active Visitors</h3>
 
           </div>
 
+          {/* Active Visitors List */}
           {activeVisitors.map((visitor) => (
-            <div
-              key={visitor.id}
-              style={styles.resultCard}
-            >
+            <div key={visitor.id} style={styles.resultCard}>
 
-              <h3>
-                {visitor.first_name} {visitor.last_name}
-              </h3>
+              {/* Container for columns */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "180px 1fr 140px",
+                  alignItems: "start",
+                }}
+              >
 
-              <p>
-                <strong>Type:</strong> {visitor.visitor_type}
-              </p>
+                {/* Column 1 */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "left",
+                    alignItems: "center",
+                  }}
+                > 
+                  {visitor.photo_path ? (
+                    <img
+                      src={getPhotoUrl(visitor.photo_path)}
+                      alt="Visitor"
+                      style={{
+                        width: "164px",
+                        height: "164px",
+                        objectFit: "cover",
+                        borderRadius: "10px",
+                        border: "1px solid #d1d5db",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "64px",
+                        height: "64px",
+                        borderRadius: "10px",
+                        border: "1px solid #d1d5db",
+                        backgroundColor: "#f3f4f6",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                      }}
+                    >
+                      No Photo
+                    </div>
+                  )}
+                </div>
 
-              <p>
-                <strong>Purpose:</strong> {visitor.purpose}
-              </p>
+                {/* End Column 1 */}
 
-              <p>
-                <strong>Contact:</strong> {visitor.host_name}
-              </p>
-
-              <p>
-                <strong>Checked In:</strong>{" "}
-                {new Date(visitor.check_in_time).toLocaleString()}
-              </p>
-
-              <div style={styles.visitorActionRow}>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => handleReprintBadge(visitor.id)}
+                {/* Column 2 */}
+                <div
+                  style={{
+                      textAlign: "center",
+                      marginTop: "10px",
+                  }}
                 >
-                  Reprint Badge
-                </button>
+                    <h2>
+                      {visitor.first_name} {visitor.last_name}
+                    </h2>
 
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => handleVisitorSelect(visitor.id)}
-                >
-                  View Details
-                </button>
+                    <p>{visitor.visitor_type}</p>
 
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => handleVisitorCheckout(visitor.id)}
-                >
-                  Check Out Visitor
-                </button>
+                    <p style={{ marginBottom: "12px" }}>
+                      Checked in:{" "}
+                      {new Date(visitor.check_in_time).toLocaleString()}
+                      
+                    </p>
+
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() => handleVisitorSelect(visitor.id)}
+                    >
+                      View Details
+                    </button>
+                </div>
+                {/* End Column 2 */}
+
+                {/* Column 3 */}
+                <div>
+                  <span
+                    style={{
+                      backgroundColor: visitor.check_out_time
+                        ? "#6b7280"
+                        : "#16a34a",
+                      color: "#ffffff",
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      fontSize: "0.8rem",
+                      fontWeight: "bold",
+                      textAlign: "right",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    {visitor.check_out_time
+                      ? "CHECKED OUT"
+                      : "ACTIVE"}
+                  </span>
+
+                  <p style={{ marginTop: "12px", marginBottom: "12px" }}>
+                    Visitor ID: {visitor.id}
+                  </p>
+                </div>
+                {/* End Column 3 */}
 
               </div>
-            </div>
+
+              {/* End container for columns */}
+              </div>
           ))}
         </div>
       </div>
     );
   }
 
-  // Visitor Search
+
+  // Visitor Search Screen
   if (screen === "visitor-search") {
     return (
       <div style={styles.page}>
@@ -1545,7 +1412,7 @@ async function handleVisitorCheckout(visitorId) {
                     <p>{visitor.visitor_type}</p>
 
                     <p style={{ marginBottom: "12px" }}>
-                      Last Visit:{" "}
+                      Checked in:{" "}
                       {new Date(visitor.check_in_time).toLocaleString()}
                       
                     </p>
@@ -1598,7 +1465,7 @@ async function handleVisitorCheckout(visitorId) {
     );
   }
 
-  // Visitor Details
+  // Visitor Details Screen
   if (screen === "visitor-detail") {
     return (
       <div style={styles.page}>
@@ -1611,7 +1478,6 @@ async function handleVisitorCheckout(visitorId) {
             style={styles.themeOverlay}
           />
         )}
-
 
         {/* CRT Theme Effects */}
         {isCrtTheme && (
@@ -1663,55 +1529,228 @@ async function handleVisitorCheckout(visitorId) {
                 : "CURRENTLY CHECKED IN"}
             </div>
 
-            <p>
-              <strong>Visit Count:</strong> {visitCount}
-            </p>
+            <h3 style={{ marginTop: "24px" }}>
+              Visitor Summary
+            </h3>
 
-            <p>
-              <strong>Visitor Type:</strong>{" "}
-              {selectedVisitor.visitor_type}
-            </p>
 
-            <p>
-              <strong>Purpose:</strong>{" "}
-              {selectedVisitor.purpose}
-            </p>
-
-            <p>
-              <strong>Contact:</strong>{" "}
-              {selectedVisitor.host_name}
-            </p>
-
-            <p>
-              <strong>Vehicle License Plate:</strong>{" "}
-              {selectedVisitor.vehicle_plate}
-            </p>
-
-            <p>
-              <strong>Phone:</strong>{" "}
-              {selectedVisitor.phone}
-            </p>
-
-            <p>
-              <strong>Email:</strong>{" "}
-              {selectedVisitor.email}
-            </p>                                    
-
-            <p>
-              <strong>Checked In:</strong>{" "}
-              {new Date(
-                selectedVisitor.check_in_time
-              ).toLocaleString()}
-            </p>
-
-            {selectedVisitor.check_out_time && (
+            <div style={styles.fieldGroup_oneColumn}>
               <p>
-                <strong>Checked Out:</strong>{" "}
+                <strong>Visit Count:</strong> {visitCount}
+              </p>
+
+              <p>
+                <strong>Checked In:</strong>{" "}
                 {new Date(
-                  selectedVisitor.check_out_time
+                  selectedVisitor.check_in_time
                 ).toLocaleString()}
               </p>
-            )}
+
+              {selectedVisitor.check_out_time && (
+                <p>
+                  <strong>Checked Out:</strong>{" "}
+                  {new Date(
+                    selectedVisitor.check_out_time
+                  ).toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            {/* Visitor Details Grid */}
+            <div style={styles.grid_details_readonly}>
+
+              <p>
+                  <strong>Visitor Type:</strong>{" "}
+                {selectedVisitor.visitor_type}
+              </p>
+
+              <p>
+                <strong>Purpose:</strong>{" "}
+                {selectedVisitor.purpose}
+              </p>
+
+                <p>
+                  <strong>Contact:</strong>{" "}
+                  {selectedVisitor.host_name}
+                </p>
+
+              <p>
+                <strong>Vehicle License Plate:</strong>{" "}
+                {selectedVisitor.vehicle_plate}
+              </p>
+              
+              <p>
+                <strong>Phone:</strong>{" "}
+                {selectedVisitor.phone}
+              </p>
+
+              <p>
+                <strong>Email:</strong>{" "}
+                {selectedVisitor.email}
+              </p>
+
+              {/* Notes Field - single column */}
+              <div style={styles.fieldGroup_oneColumn}>
+                <p> <strong>Notes:</strong>{""} </p>
+                <p> {selectedVisitor.notes} </p>
+              </div>
+
+            </div>
+
+
+            <h3 style={{ marginTop: "48px" }}>
+              Update Visitor Details
+            </h3>
+
+            <div style={styles.grid_details}>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>First Name</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.first_name || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      first_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Last Name</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.last_name || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      last_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Visitor Type</label>
+                            <select
+                  style={styles.input_details}
+                  value={selectedVisitor.visitor_type || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      visitor_type: e.target.value,
+                    })
+                  }
+                >
+                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                    <option key={visitorTypeOption} value={visitorTypeOption}>
+                      {visitorTypeOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Purpose</label>
+                            <select
+                  style={styles.input_details}
+                  value={selectedVisitor.purpose || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      purpose: e.target.value,
+                    })
+                  }
+                >
+                  {VISIT_PURPOSES.map((visitPurposeOption) => (
+                    <option key={visitPurposeOption} value={visitPurposeOption}>
+                      {visitPurposeOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Contact</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.host_name || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      host_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Vehicle Plate</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.vehicle_plate || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      vehicle_plate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Phone</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.phone || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      phone: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup_details}>
+                <label style={styles.label_details}>Email</label>
+                <input
+                  style={styles.input_details}
+                  value={selectedVisitor.email || ""}
+                  onChange={(e) =>
+                    setSelectedVisitor({
+                      ...selectedVisitor,
+                      email: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+
+
+              {/* Notes Field */}
+              <div style={styles.fieldGroup_oneColumn}>
+                <label style={styles.label_details}>Notes:</label>
+                    <textarea
+                      style={styles.input_notes}
+                      value={selectedVisitor.notes || ""}
+                      onChange={(e) => setSelectedVisitor({ ...selectedVisitor, notes: e.target.value })}
+                    />
+              </div>
+
+            </div>
+
+            {/* UPDATE VISITOR DETAILS button saves changes to visitor details */}
+            <p>
+              <button
+                style={styles.staffActionButton}
+                onClick={() => handleUpdateVisitorDetails(selectedVisitor)}
+              >
+                Update Visitor Details
+              </button>
+            </p>
 
             <h3 style={{ marginTop: "24px" }}>
               Visit History
@@ -1882,17 +1921,14 @@ async function handleVisitorCheckout(visitorId) {
                 <label style={styles.label}>Visitor Type</label>
                 <select
                     style={styles.input}
-                    value={returningVisitor.visitor_type}
-                    onChange={(event) => setReturningVisitor({...returningVisitor, visitor_type: event.target.value})}
+                    value={visitorType}
+                    onChange={(event) => setVisitorType(event.target.value)}
                 >
-                  <option>Parent</option>
-                  <option>Grandparent</option>
-                  <option>Family Member</option>
-                  <option>Vendor/Service</option>
-                  <option>Friend</option>
-                  <option>Minister</option>
-                  <option>Board Member</option>
-                  <option>Other Guest</option>
+                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                    <option key={visitorTypeOption} value={visitorTypeOption}>
+                      {visitorTypeOption}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1900,16 +1936,14 @@ async function handleVisitorCheckout(visitorId) {
                 <label style={styles.label}>Purpose</label>
                 <select
                     style={styles.input}
-                    value={returningVisitor.purpose}
-                    onChange={(event) => setReturningVisitor({...returningVisitor, purpose: event.target.value})}
+                    value={purpose}
+                    onChange={(event) => setPurpose(event.target.value)}
                 >
-                  <option>Visiting Camper</option>
-                  <option>Dinner</option>
-                  <option>Family Night</option>
-                  <option>Awards Ceremony</option>
-                  <option>Talent Show</option>
-                  <option>Vendor Delivery</option>
-                  <option>Service Call</option>
+                  {VISIT_PURPOSES.map((purposeOption) => (
+                    <option key={purposeOption} value={purposeOption}>
+                      {purposeOption}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1947,7 +1981,6 @@ async function handleVisitorCheckout(visitorId) {
               </div>
             </div>
 
-
             {/* Photo Column */}
             <div style={styles.photoColumn}>
               <input
@@ -1967,8 +2000,6 @@ async function handleVisitorCheckout(visitorId) {
 
                   setReturningPhotoFile(file);
                   setReturningPhotoPreview(previewUrl);
-
-                  console.log("returningPhotoPreview set:", previewUrl);
                 }}
               />
 
@@ -2095,7 +2126,7 @@ async function handleVisitorCheckout(visitorId) {
     );
   }
 
-  // Staff Login
+  // Staff Login Screen
   if (screen === "staff-login") {
     return (
       <div style={styles.page}>
@@ -2208,328 +2239,6 @@ async function handleVisitorCheckout(visitorId) {
 
 // End of App()
 }
-
-
-// Styles
-const styles = {
-  backButton: {
-    background: theme.surface,
-    border: `1px solid ${theme.border}`,
-    borderRadius: "12px",
-    color: theme.textPrimary,
-    cursor: "pointer",
-    fontSize: "1rem",
-    fontWeight: 600,
-    left: "20px",
-    minWidth: "120px",
-    padding: "16px 24px",
-    position: "fixed",
-    top: "20px",
-    index: 1000,
-  },
-
-  cardContainer: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "24px",
-    justifyContent: "center",
-  },
-
-  checkinContentContainer: {
-    alignItems: "flex-start",
-    display: "flex",
-    gap: "40px",
-    justifyContent: "space-between",
-    width: "100%",
-  },
-
-  contentContainer: {
-    alignItems: "center",
-    display: "flex",
-    gap: "40px",
-    justifyContent: "space-between",
-    width: "100%",
-  },  
-
-  crtFlicker: {
-    position: "fixed",
-    inset: 0,
-    pointerEvents: "none",
-    background: "rgba(255,191,71,0.04)",
-    zIndex: 9997,
-    animation: "flicker 0.25s infinite",
-  },
-
-  crtOverlay: {
-    position: "fixed",
-    inset: 0,
-    pointerEvents: "none",
-    backgroundImage:
-      "repeating-linear-gradient(to bottom, rgba(255,191,71,0.08) 0px, rgba(255,191,71,0.08) 1px, transparent 2px, transparent 4px)",
-    zIndex: 9998,
-  },
-
-  crtScanline: {
-    position: "fixed",
-    top: "-20px",
-    left: 0,
-    right: 0,
-    height: "2px",
-    background: "rgba(255,191,71,0.15)",
-    boxShadow: "0 0 8px rgba(255,191,71,0.4)",
-    pointerEvents: "none",
-    zIndex: 9999,
-    animation: "scanline 8s linear infinite, flicker 0.15s infinite",
-  },
-
-  dashboardButtonRow: {
-    display: "flex",
-    gap: "16px",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    marginBottom: "24px",
-  },
-
-  detailName: {
-    color: theme.textPrimary,
-    fontSize: "2rem",
-    fontWeight: 700,
-    marginTop: 0,
-    marginBottom: "16px",
-  },
-
-  fieldGroup: {
-    display: "flex",
-    flexDirection: "column",
-    marginBottom: "12px",
-  },
-
-  formColumn: {
-    flex: 1,
-  },
-
-  formContainer: {
-    backgroundColor: theme.surface,
-    borderRadius: "24px",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-    maxWidth: "900px",
-    padding: "40px",
-    width: "100%",
-  },
-
-  formTitle: {
-    color: theme.textPrimary,
-    fontSize: "2.5rem",
-    marginBottom: "12px",
-    marginTop: 0,
-  },
-
-  hero: {
-    alignItems: "center",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    marginBottom: "80px",
-    textAlign: "center",
-  },
-
-  input: {
-    backgroundColor: theme.surfaceSecondary,
-    border: `1px solid ${theme.border}`,
-    borderRadius: "14px",
-    color: theme.textPrimary,
-    fontSize: "1.2rem",
-    height: "64px",
-    padding: "0 20px",
-    caretColor: theme.textPrimary,
-  },
-
-  instructions: {
-    color: theme.textSecondary,
-    fontSize: "1rem",
-    marginBottom: "32px",
-    marginTop: "0px",
-    textAlign: "center",
-  },
-
-  label: {
-    color: theme.label,
-    fontSize: "1rem",
-    fontWeight: 600,
-    marginBottom: "8px",
-  },
-
-  page: {
-    alignItems: "center",
-    background: theme.background,
-    color: theme.textPrimary,
-    textShadow:
-      isCrtTheme
-        ? "0 0 4px rgba(255,191,71,0.5)"
-        : "none",
-    display: "flex",
-    flexDirection: "column",
-    fontFamily: theme.fontFamily,
-    justifyContent: "center",
-    minHeight: "100vh",
-    padding: "40px",
-  },
-
-  photoButton: {
-    backgroundColor: theme.primary,
-    border: "none",
-    borderRadius: "16px",
-    color: theme.primaryText,
-    cursor: "pointer",
-    fontSize: "1.25rem",
-    fontWeight: 600,
-    height: "70px",
-    width: "320px",
-  },
-
-  photoCard: {
-    alignItems: "center",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    marginBottom: "30px",
-    marginTop: "0",
-  },
-
-  photoColumn: {
-    width: "420px",
-  },
-
-  photoPlaceholder: {
-    alignItems: "center",
-    backgroundColor: theme.placeholderBackground,
-    borderRadius: "18px",
-    color: theme.textSecondary,
-    display: "flex",
-    fontSize: "1.2rem",
-    height: "500px",
-    justifyContent: "center",
-    width: "420px",
-  },
-
-  primaryCard: {
-    background: theme.primary,
-    border: "none",
-    borderRadius: "24px",
-    color: theme.primaryText,
-    cursor: "pointer",
-    fontSize: "2rem",
-    fontWeight: 700,
-    height: "180px",
-    width: "320px",
-  },
-
-  printButton: {
-    width: "100%",
-    backgroundColor: theme.primary,
-    border: "none",
-    borderRadius: "16px",
-    color: theme.buttonText,
-    cursor: "pointer",
-    fontSize: "2rem",
-    fontWeight: 700,
-    height: "90px",
-    marginTop: "24px",
-  },
-
-  resultCard: {
-    backgroundColor: theme.surfaceSecondary,
-    border: `1px solid ${theme.border}`,
-    borderRadius: "16px",
-    marginTop: "16px",
-    padding: "20px",
-  },
-
-  screenTitle: {
-    color: theme.textPrimary,
-    fontSize: "3rem",
-  },
-
-  secondaryCard: {
-    background: theme.success,
-    border: "none",
-    borderRadius: "24px",
-    color: theme.successText,
-    cursor: "pointer",
-    fontSize: "2rem",
-    fontWeight: 700,
-    height: "180px",
-    width: "320px",
-  },
-
-  staffActionButton: {
-    backgroundColor: theme.primary,
-    border: "none",
-    borderRadius: "16px",
-    color: theme.buttonText,
-    cursor: "pointer",
-    fontSize: "1rem",
-    fontWeight: 600,
-    height: "56px",
-    minWidth: "180px",
-    flex: "1 1 220px",
-    padding: "0 24px",
-  },
-
-  staffButton: {
-    background: "none",
-    border: "none",
-    color: theme.textSecondary,
-    cursor: "pointer",
-    fontSize: "1rem",
-    marginTop: "40px",
-  },
-
-  subtitle: {
-    color: theme.textSecondary,
-    fontSize: "1.4rem",
-    fontWeight: 400,
-    letterSpacing: "0.02em",
-    margin: 0,
-  },
-
-  themeOverlay: {
-    position: "fixed",
-    inset: 0,
-    width: "100vw",
-    height: "100vh",
-    objectFit: "contain",
-    opacity: 0.15,
-    pointerEvents: "none",
-    zIndex: 1,
-  },
-
-  title: {
-    color: theme.textPrimary,
-    fontSize: "3.75rem",
-    fontWeight: 700,
-    lineHeight: 1,
-    margin: 0,
-  },
-
-  visitorActionRow: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "16px",
-    flexWrap: "wrap",
-    marginTop: "16px",
-  },
-
-  visitorPhoto: {
-    width: "240px",
-    height: "320px",
-    objectFit: "cover",
-    borderRadius: "16px",
-    border: `1px solid ${theme.border}`,
-    marginBottom: "20px",
-    backgroundColor: theme.placeholderBackground,
-  }, 
-};
 
 
 

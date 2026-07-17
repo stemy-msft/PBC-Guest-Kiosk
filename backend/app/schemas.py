@@ -91,6 +91,16 @@ class VisitorResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class VisitorUpdateRequest(BaseModel):
+    first_name: str
+    last_name: str
+    phone: str | None = None
+    email: str | None = None
+    vehicle_plate: str | None = None
+    host_name: str | None = None
+    purpose: str | None = None
+    visitor_type: str | None = None
+    notes: str | None = None
 
 
 
