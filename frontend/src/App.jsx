@@ -311,8 +311,12 @@ export default function App() {
     visitor_type: "",
     purpose: "",
     host_name: "",
+    vehicle_plate: "",
+    phone: "",
+    email: "",
   });
   const [screen, setScreen] = useState("home");
+  const [screenHistory, setScreenHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState("");
@@ -368,7 +372,22 @@ export default function App() {
 
     return `${import.meta.env.VITE_API_BASE}/${photoPath.replaceAll("\\", "/")}`;
   }
- 
+
+  function goBack() {
+    if (screenHistory.length === 0) {
+      return;
+    }
+
+    const previousScreen =
+      screenHistory[screenHistory.length - 1];
+
+    setScreenHistory((history) =>
+      history.slice(0, -1)
+    );
+
+    setScreen(previousScreen);
+  }  
+
   async function handleFindVisitor() {
     try {
       const results = await findVisitors(
@@ -382,7 +401,6 @@ export default function App() {
       alert(error.message);
     }
   }
-
 
   async function handleVisitorSearch() {
     try {
@@ -410,7 +428,6 @@ export default function App() {
     }
   }
 
-
   async function handleStaffLogin() {
     try {
       const result = await login(username, password);
@@ -436,6 +453,11 @@ export default function App() {
       console.error(error);
       alert(error.message);
     }
+  }
+
+  function navigateTo(screenName) {
+    setScreenHistory((previous) => [...previous, screen]);
+    setScreen(screenName);
   }
 
 
@@ -504,13 +526,14 @@ export default function App() {
         first_name: firstName,
         last_name: lastName,
         visitor_type: visitorType,
-        church: "",
-        phone: "",
+        church: null,
+        phone: phone,
+        email: email,
         purpose: purpose,
-        host_type: "Camper",
+        host_type: "",
         host_name: contactName,
-        vehicle_plate: "",
-        notes: "",
+        vehicle_plate: vehiclePlate,
+        notes: null,
         expected_departure_time: null,
       });
 
@@ -557,6 +580,10 @@ export default function App() {
       visitor_type: visitor.visitor_type,
       purpose: visitor.purpose,
       host_name: visitor.host_name,
+      vehicle_plate: visitor.vehicle_plate,
+      phone: visitor.phone,
+      email: visitor.email,
+      notes: visitor.notes,
     });
 
     setReturningPhotoFile(null);
@@ -574,6 +601,10 @@ export default function App() {
         visitor_type: returningVisitor.visitor_type,
         purpose: returningVisitor.purpose,
         host_name: returningVisitor.host_name,
+        email: returningVisitor.email,
+        vehicle_plate: returningVisitor.vehicle_plate,
+        phone: returningVisitor.phone,
+        notes: returningVisitor.notes,
         reuse_existing_photo: !returningPhotoFile,
       }
     );
@@ -618,6 +649,9 @@ export default function App() {
           visitor_type: returningVisitor.visitor_type,
           purpose: returningVisitor.purpose,
           host_name: returningVisitor.host_name,
+          email: returningVisitor.email,
+          vehicle_plate: returningVisitor.vehicle_plate,
+          phone: returningVisitor.phone,
           reuse_existing_photo: !returningPhotoFile,
         }
       );
@@ -904,7 +938,7 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("home")}
+          onClick={() => navigateTo("home")}
         >
           ← Home
         </button>
@@ -1110,7 +1144,7 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("home")}
+          onClick={() => navigateTo("home")}
         >
           ← Home
         </button>
@@ -1235,7 +1269,7 @@ async function handleVisitorCheckout(visitorId) {
 
             <button
               style={styles.printButton}
-              onClick={() => setScreen("staff-login")}
+              onClick={() => navigateTo("staff-login")}
             >
               Go To Login
             </button>
@@ -1268,7 +1302,7 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("home")}
+          onClick={() => navigateTo("home")}
         >
           ← Home
         </button>
@@ -1295,7 +1329,7 @@ async function handleVisitorCheckout(visitorId) {
               onClick={() => {
                 setSearchResults([]);
                 setSearchQuery("");
-                setScreen("visitor-search");
+                navigateTo("visitor-search");
               }}
             >
               Visitor Search
@@ -1307,7 +1341,7 @@ async function handleVisitorCheckout(visitorId) {
                 localStorage.removeItem("access_token");
                 localStorage.removeItem("username");
                 setIsAuthenticated(false);
-                setScreen("home");
+                navigateTo("home");
               }}
             >
               Logout
@@ -1350,6 +1384,7 @@ async function handleVisitorCheckout(visitorId) {
               </p>
 
               <div style={styles.visitorActionRow}>
+
                 <button
                   style={styles.staffActionButton}
                   onClick={() => handleReprintBadge(visitor.id)}
@@ -1359,10 +1394,18 @@ async function handleVisitorCheckout(visitorId) {
 
                 <button
                   style={styles.staffActionButton}
+                  onClick={() => handleVisitorSelect(visitor.id)}
+                >
+                  View Details
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
                   onClick={() => handleVisitorCheckout(visitor.id)}
                 >
                   Check Out Visitor
                 </button>
+
               </div>
             </div>
           ))}
@@ -1397,7 +1440,7 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("staff")}
+          onClick={() => navigateTo("staff")}
         >
           ← Staff Dashboard
         </button>
@@ -1581,9 +1624,9 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("visitor-search")}
+          onClick={() => navigateTo("staff")}
         >
-          ← Search Results
+          ← Staff Dashboard
         </button>
 
         <div style={styles.formContainer}>
@@ -1641,7 +1684,7 @@ async function handleVisitorCheckout(visitorId) {
 
             <p>
               <strong>Vehicle License Plate:</strong>{" "}
-              {selectedVisitor.vehicle_license_plate}
+              {selectedVisitor.vehicle_plate}
             </p>
 
             <p>
@@ -1791,7 +1834,7 @@ async function handleVisitorCheckout(visitorId) {
 
         <button
           style={styles.backButton}
-          onClick={() => setScreen("visitor-detail")}
+          onClick={() => navigateTo("visitor-detail")}
         >
           ← Visitor Details
         </button>
@@ -1804,36 +1847,43 @@ async function handleVisitorCheckout(visitorId) {
           </p>
 
           <div style={styles.contentContainer}>
+
+
+            {/* Data Column */}
             <div style={styles.formColumn}>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>First Name</label>
-                <input
-                  style={styles.input}
-                  value={returningVisitor.first_name}
-                  readOnly
-                />
+                  <input
+                      style={styles.input}
+                      value={returningVisitor.first_name}
+                      onChange={(event) => setReturningVisitor({...returningVisitor, first_name: event.target.value})}
+                  />
               </div>
 
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Last Name</label>
                 <input
-                  style={styles.input}
-                  value={returningVisitor.last_name}
-                  readOnly
+                    style={styles.input}
+                    value={returningVisitor.last_name}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, last_name: event.target.value})}
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Camper or Contact Name</label>
+                <input
+                    style={styles.input}
+                    value={returningVisitor.host_name}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, host_name: event.target.value})}
                 />
               </div>
 
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Visitor Type</label>
                 <select
-                  style={styles.input}
-                  value={returningVisitor.visitor_type}
-                  onChange={(event) =>
-                    setReturningVisitor({
-                      ...returningVisitor,
-                      visitor_type: event.target.value,
-                    })
-                  }
+                    style={styles.input}
+                    value={returningVisitor.visitor_type}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, visitor_type: event.target.value})}
                 >
                   <option>Parent</option>
                   <option>Grandparent</option>
@@ -1849,14 +1899,9 @@ async function handleVisitorCheckout(visitorId) {
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Purpose</label>
                 <select
-                  style={styles.input}
-                  value={returningVisitor.purpose}
-                  onChange={(event) =>
-                    setReturningVisitor({
-                      ...returningVisitor,
-                      purpose: event.target.value,
-                    })
-                  }
+                    style={styles.input}
+                    value={returningVisitor.purpose}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, purpose: event.target.value})}
                 >
                   <option>Visiting Camper</option>
                   <option>Dinner</option>
@@ -1869,20 +1914,41 @@ async function handleVisitorCheckout(visitorId) {
               </div>
 
               <div style={styles.fieldGroup}>
-                <label style={styles.label}>Camper or Contact Name</label>
+                <label style={styles.label}>Vehicle License Plate</label>
                 <input
                   style={styles.input}
-                  value={returningVisitor.host_name}
+                  value={returningVisitor.vehicle_plate}
                   onChange={(event) =>
-                    setReturningVisitor({
-                      ...returningVisitor,
-                      host_name: event.target.value,
-                    })
+                    setReturningVisitor({...returningVisitor, vehicle_plate: event.target.value.toUpperCase()})
+                  }
+                />
+              </div>   
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Phone</label>
+                <input
+                  style={styles.input}
+                  value={returningVisitor.phone}
+                  onChange={(event) =>
+                    setReturningVisitor({...returningVisitor, phone: event.target.value})
+                  }
+                />
+              </div>   
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Email</label>
+                <input
+                  style={styles.input}
+                  value={returningVisitor.email}
+                  onChange={(event) =>
+                    setReturningVisitor({...returningVisitor, email: event.target.value}  )
                   }
                 />
               </div>
             </div>
 
+
+            {/* Photo Column */}
             <div style={styles.photoColumn}>
               <input
                 id="returningPhotoInput"
@@ -2117,14 +2183,14 @@ async function handleVisitorCheckout(visitorId) {
       <div style={styles.cardContainer}>
         <button
           style={styles.primaryCard}
-          onClick={() => setScreen("checkin")}
+          onClick={() => navigateTo("checkin")}
         >
           Check In
         </button>
 
         <button
           style={styles.secondaryCard}
-          onClick={() => setScreen("checkout")}
+          onClick={() => navigateTo("checkout")}
         >
           Check Out
         </button>
@@ -2132,7 +2198,7 @@ async function handleVisitorCheckout(visitorId) {
 
       <button
         style={styles.staffButton}
-        onClick={() => setScreen("staff-login")}
+        onClick={() => navigateTo("staff-login")}
       >
         Staff Login
       </button>
@@ -2157,8 +2223,9 @@ const styles = {
     left: "20px",
     minWidth: "120px",
     padding: "16px 24px",
-    position: "absolute",
+    position: "fixed",
     top: "20px",
+    index: 1000,
   },
 
   cardContainer: {

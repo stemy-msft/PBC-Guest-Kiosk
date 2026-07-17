@@ -246,6 +246,7 @@ def create_visitor(
         visitor_type=visitor.visitor_type,
         church=visitor.church,
         phone=visitor.phone,
+        email=visitor.email,
         purpose=visitor.purpose,
         host_type=visitor.host_type,
         host_name=visitor.host_name,
@@ -330,11 +331,12 @@ def checkin_again(
         )
 
     new_visitor = Visitor(
-        first_name=original.first_name,
-        last_name=original.last_name,
+        first_name=request.first_name if hasattr(request, "first_name") else original.first_name,
+        last_name=request.last_name if hasattr(request, "last_name") else original.last_name,
         visitor_type=request.visitor_type,
         church=original.church,
         phone=original.phone,
+        email=original.email,
         purpose=request.purpose,
         host_type=original.host_type,
         host_name=request.host_name,
@@ -507,54 +509,6 @@ def get_visitor(
 
     return visitor
 
-
-@app.post("/api/visitors/{visitor_id}/checkin-again",response_model=VisitorResponse,)
-def checkin_again(
-    visitor_id: int,
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    original = (
-        db.query(Visitor)
-        .filter(Visitor.id == visitor_id)
-        .first()
-    )
-
-    if original is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Visitor not found",
-        )
-
-    new_visitor = Visitor(
-        first_name=original.first_name,
-        last_name=original.last_name,
-        visitor_type=original.visitor_type,
-        church=original.church,
-        phone=original.phone,
-        purpose=original.purpose,
-        host_type=original.host_type,
-        host_name=original.host_name,
-        vehicle_plate=original.vehicle_plate,
-        notes=original.notes,
-        expected_departure_time=None,
-
-        photo_path=original.photo_path,
-
-        badge_path=None,
-        badge_printed=False,
-        badge_printed_time=None,
-
-        check_in_time=datetime.now(),
-        check_out_time=None,
-        check_out_method=None,
-    )
-
-    db.add(new_visitor)
-    db.commit()
-    db.refresh(new_visitor)
-
-    return new_visitor
 
 @app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
 def checkout_visitor(

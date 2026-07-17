@@ -37,9 +37,17 @@ class PrintJobStatusUpdate(BaseModel):
 
 
 class ReturningVisitorCheckInRequest(BaseModel):
+    first_name: str
+    last_name: str
     visitor_type: str
     purpose: str
+    host_type: str = ""
     host_name: str
+    phone: str | None = None
+    email: str | None = None
+    vehicle_plate: str | None = None
+    notes: str | None = None
+    expected_departure_time: datetime | None = None
     reuse_existing_photo: bool = True
 
 
@@ -55,6 +63,7 @@ class VisitorCreate(BaseModel):
     vehicle_plate: Optional[str] = None
     notes: Optional[str] = None
     expected_departure_time: Optional[datetime] = None
+    email: Optional[str] = None
 
 
 class VisitorResponse(BaseModel):
@@ -64,6 +73,7 @@ class VisitorResponse(BaseModel):
     visitor_type: str
     church: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     purpose: str
     host_type: str
     host_name: str
