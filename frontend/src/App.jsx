@@ -272,7 +272,7 @@ const themes = {
 };
 
 // Change this to switch themes
-const theme = themes.clemsonTigers; 
+const theme = themes.campGreen; 
 
 // This will set the logo overlay for the theme if it exists
 
