@@ -16,8 +16,11 @@ import {
   updateVisitor,
 } from "./api";
 
-// This loads the options in the dropdowns
+// This loads the configurable options in the app
 import { VISITOR_TYPES, VISIT_PURPOSES } from "./constants/options";
+
+// This loads the field definitions for the check-in form
+import { FIELD_KEYS, REQUIRED_CHECKIN_FIELDS, REQUIRED_RETURNING_CHECKIN_FIELDS, getMissingRequiredFieldLabels } from "./constants/fields";
 
 // Import the styles from styles.js  
 import { getStyles } from "./constants/styles";
@@ -91,7 +94,23 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  // Staff screen refresh every 5 seconds
+  useEffect(() => {
+    if (screen !== "staff" || !isAuthenticated) {
+      return;
+    }
 
+    console.log("Starting staff auto refresh");
+
+    const interval = setInterval(() => {
+      console.log("Refreshing visitors");
+      loadActiveVisitors();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [screen, isAuthenticated]);
+
+  // Load authentication state from localStorage on mount
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     const savedUsername = localStorage.getItem("username");
@@ -108,6 +127,7 @@ export default function App() {
     }
   }, []);
 
+  // Handle camera stream when camera is open
   useEffect(() => {
     if (cameraOpen && cameraStream && videoRef.current) {
       videoRef.current.srcObject = cameraStream;
@@ -118,14 +138,17 @@ export default function App() {
     }
   }, [cameraOpen, cameraStream]);
 
+  // Populate returning visitor details when selectedVisitor changes
   useEffect(() => {
     if (!selectedVisitor) {
       return;
     }
-
     populateReturningVisitor(selectedVisitor);
   }, [selectedVisitor]);
 
+
+    
+  // Functions in App()
 
   function getPhotoUrl(photoPath) {
     if (!photoPath) {
@@ -211,10 +234,17 @@ export default function App() {
   async function loadActiveVisitors() {
     try {
       const visitors = await getActiveVisitors();
-      setActiveVisitors(visitors);
+
+      setActiveVisitors((current) => {
+        const currentJson = JSON.stringify(current);
+        const newJson = JSON.stringify(visitors);
+
+        return currentJson === newJson
+          ? current
+          : visitors;
+      });
     } catch (error) {
       console.error(error);
-      alert(error.message);
     }
   }
 
@@ -334,24 +364,50 @@ export default function App() {
 
 
   // Checkin Functions
-  async function handleCheckIn() {
-    try {
-      setBusy(true);
 
-      const visitor = await createVisitor({
-        first_name: firstName,
-        last_name: lastName,
-        visitor_type: visitorType,
-        church: null,
-        phone: phone,
-        email: email,
-        purpose: purpose,
-        host_type: "",
-        host_name: contactName,
-        vehicle_plate: vehiclePlate,
-        notes: null,
-        expected_departure_time: null,
-      });
+async function handleCheckIn() {
+  const checkInValues = {
+    [FIELD_KEYS.FIRST_NAME]: firstName,
+    [FIELD_KEYS.LAST_NAME]: lastName,
+    [FIELD_KEYS.VISITOR_TYPE]: visitorType,
+    [FIELD_KEYS.PURPOSE]: purpose,
+    [FIELD_KEYS.HOST_NAME]: contactName,
+    [FIELD_KEYS.VEHICLE_PLATE]: vehiclePlate,
+    [FIELD_KEYS.PHONE]: phone,
+    [FIELD_KEYS.EMAIL]: email,
+    [FIELD_KEYS.PHOTO]: photoFile,
+  };
+
+  const missingFields = getMissingRequiredFieldLabels(
+    checkInValues,
+    REQUIRED_CHECKIN_FIELDS
+  );
+
+  if (missingFields.length > 0) {
+    alert(
+      "Please complete the following required fields:\n\n" +
+      missingFields.join("\n")
+    );
+    return;
+  }
+
+  try {
+    setBusy(true);
+
+    const visitor = await createVisitor({
+      first_name: firstName,
+      last_name: lastName,
+      visitor_type: visitorType,
+      church: null,
+      phone: phone,
+      email: email,
+      purpose: purpose,
+      host_type: "",
+      host_name: contactName,
+      vehicle_plate: vehiclePlate,
+      notes: null,
+      expected_departure_time: null,
+    });
 
       if (photoFile) {
         await uploadPhoto(visitor.id, photoFile);
@@ -497,6 +553,41 @@ export default function App() {
       alert(error.message);
     }
   }
+
+  function validateCheckIn() {
+    const missing = [];
+
+    if (
+      REQUIRED_CHECKIN_FIELDS.includes("first_name") &&
+      !firstName.trim()
+    ) {
+      missing.push("First Name");
+    }
+
+    if (
+      REQUIRED_CHECKIN_FIELDS.includes("last_name") &&
+      !lastName.trim()
+    ) {
+      missing.push("Last Name");
+    }
+
+    if (
+      REQUIRED_CHECKIN_FIELDS.includes("host_name") &&
+      !contactName.trim()
+    ) {
+      missing.push("Camper or Contact Name");
+    }
+
+    if (
+      REQUIRED_CHECKIN_FIELDS.includes("photo") &&
+      !photoFile
+    ) {
+      missing.push("Visitor Photo");
+    }
+
+    return missing;
+  }
+
   // End Checkin Functions
 
 
@@ -913,7 +1004,7 @@ async function handleVisitorCheckout(visitorId) {
             onClick={handleCheckIn}
             disabled={busy}
           >
-            {busy ? "Printing Badge..." : "Print Visitor Badge"}
+            {busy ? "Printing Badge..." : "Check-in"}
           </button>
 
         </div>
@@ -1279,7 +1370,6 @@ async function handleVisitorCheckout(visitorId) {
       </div>
     );
   }
-
 
   // Visitor Search Screen
   if (screen === "visitor-search") {

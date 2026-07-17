@@ -60,3 +60,32 @@ class PrintJob(Base):
     completed_time = Column(DateTime, nullable=True)
 
     visitor = relationship("Visitor", back_populates="print_jobs")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    username = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+
+    display_name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+
+    role = Column(String, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    last_login = Column(DateTime, nullable=True)
+
+    created_date = Column(DateTime, nullable=False)
+    created_by = Column(String, nullable=True)
+
+    modified_date = Column(DateTime, nullable=True)
+    modified_by = Column(String, nullable=True)
+
+    password_changed_date = Column(DateTime, nullable=True)
+    failed_login_count = Column(Integer, nullable=False, default=0)
+    must_change_password = Column(Boolean, nullable=False, default=False)
+
+    notes = Column(Text, nullable=True)
+
