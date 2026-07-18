@@ -3,8 +3,11 @@ import {
   bulkCheckout,
   checkInAgain,
   checkoutVisitor,
+  clearCompletedPrintJobs,
+  clearFailedPrintJobs,
   createPrintJob,
   createVisitor,
+  deletePrintJob,
   findVisitors,
   generateBadge,
   getPrintJobs,
@@ -127,6 +130,23 @@ export default function App() {
     const interval = setInterval(() => {
       console.log("Refreshing visitors");
       loadActiveVisitors();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [screen, isAuthenticated]);
+
+  // Print queue screen refresh every 5 seconds    
+  useEffect(() => {
+    if (screen !== "print-queue" || !isAuthenticated) {
+      return;
+    }
+
+    console.log("Starting print queue auto refresh");
+
+    loadPrintJobs();
+
+    const interval = setInterval(() => {
+      loadPrintJobs();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -286,16 +306,6 @@ export default function App() {
       alert(error.message);
     }
   }
-
-  async function handleReprintJob(job) {
-    try {
-      await createPrintJob(job.visitor_id);
-      await loadPrintJobs();
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    }
-  }  
   
   async function handleStaffLogin() {
     try {
@@ -331,16 +341,6 @@ export default function App() {
     }
   }
 
-  async function loadPrintJobs() {
-    try {
-      const jobs = await getPrintJobs();
-      setPrintJobs(jobs);
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    }
-  }
-  
   async function loadUsers() {
     try {
       const data = await getUsers();
@@ -421,6 +421,77 @@ export default function App() {
 
 
   // Badge Functions
+
+  async function handleClearCompletedJobs() {
+    const confirmed = window.confirm(
+      "Delete all completed print jobs?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await clearCompletedPrintJobs();
+
+      await loadPrintJobs();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleClearFailedJobs() {
+    const confirmed = window.confirm(
+      "Delete all failed print jobs?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await clearFailedPrintJobs();
+
+      await loadPrintJobs();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+
+  async function handleDeletePrintJob(job) {
+    const confirmed = window.confirm(
+      `Delete Print Job #${job}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deletePrintJob(job.id);
+
+      // Immediately reload the queue
+      await loadPrintJobs();
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleReprintJob(job) {
+    try {
+      await createPrintJob(job.visitor_id);
+      await loadPrintJobs();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }  
+
   async function handleReprintBadge(visitorId) {
     try {
       await createPrintJob(visitorId);
@@ -473,11 +544,22 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  async function loadPrintJobs() {
+    try {
+      const jobs = await getPrintJobs();
+      setPrintJobs(jobs);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+    
   // End Badge Functions
 
 
   // Checkin Functions
-async function handleCheckIn() {
+  async function handleCheckIn() {
   const checkInValues = {
     [FIELD_KEYS.FIRST_NAME]: firstName,
     [FIELD_KEYS.LAST_NAME]: lastName,
@@ -728,14 +810,14 @@ async function handleCheckIn() {
     setTimeout(() => {
       loadActiveVisitors();
       setScreen("staff");
-    }, 3000);
+    }, 300);
   } catch (error) {
     console.error(error);
     alert(error.message);
   }
   }
 
- async function handleGuestCheckout(visitorId) {
+  async function handleGuestCheckout(visitorId) {
     try {
       await checkoutVisitor(visitorId);
 
@@ -1943,8 +2025,6 @@ async function handleCheckIn() {
                 />
               </div>
 
-
-
               {/* Notes Field */}
               <div style={styles.fieldGroup_oneColumn}>
                 <label style={styles.label_details}>Notes:</label>
@@ -2486,6 +2566,21 @@ async function handleCheckIn() {
             >
               Refresh
             </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={handleClearCompletedJobs}
+            >
+              Clear Completed Jobs
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={handleClearFailedJobs}
+            >
+              Clear Failed Jobs
+            </button>
+
           </div>
 
           <div
@@ -2550,7 +2645,7 @@ async function handleCheckIn() {
 
                 <p>
                   <strong>Created:</strong>{" "}
-                  {new Date(job.created_date).toLocaleString()}
+                  {new Date(job.created_time).toLocaleString()}
                 </p>
 
                 {job.completed_date && (
@@ -2560,16 +2655,35 @@ async function handleCheckIn() {
                   </p>
                 )}
 
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    marginTop: "16px",
+                  }}
+                >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleVisitorSelect(job.visitor_id)}
+                  >
+                    View Visitor
+                  </button>
 
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => createPrintJob(job.visitor_id)}
+                  >
+                    Reprint Badge
+                  </button>
 
-<button
-  style={styles.adminActionButton}
-  onClick={() => handleReprintJob(job)}
->
-  Reprint
-</button>
-
-
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleDeletePrintJob(job.id)}
+                  >
+                    Delete Job
+                  </button>
+                </div>
 
               </div>
             ))}
@@ -2579,415 +2693,497 @@ async function handleCheckIn() {
     );
   }
 
+  // User Management Screen
+  if (screen === "users") {
 
+    const totalUsers = users.length;
 
+    const enabledUsers = users.filter(
+      (user) => user.enabled
+    ).length;
 
-if (screen === "users") {
+    const disabledUsers = users.filter(
+      (user) => !user.enabled
+    ).length;
 
-  const totalUsers = users.length;
+    const adminUsers = users.filter(
+      (user) => user.role === "Administrator"
+    ).length;  
 
-  const enabledUsers = users.filter(
-    (user) => user.enabled
-  ).length;
+    return (
 
-  const disabledUsers = users.filter(
-    (user) => !user.enabled
-  ).length;
-
-  const adminUsers = users.filter(
-    (user) => user.role === "Administrator"
-  ).length;  
-
-  return (
-
-    <div style={styles.page}>
-      <button
-        style={styles.backButton}
-        onClick={() => setScreen("staff")}
-      >
-        ← Staff Dashboard
-      </button>
-
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1400px",
-          margin: "0 auto",
-          paddingTop: "80px",
-        }}
-      >
-        <h1
-          style={{
-            textAlign: "center",
-            marginBottom: "24px",
-          }}
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
         >
-          User Management
-        </h1>
+          ← Staff Dashboard
+        </button>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "16px",
-            marginBottom: "24px",
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
           }}
         >
-          <div style={styles.userStats}>
-            <h2>{totalUsers}</h2>
-            <p>Total Users</p>
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            User Management
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2>{totalUsers}</h2>
+              <p>Total Users</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{enabledUsers}</h2>
+              <p>Enabled</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{disabledUsers}</h2>
+              <p>Disabled</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{adminUsers}</h2>
+              <p>Administrators</p>
+            </div>
           </div>
 
-          <div style={styles.userStats}>
-            <h2>{enabledUsers}</h2>
-            <p>Enabled</p>
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "center",
+              marginBottom: "24px",
+              flexWrap: "wrap",
+            }}
+          >
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => {
+                setEditingUser(null);
+
+                setNewUser({
+                  username: "",
+                  password: "",
+                  display_name: "",
+                  email: "",
+                  role: "CheckInStaff",
+                });
+
+                setShowCreateUser(true);
+              }}
+            >
+              Create User
+            </button>
+
+
+            <button
+              style={styles.staffActionButton}
+              onClick={loadUsers}
+            >
+              Refresh
+            </button>
           </div>
 
-          <div style={styles.userStats}>
-            <h2>{disabledUsers}</h2>
-            <p>Disabled</p>
-          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {users.map((user) => (
+              <div
+                key={user.id}
+                style={{
+                  backgroundColor: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: "16px",
+                  padding: "20px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 8px 0",
+                    color: theme.textPrimary,
+                  }}
+                >
+                  {user.display_name || user.username}
+                </h3>
 
-          <div style={styles.userStats}>
-            <h2>{adminUsers}</h2>
-            <p>Administrators</p>
+                <div
+                  style={{
+                    color: theme.textSecondary,
+                    marginBottom: "12px",
+                  }}
+                >
+                  @{user.username}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Role:</strong> {user.role}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Status:</strong>{" "}
+                  <span
+                    style={{
+                      color: user.enabled
+                        ? theme.success
+                        : theme.danger,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {user.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Email:</strong>{" "}
+                  {user.email || "Not Configured"}
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <strong>Last Login:</strong>{" "}
+                  {user.last_login
+                    ? new Date(user.last_login).toLocaleString()
+                    : "Never"}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setEditingUser(user);
+
+                      setNewUser({
+                        username: user.username || "",
+                        password: "",
+                        display_name: user.display_name || "",
+                        email: user.email || "",
+                        role: user.role || "CheckInStaff",
+                      });
+
+                      setShowCreateUser(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleResetPassword(user)}
+                  >
+                    Reset Password
+                  </button>
+
+                  <button
+                    style={{
+                      ...styles.staffActionButton,
+                      backgroundColor: user.enabled
+                        ? theme.danger
+                        : theme.success,
+                    }}
+                    onClick={() => handleToggleUser(user)}
+                  >
+                    {user.enabled ? "Disable" : "Enable"}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+
+  {showCreateUser && (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: theme.surface,
+          color: theme.textPrimary,
+          borderRadius: "16px",
+          padding: "24px",
+          width: "500px",
+          maxWidth: "90%",
+        }}
+      >
+        <h2>
+          {editingUser ? "Edit User" : "Create User"}
+        </h2>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Username</label>
+          <input
+            style={styles.input}
+            value={newUser.username}
+            disabled={!!editingUser}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                username: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        {!editingUser && (
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              style={styles.input}
+              value={newUser.password}
+              onChange={(e) =>
+                setNewUser({
+                  ...newUser,
+                  password: e.target.value,
+                })
+              }
+            />
+          </div>
+        )}
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Display Name</label>
+          <input
+            style={styles.input}
+            value={newUser.display_name}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                display_name: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Email</label>
+          <input
+            style={styles.input}
+            value={newUser.email}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                email: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Role</label>
+          <select
+            style={styles.input}
+            value={newUser.role}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                role: e.target.value,
+              })
+            }
+          >
+            <option value="Administrator">
+              Administrator
+            </option>
+            <option value="CheckInStaff">
+              Check-In Staff
+            </option>
+          </select>
         </div>
 
         <div
           style={{
             display: "flex",
             gap: "12px",
-            justifyContent: "center",
-            marginBottom: "24px",
-            flexWrap: "wrap",
+            marginTop: "20px",
           }}
         >
+          <button
+            style={styles.staffActionButton}
+            onClick={async () => {
+              try {
+                if (editingUser) {
+                  await updateUser(
+                    editingUser.id,
+                    {
+                      display_name: newUser.display_name,
+                      email: newUser.email,
+                      role: newUser.role,
+                    }
+                  );
+                } else {
+                  await createUser(newUser);
+                }
+
+                await loadUsers();
+
+                setShowCreateUser(false);
+                setEditingUser(null);
+              } catch (error) {
+                console.error(error);
+                alert(error.message);
+              }
+            }}
+          >
+            Save
+          </button>
 
           <button
             style={styles.staffActionButton}
             onClick={() => {
+              setShowCreateUser(false);
               setEditingUser(null);
-
-              setNewUser({
-                username: "",
-                password: "",
-                display_name: "",
-                email: "",
-                role: "CheckInStaff",
-              });
-
-              setShowCreateUser(true);
             }}
           >
-            Create User
-          </button>
-
-
-          <button
-            style={styles.staffActionButton}
-            onClick={loadUsers}
-          >
-            Refresh
+            Cancel
           </button>
         </div>
+      </div>
+    </div>
+  )}
+
+
+
+      </div>
+    );
+  }
+
+  // Settings Screen
+  if (screen === "settings") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-            gap: "20px",
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
           }}
         >
-          {users.map((user) => (
-            <div
-              key={user.id}
-              style={{
-                backgroundColor: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: "16px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-            >
-              <h3
-                style={{
-                  margin: "0 0 8px 0",
-                  color: theme.textPrimary,
-                }}
-              >
-                {user.display_name || user.username}
-              </h3>
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Settings
+          </h1>
 
-              <div
-                style={{
-                  color: theme.textSecondary,
-                  marginBottom: "12px",
-                }}
-              >
-                @{user.username}
-              </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
+              gap: "20px",
+            }}
+          >
 
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Role:</strong> {user.role}
-              </div>
+            <div style={styles.resultCard}>
+              <h2>System</h2>
 
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Status:</strong>{" "}
-                <span
-                  style={{
-                    color: user.enabled
-                      ? theme.success
-                      : theme.danger,
-                    fontWeight: "bold",
-                  }}
-                >
-                  {user.enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
+              <p>
+                <strong>Theme:</strong> Camp Green
+              </p>
 
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Email:</strong>{" "}
-                {user.email || "Not Configured"}
-              </div>
+              <p>
+                <strong>Auto Refresh:</strong> 5 Seconds
+              </p>
 
-              <div style={{ marginBottom: "16px" }}>
-                <strong>Last Login:</strong>{" "}
-                {user.last_login
-                  ? new Date(user.last_login).toLocaleString()
-                  : "Never"}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                }}
-              >
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => {
-                    setEditingUser(user);
-
-                    setNewUser({
-                      username: user.username || "",
-                      password: "",
-                      display_name: user.display_name || "",
-                      email: user.email || "",
-                      role: user.role || "CheckInStaff",
-                    });
-
-                    setShowCreateUser(true);
-                  }}
-                >
-                  Edit
-                </button>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => handleResetPassword(user)}
-                >
-                  Reset Password
-                </button>
-
-                <button
-                  style={{
-                    ...styles.staffActionButton,
-                    backgroundColor: user.enabled
-                      ? theme.danger
-                      : theme.success,
-                  }}
-                  onClick={() => handleToggleUser(user)}
-                >
-                  {user.enabled ? "Disable" : "Enable"}
-                </button>
-              </div>
+              <p>
+                <strong>Authentication:</strong> Database / JWT
+              </p>
             </div>
-          ))}
+
+            <div style={styles.resultCard}>
+              <h2>Visitor Types</h2>
+
+              {VISITOR_TYPES.map((type) => (
+                <div key={type}>
+                  • {type}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Visit Purposes</h2>
+
+              {VISIT_PURPOSES.map((purpose) => (
+                <div key={purpose}>
+                  • {purpose}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Required Check-In Fields</h2>
+
+              {REQUIRED_CHECKIN_FIELDS.map((field) => (
+                <div key={field}>
+                  • {field}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Required Returning Visitor Fields</h2>
+
+              {REQUIRED_RETURNING_CHECKIN_FIELDS.map((field) => (
+                <div key={field}>
+                  • {field}
+                </div>
+              ))}
+            </div>
+
+
+
+          </div>
         </div>
       </div>
-
-{showCreateUser && (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 1000,
-    }}
-  >
-    <div
-      style={{
-        backgroundColor: theme.surface,
-        color: theme.textPrimary,
-        borderRadius: "16px",
-        padding: "24px",
-        width: "500px",
-        maxWidth: "90%",
-      }}
-    >
-      <h2>
-        {editingUser ? "Edit User" : "Create User"}
-      </h2>
-
-      <div style={styles.fieldGroup}>
-        <label style={styles.label}>Username</label>
-        <input
-          style={styles.input}
-          value={newUser.username}
-          disabled={!!editingUser}
-          onChange={(e) =>
-            setNewUser({
-              ...newUser,
-              username: e.target.value,
-            })
-          }
-        />
-      </div>
-
-      {!editingUser && (
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Password</label>
-          <input
-            type="password"
-            style={styles.input}
-            value={newUser.password}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                password: e.target.value,
-              })
-            }
-          />
-        </div>
-      )}
-
-      <div style={styles.fieldGroup}>
-        <label style={styles.label}>Display Name</label>
-        <input
-          style={styles.input}
-          value={newUser.display_name}
-          onChange={(e) =>
-            setNewUser({
-              ...newUser,
-              display_name: e.target.value,
-            })
-          }
-        />
-      </div>
-
-      <div style={styles.fieldGroup}>
-        <label style={styles.label}>Email</label>
-        <input
-          style={styles.input}
-          value={newUser.email}
-          onChange={(e) =>
-            setNewUser({
-              ...newUser,
-              email: e.target.value,
-            })
-          }
-        />
-      </div>
-
-      <div style={styles.fieldGroup}>
-        <label style={styles.label}>Role</label>
-        <select
-          style={styles.input}
-          value={newUser.role}
-          onChange={(e) =>
-            setNewUser({
-              ...newUser,
-              role: e.target.value,
-            })
-          }
-        >
-          <option value="Administrator">
-            Administrator
-          </option>
-          <option value="CheckInStaff">
-            Check-In Staff
-          </option>
-        </select>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          marginTop: "20px",
-        }}
-      >
-        <button
-          style={styles.staffActionButton}
-          onClick={async () => {
-            try {
-              if (editingUser) {
-                await updateUser(
-                  editingUser.id,
-                  {
-                    display_name: newUser.display_name,
-                    email: newUser.email,
-                    role: newUser.role,
-                  }
-                );
-              } else {
-                await createUser(newUser);
-              }
-
-              await loadUsers();
-
-              setShowCreateUser(false);
-              setEditingUser(null);
-            } catch (error) {
-              console.error(error);
-              alert(error.message);
-            }
-          }}
-        >
-          Save
-        </button>
-
-        <button
-          style={styles.staffActionButton}
-          onClick={() => {
-            setShowCreateUser(false);
-            setEditingUser(null);
-          }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-
-
-    </div>
-  );
-}
-
-// Settings Screen
-if (screen === "settings") {
-  return (
-    <div style={styles.page}>
-      <h1>Settings</h1>
-      <p>Coming Soon</p>
-      <button
-        style={styles.backButton}
-        onClick={() => setScreen("staff")}
-      >
-        Back
-      </button>
-    </div>
-  );
-}
+    );
+  }
 
   // App() Return
   return (

@@ -372,3 +372,65 @@ export async function getPendingPrintJobs() {
   return await response.json();
 }
 
+export async function deletePrintJob(jobId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/${jobId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to delete print job");
+  }
+
+  return await response.json();
+}
+
+export async function clearCompletedPrintJobs() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/completed`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to clear completed print jobs");
+  }
+
+  return await response.json();
+}
+
+export async function clearFailedPrintJobs() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/failed`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to clear failed print jobs");
+  }
+
+  return await response.json();
+}
+
+
+

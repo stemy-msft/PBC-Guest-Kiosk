@@ -308,7 +308,6 @@ def get_pending_print_jobs(
         .all()
     )
 
-
 @app.put("/api/print-jobs/{print_job_id}/claim", response_model=PrintJobResponse)
 def claim_print_job(
     print_job_id: int,
@@ -342,6 +341,41 @@ def claim_print_job(
 
     return print_job
 
+@app.delete("/api/print-jobs/completed")
+def clear_completed_print_jobs(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    deleted = (
+        db.query(PrintJob)
+        .filter(PrintJob.status == "Completed")
+        .delete()
+    )
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "deleted": deleted,
+    }
+
+@app.delete("/api/print-jobs/failed")
+def clear_failed_print_jobs(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    deleted = (
+        db.query(PrintJob)
+        .filter(PrintJob.status == "Failed")
+        .delete()
+    )
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "deleted": deleted,
+    }
 
 @app.put("/api/print-jobs/{print_job_id}/status", response_model=PrintJobResponse)
 def update_print_job_status(
@@ -391,6 +425,29 @@ def update_print_job_status(
 
     return print_job
 
+@app.delete("/api/print-jobs/{job_id}")
+def delete_print_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Print job not found",
+        )
+
+    db.delete(job)
+    db.commit()
+
+    return {"status": "deleted"}
+
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(
@@ -415,27 +472,6 @@ def get_users(
     db: Session = Depends(get_db)
 ):
     return db.query(User).order_by(User.username).all()
-
-
-@app.get("/api/users/{user_id}",response_model=UserResponse)
-def get_user(
-    user_id: int,
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    user = (
-        db.query(User)
-        .filter(User.id == user_id)
-        .first()
-    )
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    return user
 
 
 @app.post("/api/users",response_model=UserResponse)
@@ -915,14 +951,12 @@ def checkout_visitor(
             status_code=404,
             detail="Visitor not found",
         )
-
     if visitor.check_out_time is None:
         visitor.check_out_time = datetime.now()
         visitor.check_out_method = "Manual Checkout"
 
         db.commit()
         db.refresh(visitor)
-
     return visitor
 
 
