@@ -147,7 +147,7 @@ export async function findVisitors(firstName, lastName) {
 }
 
 /*
- * Milestone 7 - Visitor Search
+ * Milestone 7
  */
 export async function searchVisitors(query) {
   const token = localStorage.getItem("access_token");
@@ -164,9 +164,7 @@ export async function searchVisitors(query) {
   return await handleResponse(response, "Failed to search visitors");
 }
 
-/*
- * Milestone 7 - Visitor Detail
- */
+
 export async function getVisitor(visitorId) {
   const token = localStorage.getItem("access_token");
 
@@ -216,5 +214,161 @@ export async function updateVisitor(id, data) {
   }
 
   return response.json();
+}
+
+export async function getUsers() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE}/api/users`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load users");
+  }
+
+  return await response.json();
+}
+
+export async function getUser(id) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE}/api/users/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load user");
+  }
+
+  return await response.json();
+}
+
+export async function createUser(data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE}/api/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create user");
+  }
+
+  return await response.json();
+}
+
+export async function updateUser(id, data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE}/api/users/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to update user");
+  }
+
+  return await response.json();
+}
+
+export async function resetPassword(id, newPassword) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/users/${id}/reset-password`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        new_password: newPassword,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to reset password");
+  }
+
+  return await response.json();
+}
+
+export async function updateUserStatus(id, enabled) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/users/${id}/status`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        enabled,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to update user status");
+  }
+
+  return await response.json();
+}
+
+export async function getPrintJobs() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load print jobs");
+  }
+
+  return await response.json();
+}
+
+export async function getPendingPrintJobs() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/pending`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load pending print jobs");
+  }
+
+  return await response.json();
 }
 

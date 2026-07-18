@@ -370,6 +370,14 @@ export function getStyles(theme, isCrtTheme) {
             margin: 0,
         },
 
+        userStats: {
+            backgroundColor: theme.surface,
+            border: `1px solid ${theme.border}`,
+            borderRadius: "12px",
+            padding: "16px",
+            textAlign: "center",
+        },
+
         visitorActionRow: {
             display: "flex",
             justifyContent: "center",

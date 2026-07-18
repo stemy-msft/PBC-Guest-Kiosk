@@ -1,3 +1,5 @@
+from datetime import datetime, UTC
+
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
@@ -77,7 +79,7 @@ class User(Base):
 
     last_login = Column(DateTime, nullable=True)
 
-    created_date = Column(DateTime, nullable=False)
+    created_date = Column(DateTime, nullable=False, default=datetime.now(UTC))
     created_by = Column(String, nullable=True)
 
     modified_date = Column(DateTime, nullable=True)

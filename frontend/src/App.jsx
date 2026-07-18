@@ -7,6 +7,14 @@ import {
   createVisitor,
   findVisitors,
   generateBadge,
+  getPrintJobs,
+  getPendingPrintJobs,
+  getUsers,
+  getUser,
+  createUser,
+  updateUser,
+  resetPassword,
+  updateUserStatus,
   getActiveVisitors,
   getVisitorHistory,
   getVisitor,
@@ -58,6 +66,7 @@ export default function App() {
 
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [printJobs, setPrintJobs] = useState([]);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [returningPhotoFile, setReturningPhotoFile] = useState(null);
   const [returningPhotoPreview, setReturningPhotoPreview] = useState(null);
@@ -82,7 +91,7 @@ export default function App() {
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
-
+  const [users, setUsers] = useState([]);
   const [username, setUsername] = useState("");
   const [videoDevices, setVideoDevices] = useState([]);
   const videoRef = useRef(null);
@@ -93,6 +102,19 @@ export default function App() {
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [editingUser, setEditingUser] = useState(null);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+
+  const [newUser, setNewUser] = useState({
+    username: "",
+    password: "",
+    display_name: "",
+    email: "",
+    role: "CheckInStaff",
+  });
+
+
+
 
   // Staff screen refresh every 5 seconds
   useEffect(() => {
@@ -146,6 +168,17 @@ export default function App() {
     populateReturningVisitor(selectedVisitor);
   }, [selectedVisitor]);
 
+  // Load when the screen changes to "users" or "print-jobs"
+  useEffect(() => {
+  if (screen === "users") {
+    loadUsers();
+  }
+  if (screen === "print-jobs") {
+    loadPrintJobs();
+  }
+}, [screen]);
+
+
 
     
   // Functions in App()
@@ -172,6 +205,27 @@ export default function App() {
 
     setScreen(previousScreen);
   }  
+
+  async function handleCreateUser() {
+    try {
+      await createUser(newUser);
+
+      setShowCreateUser(false);
+
+      setNewUser({
+        username: "",
+        password: "",
+        display_name: "",
+        email: "",
+        role: "CheckInStaff",
+      });
+
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
 
   async function handleFindVisitor() {
     try {
@@ -214,6 +268,35 @@ export default function App() {
     }
   }
 
+  async function handleResetPassword(user) {
+    const newPassword = prompt(
+      `Enter temporary password for ${user.username}`
+    );
+
+    if (!newPassword) {
+      return;
+    }
+
+    try {
+      await resetPassword(user.id, newPassword);
+
+      alert("Password reset successfully.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleReprintJob(job) {
+    try {
+      await createPrintJob(job.visitor_id);
+      await loadPrintJobs();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }  
+  
   async function handleStaffLogin() {
     try {
       const result = await login(username, password);
@@ -245,6 +328,36 @@ export default function App() {
       });
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  async function loadPrintJobs() {
+    try {
+      const jobs = await getPrintJobs();
+      setPrintJobs(jobs);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+  
+  async function loadUsers() {
+    try {
+      const data = await getUsers();
+      setUsers(data);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleToggleUser(user) {
+    try {
+      await updateUserStatus(user.id, !user.enabled);
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
   }
 
@@ -364,7 +477,6 @@ export default function App() {
 
 
   // Checkin Functions
-
 async function handleCheckIn() {
   const checkInValues = {
     [FIELD_KEYS.FIRST_NAME]: firstName,
@@ -647,29 +759,29 @@ async function handleCheckIn() {
     }
   }
 
-async function handleVisitorCheckout(visitorId) {
-  try {
-    await checkoutVisitor(visitorId);
+  async function handleVisitorCheckout(visitorId) {
+    try {
+      await checkoutVisitor(visitorId);
 
-    await loadActiveVisitors();
+      await loadActiveVisitors();
 
-    if (searchQuery) {
-      const results = await searchVisitors(searchQuery);
-      setSearchResults(results);
+      if (searchQuery) {
+        const results = await searchVisitors(searchQuery);
+        setSearchResults(results);
+      }
+
+      const updatedVisitor = await getVisitor(visitorId);
+      const historyData = await getVisitorHistory(visitorId);
+
+      setSelectedVisitor(updatedVisitor);
+      setVisitCount(historyData.visit_count);
+      setVisitorHistory(historyData.history);
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
-
-    const updatedVisitor = await getVisitor(visitorId);
-    const historyData = await getVisitorHistory(visitorId);
-
-    setSelectedVisitor(updatedVisitor);
-    setVisitCount(historyData.visit_count);
-    setVisitorHistory(historyData.history);
-
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
   }
-}
   // End Checkout Functions
 
 
@@ -1210,23 +1322,36 @@ async function handleVisitorCheckout(visitorId) {
 
           {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>
+
+
             <button
               style={styles.staffActionButton}
-              onClick={loadActiveVisitors}
+              onClick={() => setScreen("visitor-search")}
             >
-              Refresh Visitors
+              Visitor Search
             </button>
 
             <button
               style={styles.staffActionButton}
-              onClick={() => {
-                setSearchResults([]);
-                setSearchQuery("");
-                navigateTo("visitor-search");
-              }}
+              onClick={() => setScreen("print-queue")}
             >
-              Visitor Search
+              Print Queue
             </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("users")}
+            >
+              User Management
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("settings")}
+            >
+              Settings
+            </button>
+
 
             <button
               style={styles.staffActionButton}
@@ -2272,6 +2397,597 @@ async function handleVisitorCheckout(visitorId) {
     );
   }
 
+  // Print Queue 
+  if (screen === "print-queue") {
+    
+    const pendingJobs = printJobs.filter(
+      (job) => job.status === "Pending"
+    ).length;
+
+    const printingJobs = printJobs.filter(
+      (job) => job.status === "Printing"
+    ).length;
+
+    const completedJobs = printJobs.filter(
+      (job) => job.status === "Completed"
+    ).length;
+
+    const failedJobs = printJobs.filter(
+      (job) => job.status === "Failed"
+    ).length;    
+    
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Print Queue
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+          
+            <div style={styles.userStats}>
+              <h2>{pendingJobs}</h2>
+              <p>Pending</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{printingJobs}</h2>
+              <p>Printing</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{completedJobs}</h2>
+              <p>Completed</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{failedJobs}</h2>
+              <p>Failed</p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "12px",
+              marginBottom: "24px",
+            }}
+          >
+            <button
+              style={styles.staffActionButton}
+              onClick={loadPrintJobs}
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fill, minmax(450px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {printJobs.map((job) => (
+              <div
+                key={job.id}
+                style={{
+                  backgroundColor: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: "16px",
+                  padding: "20px",
+                }}
+              >
+                <h3>
+                  {job.visitor_name}
+                </h3>
+
+                <p
+                  style={{
+                    color: theme.textSecondary,
+                    marginBottom: "12px",
+                  }}
+                >
+                  Print Job #{job.id}
+                </p>
+
+                <p>
+                  <strong>Visitor:</strong> {job.visitor_name}
+                </p>
+
+                <p>
+                  <strong>Visitor Type:</strong> {job.visitor_type}
+                </p>
+                <div style={{ marginBottom: "8px" }}>
+                  <strong>Status:</strong>{" "}
+                  <span
+                    style={{
+                      color:
+                        job.status === "Completed"
+                          ? theme.success
+                          : job.status === "Failed"
+                          ? theme.danger
+                          : theme.primary,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {job.status}
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: "8px" }}>
+                  <strong>Printer:</strong>{" "}
+                  {job.printer_name || "Unknown"}
+                </div>
+
+                <p>
+                  <strong>Created:</strong>{" "}
+                  {new Date(job.created_date).toLocaleString()}
+                </p>
+
+                {job.completed_date && (
+                  <p>
+                    <strong>Completed:</strong>{" "}
+                    {new Date(job.completed_date).toLocaleString()}
+                  </p>
+                )}
+
+
+
+<button
+  style={styles.adminActionButton}
+  onClick={() => handleReprintJob(job)}
+>
+  Reprint
+</button>
+
+
+
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+
+
+if (screen === "users") {
+
+  const totalUsers = users.length;
+
+  const enabledUsers = users.filter(
+    (user) => user.enabled
+  ).length;
+
+  const disabledUsers = users.filter(
+    (user) => !user.enabled
+  ).length;
+
+  const adminUsers = users.filter(
+    (user) => user.role === "Administrator"
+  ).length;  
+
+  return (
+
+    <div style={styles.page}>
+      <button
+        style={styles.backButton}
+        onClick={() => setScreen("staff")}
+      >
+        ← Staff Dashboard
+      </button>
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "1400px",
+          margin: "0 auto",
+          paddingTop: "80px",
+        }}
+      >
+        <h1
+          style={{
+            textAlign: "center",
+            marginBottom: "24px",
+          }}
+        >
+          User Management
+        </h1>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "16px",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={styles.userStats}>
+            <h2>{totalUsers}</h2>
+            <p>Total Users</p>
+          </div>
+
+          <div style={styles.userStats}>
+            <h2>{enabledUsers}</h2>
+            <p>Enabled</p>
+          </div>
+
+          <div style={styles.userStats}>
+            <h2>{disabledUsers}</h2>
+            <p>Disabled</p>
+          </div>
+
+          <div style={styles.userStats}>
+            <h2>{adminUsers}</h2>
+            <p>Administrators</p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            justifyContent: "center",
+            marginBottom: "24px",
+            flexWrap: "wrap",
+          }}
+        >
+
+          <button
+            style={styles.staffActionButton}
+            onClick={() => {
+              setEditingUser(null);
+
+              setNewUser({
+                username: "",
+                password: "",
+                display_name: "",
+                email: "",
+                role: "CheckInStaff",
+              });
+
+              setShowCreateUser(true);
+            }}
+          >
+            Create User
+          </button>
+
+
+          <button
+            style={styles.staffActionButton}
+            onClick={loadUsers}
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+            gap: "20px",
+          }}
+        >
+          {users.map((user) => (
+            <div
+              key={user.id}
+              style={{
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: "16px",
+                padding: "20px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 8px 0",
+                  color: theme.textPrimary,
+                }}
+              >
+                {user.display_name || user.username}
+              </h3>
+
+              <div
+                style={{
+                  color: theme.textSecondary,
+                  marginBottom: "12px",
+                }}
+              >
+                @{user.username}
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Role:</strong> {user.role}
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Status:</strong>{" "}
+                <span
+                  style={{
+                    color: user.enabled
+                      ? theme.success
+                      : theme.danger,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {user.enabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Email:</strong>{" "}
+                {user.email || "Not Configured"}
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <strong>Last Login:</strong>{" "}
+                {user.last_login
+                  ? new Date(user.last_login).toLocaleString()
+                  : "Never"}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
+              >
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setEditingUser(user);
+
+                    setNewUser({
+                      username: user.username || "",
+                      password: "",
+                      display_name: user.display_name || "",
+                      email: user.email || "",
+                      role: user.role || "CheckInStaff",
+                    });
+
+                    setShowCreateUser(true);
+                  }}
+                >
+                  Edit
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => handleResetPassword(user)}
+                >
+                  Reset Password
+                </button>
+
+                <button
+                  style={{
+                    ...styles.staffActionButton,
+                    backgroundColor: user.enabled
+                      ? theme.danger
+                      : theme.success,
+                  }}
+                  onClick={() => handleToggleUser(user)}
+                >
+                  {user.enabled ? "Disable" : "Enable"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+{showCreateUser && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+    }}
+  >
+    <div
+      style={{
+        backgroundColor: theme.surface,
+        color: theme.textPrimary,
+        borderRadius: "16px",
+        padding: "24px",
+        width: "500px",
+        maxWidth: "90%",
+      }}
+    >
+      <h2>
+        {editingUser ? "Edit User" : "Create User"}
+      </h2>
+
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Username</label>
+        <input
+          style={styles.input}
+          value={newUser.username}
+          disabled={!!editingUser}
+          onChange={(e) =>
+            setNewUser({
+              ...newUser,
+              username: e.target.value,
+            })
+          }
+        />
+      </div>
+
+      {!editingUser && (
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Password</label>
+          <input
+            type="password"
+            style={styles.input}
+            value={newUser.password}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                password: e.target.value,
+              })
+            }
+          />
+        </div>
+      )}
+
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Display Name</label>
+        <input
+          style={styles.input}
+          value={newUser.display_name}
+          onChange={(e) =>
+            setNewUser({
+              ...newUser,
+              display_name: e.target.value,
+            })
+          }
+        />
+      </div>
+
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Email</label>
+        <input
+          style={styles.input}
+          value={newUser.email}
+          onChange={(e) =>
+            setNewUser({
+              ...newUser,
+              email: e.target.value,
+            })
+          }
+        />
+      </div>
+
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Role</label>
+        <select
+          style={styles.input}
+          value={newUser.role}
+          onChange={(e) =>
+            setNewUser({
+              ...newUser,
+              role: e.target.value,
+            })
+          }
+        >
+          <option value="Administrator">
+            Administrator
+          </option>
+          <option value="CheckInStaff">
+            Check-In Staff
+          </option>
+        </select>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          marginTop: "20px",
+        }}
+      >
+        <button
+          style={styles.staffActionButton}
+          onClick={async () => {
+            try {
+              if (editingUser) {
+                await updateUser(
+                  editingUser.id,
+                  {
+                    display_name: newUser.display_name,
+                    email: newUser.email,
+                    role: newUser.role,
+                  }
+                );
+              } else {
+                await createUser(newUser);
+              }
+
+              await loadUsers();
+
+              setShowCreateUser(false);
+              setEditingUser(null);
+            } catch (error) {
+              console.error(error);
+              alert(error.message);
+            }
+          }}
+        >
+          Save
+        </button>
+
+        <button
+          style={styles.staffActionButton}
+          onClick={() => {
+            setShowCreateUser(false);
+            setEditingUser(null);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
+    </div>
+  );
+}
+
+// Settings Screen
+if (screen === "settings") {
+  return (
+    <div style={styles.page}>
+      <h1>Settings</h1>
+      <p>Coming Soon</p>
+      <button
+        style={styles.backButton}
+        onClick={() => setScreen("staff")}
+      >
+        Back
+      </button>
+    </div>
+  );
+}
 
   // App() Return
   return (
@@ -2329,8 +3045,5 @@ async function handleVisitorCheckout(visitorId) {
 
 // End of App()
 }
-
-
-
 
 

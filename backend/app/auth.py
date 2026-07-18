@@ -8,6 +8,16 @@ import os
 from dotenv import load_dotenv
 from jose import jwt
 
+from pwdlib import PasswordHash
+
+password_hash = PasswordHash.recommended()
+
+def hash_password(password: str) -> str:
+    return password_hash.hash(password)
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    return password_hash.verify(password, hashed_password)
+
 env_path = Path(__file__).resolve().parents[2] / ".env"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -37,10 +47,6 @@ def create_access_token(username: str):
         algorithm=JWT_ALGORITHM,
     )
 
-
-
-
-
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(
@@ -51,7 +57,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
         username = payload.get("sub")
 
-        if username != STAFF_USERNAME:
+        if not username:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token",

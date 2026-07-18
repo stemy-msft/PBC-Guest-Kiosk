@@ -9,29 +9,35 @@ from PIL import Image, ImageOps
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from .auth import (
-    STAFF_PASSWORD,
-    STAFF_USERNAME,
-    create_access_token,
-    get_current_user,
-)
+from .auth import (create_access_token, get_current_user, verify_password, hash_password)
 from .database import Base, engine
 from .dependencies import get_db
-from .models import PrintJob, Visitor
+from .models import PrintJob, Visitor, User
 from .schemas import (
     LoginRequest,
     LoginResponse,
+    PasswordChangeRequest,
+    PasswordResetRequest,
     PrintJobResponse,
     PrintJobStatusUpdate,
     ReturningVisitorCheckInRequest,
+    UserCreate,
+    UserResponse,
+    UserStatusUpdate,
+    UserUpdate,
     VisitorCreate,
     VisitorResponse,
     VisitorUpdateRequest,
 )
 from .services.badge_service import generate_visitor_badge
 
+from sqlalchemy.orm import Session
+from .bootstrap import create_default_admin
 
 Base.metadata.create_all(bind=engine)
+
+with Session(engine) as db:
+    create_default_admin(db)
 
 app = FastAPI(
     title="PBC Visitor Kiosk",
@@ -75,27 +81,147 @@ def root():
 def health():
     return {
         "status": "healthy",
-        "staff_user": STAFF_USERNAME,
+        "authentication": "database",
     }
 
 
-@app.post("/api/auth/login", response_model=LoginResponse)
-def login(request: LoginRequest):
-    if (
-        request.username.strip().lower() != STAFF_USERNAME.strip().lower()
-        or request.password != STAFF_PASSWORD
-    ):
+@app.post("/api/auth/login",response_model=LoginResponse)
+def login(    
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+):
+
+    print(f"Login attempt: {request.username}")
+
+    user = (
+        db.query(User)
+        .filter(User.username == request.username)
+        .first()
+    )
+
+    print(f"User found: {user is not None}")
+
+    if user:
+        print(f"Stored hash: {user.password_hash}")
+
+        result = verify_password(
+            request.password,
+            user.password_hash
+        )
+
+        print(f"Password match: {result}")
+
+    user = (
+        db.query(User)
+        .filter(User.username == request.username)
+        .first()
+    )
+
+    if not user:
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
 
-    token = create_access_token(STAFF_USERNAME)
+    if not user.enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Account disabled",
+        )
+
+    if not verify_password(
+        request.password,
+        user.password_hash,
+    ):
+        user.failed_login_count += 1
+        db.commit()
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+        )
+
+    user.failed_login_count = 0
+    user.last_login = datetime.now()
+
+    db.commit()
+
+    token = create_access_token(
+        user.username
+    )
 
     return LoginResponse(
         access_token=token,
         token_type="bearer",
     )
+
+
+@app.post("/api/change-password")
+def change_password(
+    request: PasswordChangeRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(User)
+        .filter(User.username == current_user)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    if not verify_password(
+        request.current_password,
+        user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Current password is incorrect",
+        )
+
+    user.password_hash = hash_password(
+        request.new_password
+    )
+    user.password_changed_date = datetime.now()
+    user.must_change_password = False
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Password updated successfully",
+    }
+
+
+@app.get("/api/me")
+def get_me(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.username == current_user)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role,
+        "enabled": user.enabled,
+        "must_change_password": user.must_change_password,
+    }
 
 
 @app.get("/api/print-jobs/{print_job_id}/badge-image")
@@ -130,15 +256,45 @@ def get_print_job_badge_image(
     )
 
 
-@app.get("/api/print-jobs", response_model=list[PrintJobResponse])
+@app.get("/api/print-jobs")
 def get_print_jobs(
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
-    return (
-        db.query(PrintJob)
-        .order_by(PrintJob.created_time.desc())
-        .all()
-    )
+    jobs = db.query(PrintJob).order_by(PrintJob.created_time.desc()).all()
+
+    results = []
+
+    for job in jobs:
+        visitor = (
+            db.query(Visitor)
+            .filter(Visitor.id == job.visitor_id)
+            .first()
+        )
+
+        results.append({
+            "id": job.id,
+            "visitor_id": job.visitor_id,
+            "visitor_name": (
+                f"{visitor.first_name} {visitor.last_name}"
+                if visitor
+                else "Unknown Visitor"
+            ),
+            "visitor_type": (
+                visitor.visitor_type
+                if visitor
+                else None
+            ),
+            "badge_path": job.badge_path,
+            "status": job.status,
+            "printer_name": job.printer_name,
+            "error_message": job.error_message,
+            "created_time": job.created_time,
+            "claimed_time": job.claimed_time,
+            "completed_time": job.completed_time,
+        })
+
+    return results
 
 
 @app.get("/api/print-jobs/pending", response_model=list[PrintJobResponse])
@@ -235,6 +391,205 @@ def update_print_job_status(
 
     return print_job
 
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+def get_user(
+    user_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    return user
+
+
+@app.get("/api/users", response_model=list[UserResponse])
+def get_users(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(User).order_by(User.username).all()
+
+
+@app.get("/api/users/{user_id}",response_model=UserResponse)
+def get_user(
+    user_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    return user
+
+
+@app.post("/api/users",response_model=UserResponse)
+def create_user(
+    request: UserCreate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.username == request.username)
+        .first()
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Username already exists"
+        )
+
+    user = User(
+        username=request.username,
+        password_hash=hash_password(request.password),
+        display_name=request.display_name,
+        email=request.email,
+        role=request.role,
+        enabled=True,
+        must_change_password=True
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    request: UserUpdate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    if request.display_name is not None:
+        user.display_name = request.display_name
+
+    if request.email is not None:
+        user.email = request.email
+
+    if request.role is not None:
+        user.role = request.role
+
+    if request.enabled is not None:
+        user.enabled = request.enabled
+
+    if request.notes is not None:
+        user.notes = request.notes
+
+    user.modified_by = current_user
+    user.modified_date = datetime.now()
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+@app.post("/api/users/{user_id}/reset-password")
+def reset_password(
+    user_id: int,
+    request: PasswordResetRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    user.password_hash = hash_password(
+        request.new_password
+    )
+
+    user.must_change_password = True
+    user.password_changed_date = datetime.now()
+
+    user.modified_by = current_user
+    user.modified_date = datetime.now()
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Password reset successfully"
+    }
+
+
+@app.put("/api/users/{user_id}/status",response_model=UserResponse,)
+def update_user_status(
+    user_id: int,
+    request: UserStatusUpdate,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    # Never allow the built-in admin account to be disabled
+    if (
+        user.username.lower() == "admin"
+        and request.enabled is False
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The built-in administrator account cannot be disabled."
+        )
+
+    user.enabled = request.enabled
+    user.modified_by = current_user
+    user.modified_date = datetime.now()
+
+    db.commit()
+    db.refresh(user)
+
+    return user
 
 @app.post("/api/visitors", response_model=VisitorResponse)
 def create_visitor(
@@ -678,5 +1033,7 @@ def create_print_job(
     db.refresh(print_job)
 
     return print_job
+
+
 
 

@@ -5,6 +5,10 @@ from pydantic import BaseModel
 
 
 
+class Config:
+        from_attributes = True
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -13,6 +17,16 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: str
+    must_change_password: bool = True
 
 
 class PrintJobResponse(BaseModel):
@@ -49,6 +63,38 @@ class ReturningVisitorCheckInRequest(BaseModel):
     notes: str | None = None
     expected_departure_time: datetime | None = None
     reuse_existing_photo: bool = True
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    display_name: str
+    email: str | None = None
+    role: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    email: str | None
+    role: str
+    enabled: bool
+    last_login: datetime | None
+    created_date: datetime
+    password_changed_date: datetime | None
+
+
+class UserStatusUpdate(BaseModel):
+    enabled: bool
+
+    
+class UserUpdate(BaseModel):
+    display_name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    enabled: bool | None = None
+    notes: str | None = None
 
 
 class VisitorCreate(BaseModel):
@@ -91,6 +137,7 @@ class VisitorResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class VisitorUpdateRequest(BaseModel):
     first_name: str
     last_name: str
@@ -101,7 +148,5 @@ class VisitorUpdateRequest(BaseModel):
     purpose: str | None = None
     visitor_type: str | None = None
     notes: str | None = None
-
-
 
 
