@@ -6,11 +6,14 @@ import {
   clearCompletedPrintJobs,
   clearFailedPrintJobs,
   createPrintJob,
+  createPrintStation,
   createVisitor,
   deletePrintJob,
+  disablePrintStation,
   findVisitors,
   generateBadge,
   getPrintJobs,
+  getPrintStations,
   getPendingPrintJobs,
   getUsers,
   getUser,
@@ -23,6 +26,7 @@ import {
   getVisitor,
   login,
   searchVisitors,
+  updatePrintStation,
   uploadPhoto,
   updateVisitor,
 } from "./api";
@@ -65,11 +69,18 @@ export default function App() {
   const [checkoutLastName, setCheckoutLastName] = useState("");
   const [checkoutResults, setCheckoutResults] = useState([]);
   const [contactName, setContactName] = useState("");
+  const [editingPrintStation, setEditingPrintStation] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastName, setLastName] = useState("");
+  const [newPrintStation, setNewPrintStation] = useState({
+    name: "",
+    slug: "",
+    print_server_host: "",
+    enabled: true,
+  });
   const [newUser, setNewUser] = useState({
     username: "",
     password: "",
@@ -82,6 +93,7 @@ export default function App() {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const PRINT_STATION = getPrintStationSlug();
+  const [printStations, setPrintStations] = useState([]);
   const [printJobs, setPrintJobs] = useState([]);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [returningPhotoFile, setReturningPhotoFile] = useState(null);
@@ -106,6 +118,7 @@ export default function App() {
   const [selectedCamera, setSelectedCamera] = useState("");
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showPrintStationModal, setShowPrintStationModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
   const [users, setUsers] = useState([]);
@@ -119,6 +132,7 @@ export default function App() {
 
 
 
+  
 
 
 
@@ -191,13 +205,16 @@ export default function App() {
     populateReturningVisitor(selectedVisitor);
   }, [selectedVisitor]);
 
-  // Load when the screen changes to "users" or "print-jobs"
-  useEffect(() => {
+  // Load when the screen changes to "users" or "print-jobs" or "print-stations"
+useEffect(() => {
   if (screen === "users") {
     loadUsers();
   }
   if (screen === "print-jobs") {
     loadPrintJobs();
+  }
+  if (screen === "print-stations") {
+    loadPrintStations();
   }
 }, [screen]);
 
@@ -341,6 +358,16 @@ export default function App() {
       });
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  async function loadPrintStations() {
+    try {
+      const data = await getPrintStations();
+      setPrintStations(data);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
   }
 
@@ -546,6 +573,17 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function isStationOnline(station) {
+    if (!station.last_seen) {
+      return false;
+    }
+
+    const ageSeconds =
+      (Date.now() - new Date(station.last_seen).getTime()) / 1000;
+
+    return ageSeconds < 60;
   }
 
   async function loadPrintJobs() {
@@ -1018,6 +1056,108 @@ function getPrintStationSlug() {
   // End Camera Functions
 
 
+  // Administration Screen
+  if (screen === "administration") {
+    return (
+      
+
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Administration
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            <div style={styles.resultCard}>
+              <h2>User Administration</h2>
+
+              <p
+                style={{
+                  marginBottom: "16px",
+                  color: theme.textSecondary,
+                }}
+              >
+                Manage user accounts, permissions, and passwords.
+              </p>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={() => setScreen("users")}
+              >
+                User Management
+              </button>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Print Stations</h2>
+
+              <p
+                style={{
+                  marginBottom: "16px",
+                  color: theme.textSecondary,
+                }}
+              >
+                Configure print stations and printer routing.
+              </p>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={() => setScreen("print-stations")}
+              >
+                Print Stations
+              </button>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>System Settings</h2>
+
+              <p
+                style={{
+                  marginBottom: "16px",
+                  color: theme.textSecondary,
+                }}
+              >
+                View application configuration and runtime settings.
+              </p>
+
+              <button
+                style={styles.staffActionButton}
+                onClick={() => setScreen("settings")}
+              >
+                Open Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Check-in Screen
   if (screen === "checkin") {
     return (
@@ -1336,6 +1476,1008 @@ function getPrintStationSlug() {
     );
   }
 
+  // Print Queue Screen
+  if (screen === "print-queue") {
+    
+    const pendingJobs = printJobs.filter(
+      (job) => job.status === "Pending"
+    ).length;
+
+    const printingJobs = printJobs.filter(
+      (job) => job.status === "Printing"
+    ).length;
+
+    const completedJobs = printJobs.filter(
+      (job) => job.status === "Completed"
+    ).length;
+
+    const failedJobs = printJobs.filter(
+      (job) => job.status === "Failed"
+    ).length;    
+    
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Print Queue
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+          
+            <div style={styles.userStats}>
+              <h2>{pendingJobs}</h2>
+              <p>Pending</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{printingJobs}</h2>
+              <p>Printing</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{completedJobs}</h2>
+              <p>Completed</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{failedJobs}</h2>
+              <p>Failed</p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "12px",
+              marginBottom: "24px",
+            }}
+          >
+            <button
+              style={styles.staffActionButton}
+              onClick={loadPrintJobs}
+            >
+              Refresh
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={handleClearCompletedJobs}
+            >
+              Clear Completed Jobs
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={handleClearFailedJobs}
+            >
+              Clear Failed Jobs
+            </button>
+
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fill, minmax(450px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {printJobs.map((job) => (
+              <div
+                key={job.id}
+                style={{
+                  backgroundColor: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: "16px",
+                  padding: "20px",
+                }}
+              >
+                <h3>
+                  {job.visitor_name}
+                </h3>
+
+                <p
+                  style={{
+                    color: theme.textSecondary,
+                    marginBottom: "12px",
+                  }}
+                >
+                  Print Job #{job.id}
+                </p>
+
+                <p>
+                  <strong>Visitor:</strong> {job.visitor_name}
+                </p>
+
+                <p>
+                  <strong>Visitor Type:</strong> {job.visitor_type}
+                </p>
+
+                <p>
+                  <strong>Station:</strong>{" "}
+                  {job.station_name || "Unknown"}
+                </p>
+
+                <div style={{ marginBottom: "8px" }}>
+                  <strong>Status:</strong>{" "}
+                  <span
+                    style={{
+                      color:
+                        job.status === "Completed"
+                          ? theme.success
+                          : job.status === "Failed"
+                          ? theme.danger
+                          : theme.primary,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {job.status}
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: "8px" }}>
+                  <strong>Printer:</strong>{" "}
+                  {job.printer_name || "Unknown"}
+                </div>
+
+                <p>
+                  <strong>Created:</strong>{" "}
+                  {new Date(job.created_time).toLocaleString()}
+                </p>
+
+                {job.completed_date && (
+                  <p>
+                    <strong>Completed:</strong>{" "}
+                    {new Date(job.completed_date).toLocaleString()}
+                  </p>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    marginTop: "16px",
+                  }}
+                >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleVisitorSelect(job.visitor_id)}
+                  >
+                    View Visitor
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleReprintJob(job)}
+                  >
+                    Reprint Badge
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleDeletePrintJob(job.id)}
+                  >
+                    Delete Job
+                  </button>
+                </div>
+
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+// Print Stations Screen
+if (screen === "print-stations") {
+
+  const enabledStations = printStations.filter(
+    (station) => station.enabled
+  ).length;
+
+  const disabledStations = printStations.filter(
+    (station) => !station.enabled
+  ).length;
+
+  return (
+    <div style={styles.page}>
+      <button
+        style={styles.backButton}
+        onClick={() => setScreen("administration")}
+      >
+        ← Administration
+      </button>
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "1400px",
+          margin: "0 auto",
+          paddingTop: "80px",
+        }}
+      >
+        <h1
+          style={{
+            textAlign: "center",
+            marginBottom: "24px",
+          }}
+        >
+          Print Stations
+        </h1>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "16px",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={styles.userStats}>
+            <h2>{printStations.length}</h2>
+            <p>Total Stations</p>
+          </div>
+
+          <div style={styles.userStats}>
+            <h2>{enabledStations}</h2>
+            <p>Enabled</p>
+          </div>
+
+          <div style={styles.userStats}>
+            <h2>{disabledStations}</h2>
+            <p>Disabled</p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            justifyContent: "center",
+            marginBottom: "24px",
+          }}
+        >
+          <button
+            style={styles.staffActionButton}
+            onClick={loadPrintStations}
+          >
+            Refresh
+          </button>
+
+          <button
+            style={styles.staffActionButton}
+            onClick={() => {
+              setEditingPrintStation(null);
+
+              setNewPrintStation({
+                name: "",
+                slug: "",
+                print_server_host: "",
+                enabled: true,
+              });
+
+              setShowPrintStationModal(true);
+            }}
+          >
+            Add Print Station
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+            gap: "20px",
+          }}
+        >
+          {printStations.map((station) => (
+            <div
+              key={station.id}
+              style={{
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: "16px",
+                padding: "20px",
+              }}
+            >
+              <h3>{station.name}</h3>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Status:</strong>{" "}
+                <span
+                  style={{
+                    color: isStationOnline(station)
+                      ? theme.success
+                      : theme.danger,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {isStationOnline(station)
+                    ? "ONLINE"
+                    : "OFFLINE"}
+                </span>
+              </div>
+
+              <p>
+                <strong>Slug:</strong> {station.slug}
+              </p>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Print Host:</strong>{" "}
+                {station.print_server_host || "Not Configured"}
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>IP Address:</strong>{" "}
+                {station.last_ip || "Unknown"}
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Agent Version:</strong>{" "}
+                {station.agent_version || "Unknown"}
+              </div>
+
+              <div style={{ marginBottom: "6px" }}>
+                <strong>Last Seen:</strong>{" "}
+                {station.last_seen
+                  ? new Date(station.last_seen).toLocaleString()
+                  : "Never"}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                  marginTop: "16px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setEditingPrintStation(station);
+
+                    setNewPrintStation({
+                      name: station.name || "",
+                      slug: station.slug || "",
+                      print_server_host: station.print_server_host || "",
+                      enabled: station.enabled,
+                    });
+
+                    setShowPrintStationModal(true);
+                  }}
+                >
+                  Edit
+                </button>
+
+                <button
+                  style={{
+                    ...styles.staffActionButton,
+                    backgroundColor: theme.danger,
+                  }}
+                  onClick={async () => {
+                    const confirmed = window.confirm(
+                      `Disable print station '${station.name}'?`
+                    );
+
+                    if (!confirmed) {
+                      return;
+                    }
+
+                    try {
+                      await disablePrintStation(station.id);
+                      await loadPrintStations();
+                    } catch (error) {
+                      console.error(error);
+                      alert(error.message);
+                    }
+                  }}
+                >
+                  Disable
+                </button>
+              </div>
+              
+            </div>
+          ))}
+        </div>
+
+        {showPrintStationModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: theme.surface,
+                color: theme.textPrimary,
+                borderRadius: "16px",
+                padding: "24px",
+                width: "600px",
+                maxWidth: "90%",
+              }}
+            >
+              <h2>
+                {editingPrintStation
+                  ? "Edit Print Station"
+                  : "Create Print Station"}
+              </h2>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Station Name
+                </label>
+
+                <input
+                  style={styles.input}
+                  value={newPrintStation.name}
+                  onChange={(e) =>
+                    setNewPrintStation({
+                      ...newPrintStation,
+                      name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Station Slug
+                </label>
+
+                <input
+                  style={styles.input}
+                  value={newPrintStation.slug}
+                  onChange={(e) =>
+                    setNewPrintStation({
+                      ...newPrintStation,
+                      slug: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Print Server Host
+                </label>
+
+                <input
+                  style={styles.input}
+                  value={newPrintStation.print_server_host}
+                  onChange={(e) =>
+                    setNewPrintStation({
+                      ...newPrintStation,
+                      print_server_host: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Enabled
+                </label>
+
+                <select
+                  style={styles.input}
+                  value={newPrintStation.enabled ? "true" : "false"}
+                  onChange={(e) =>
+                    setNewPrintStation({
+                      ...newPrintStation,
+                      enabled: e.target.value === "true",
+                    })
+                  }
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  marginTop: "20px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={async () => {
+                    try {
+                      if (editingPrintStation) {
+                        await updatePrintStation(
+                          editingPrintStation.id,
+                          newPrintStation
+                        );
+                      } else {
+                        await createPrintStation(
+                          newPrintStation
+                        );
+                      }
+
+                      await loadPrintStations();
+
+                      setShowPrintStationModal(false);
+                      setEditingPrintStation(null);
+                    } catch (error) {
+                      console.error(error);
+                      alert(error.message);
+                    }
+                  }}
+                >
+                  Save
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setShowPrintStationModal(false);
+                    setEditingPrintStation(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+  // Returning Visitor Check-In Screen
+  if (screen === "returning-checkin") {
+    const existingPhotoUrl = selectedVisitor?.photo_path
+      ? `${import.meta.env.VITE_API_BASE || ""}/${selectedVisitor.photo_path.replaceAll("\\", "/")}`
+      : null;
+
+    const displayedPhoto = returningPhotoPreview || existingPhotoUrl;
+
+    return (
+      <div style={styles.page}>
+
+        {/* Theme Overlay */}
+        {theme.logoOverlay && (
+          <img
+            src={theme.logoOverlay}
+            alt=""
+            style={styles.themeOverlay}
+          />
+        )}
+
+
+        {/* CRT Theme Effects */}
+        {isCrtTheme && (
+          <>
+            <div style={styles.crtOverlay} />
+            <div style={styles.crtScanline} />
+            <div style={styles.crtFlicker} />
+          </>
+        )}
+
+        <button
+          style={styles.backButton}
+          onClick={() => navigateTo("visitor-detail")}
+        >
+          ← Visitor Details
+        </button>
+
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>Returning Visitor Check-In</h1>
+
+          <p style={styles.instructions}>
+            Review visitor information and make updates before printing a new badge.
+          </p>
+
+          <div style={styles.contentContainer}>
+
+
+            {/* Data Column */}
+            <div style={styles.formColumn}>
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>First Name</label>
+                  <input
+                      style={styles.input}
+                      value={returningVisitor.first_name}
+                      onChange={(event) => setReturningVisitor({...returningVisitor, first_name: event.target.value})}
+                  />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Last Name</label>
+                <input
+                    style={styles.input}
+                    value={returningVisitor.last_name}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, last_name: event.target.value})}
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Camper or Contact Name</label>
+                <input
+                    style={styles.input}
+                    value={returningVisitor.host_name}
+                    onChange={(event) => setReturningVisitor({...returningVisitor, host_name: event.target.value})}
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Visitor Type</label>
+                <select
+                    style={styles.input}
+                    value={visitorType}
+                    onChange={(event) => setVisitorType(event.target.value)}
+                >
+                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                    <option key={visitorTypeOption} value={visitorTypeOption}>
+                      {visitorTypeOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Purpose</label>
+                <select
+                    style={styles.input}
+                    value={purpose}
+                    onChange={(event) => setPurpose(event.target.value)}
+                >
+                  {VISIT_PURPOSES.map((purposeOption) => (
+                    <option key={purposeOption} value={purposeOption}>
+                      {purposeOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Vehicle License Plate</label>
+                <input
+                  style={styles.input}
+                  value={returningVisitor.vehicle_plate}
+                  onChange={(event) =>
+                    setReturningVisitor({...returningVisitor, vehicle_plate: event.target.value.toUpperCase()})
+                  }
+                />
+              </div>   
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Phone</label>
+                <input
+                  style={styles.input}
+                  value={returningVisitor.phone}
+                  onChange={(event) =>
+                    setReturningVisitor({...returningVisitor, phone: event.target.value})
+                  }
+                />
+              </div>   
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Email</label>
+                <input
+                  style={styles.input}
+                  value={returningVisitor.email}
+                  onChange={(event) =>
+                    setReturningVisitor({...returningVisitor, email: event.target.value}  )
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Photo Column */}
+            <div style={styles.photoColumn}>
+              <input
+                id="returningPhotoInput"
+                type="file"
+                accept="image/*"
+                capture="user"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+
+                  if (!file) {
+                    return;
+                  }
+
+                  const previewUrl = URL.createObjectURL(file);
+
+                  setReturningPhotoFile(file);
+                  setReturningPhotoPreview(previewUrl);
+                }}
+              />
+
+              <div style={styles.photoPlaceholder}>
+                {displayedPhoto ? (
+                  <img
+                    src={displayedPhoto}
+                    alt="Visitor Preview"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "18px",
+                    }}
+                  />
+                ) : (
+                  "Photo Preview"
+                )}
+              </div>
+
+              <p
+                style={{
+                  marginTop: 8,
+                  marginBottom: 12,
+                }}
+              >
+                <button
+                  style={styles.photoButton}
+                  onClick={() => {
+                    const supportsGetUserMedia =
+                      navigator.mediaDevices &&
+                      typeof navigator.mediaDevices.getUserMedia === "function";
+
+                    if (supportsGetUserMedia) {
+                      openCamera();
+                    } else {
+                      document.getElementById("returningPhotoInput").click();
+                    }
+                  }}
+                >
+                    Retake Visitor Photo
+                </button>
+              </p>
+            </div>
+          </div>
+
+          <div style={styles.dashboardButtonRow}>
+            <button
+              style={styles.staffActionButton}
+              onClick={handleCheckInReturningVisitor}
+              disabled={checkedInVisitorId || busy}
+            >
+              {busy ? "Checking In..." 
+                : checkedInVisitorId 
+                  ? "Visitor Checked In" 
+                  : "Check In Visitor"
+              }
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={handlePrintReturningBadge}
+              disabled={!checkedInVisitorId || busy}
+            >
+              {busy ? "Printing..." : "Print Visitor Badge"}
+
+            </button>
+          </div>
+
+        </div>
+
+        {cameraOpen && (
+          <div style={styles.cameraOverlay}>
+            <div style={styles.cameraPanel}>
+              <h2 style={styles.formTitle}>Take Visitor Photo</h2>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Camera</label>
+                <select
+                  style={styles.input}
+                  value={selectedCamera}
+                  onChange={(event) => switchCamera(event.target.value)}
+                >
+                  {videoDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || "Camera"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={styles.cameraVideo}
+              />
+
+              <canvas
+                ref={canvasRef}
+                style={{ display: "none" }}
+              />
+
+              <div style={styles.dashboardButtonRow}>
+                <button
+                  style={styles.staffActionButton}
+                  onClick={capturePhoto}
+                >
+                  Capture Photo
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={closeCamera}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Settings Screen
+  if (screen === "settings") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Settings
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
+              gap: "20px",
+            }}
+          >
+
+            <div style={styles.resultCard}>
+              <h2>System</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
+              </p>
+
+
+              <p>
+                <strong>Theme:</strong> Camp Green
+              </p>
+
+              <p>
+                <strong>Auto Refresh:</strong> 5 Seconds
+              </p>
+
+              <p>
+                <strong>Authentication:</strong> Database / JWT
+              </p>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Visitor Types</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+              </p>
+
+              {VISITOR_TYPES.map((type) => (
+                <div key={type}>
+                  • {type}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Visit Purposes</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+              </p>
+
+              {VISIT_PURPOSES.map((purpose) => (
+                <div key={purpose}>
+                  • {purpose}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Required Check-In Fields</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+              </p>
+
+              {REQUIRED_CHECKIN_FIELDS.map((field) => (
+                <div key={field}>
+                  • {field}
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Required Returning Visitor Fields</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+              </p>
+
+              {REQUIRED_RETURNING_CHECKIN_FIELDS.map((field) => (
+                <div key={field}>
+                  • {field}
+                </div>
+              ))}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Staff Screen
   if (screen === "staff") {
     if (!isAuthenticated) {
@@ -1435,9 +2577,9 @@ function getPrintStationSlug() {
 
             <button
               style={styles.staffActionButton}
-              onClick={() => setScreen("users")}
+              onClick={() => setScreen("administration")}
             >
-              User Management
+              Administration
             </button>
 
             <button
@@ -1446,7 +2588,6 @@ function getPrintStationSlug() {
             >
               Settings
             </button>
-
 
             <button
               style={styles.staffActionButton}
@@ -1591,8 +2732,8 @@ function getPrintStationSlug() {
     );
   }
 
-  // Visitor Search Screen
-  if (screen === "visitor-search") {
+  // Staff Login Screen
+  if (screen === "staff-login") {
     return (
       <div style={styles.page}>
 
@@ -1605,7 +2746,6 @@ function getPrintStationSlug() {
           />
         )}
 
-
         {/* CRT Theme Effects */}
         {isCrtTheme && (
           <>
@@ -1615,165 +2755,430 @@ function getPrintStationSlug() {
           </>
         )}
 
-        <button
-          style={styles.backButton}
-          onClick={() => navigateTo("staff")}
-        >
-          ← Staff Dashboard
-        </button>
-
-        {/* Styles.formContainer */}
         <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>
-            Search Visitors
-          </h1>
+          <h1 style={styles.formTitle}>Staff Login</h1>
 
-          {searchResults.length > 0 && (
-            <p style={styles.instructions}>
-              {searchResults.length} visitor(s) found
-            </p>
-          )}
           <div style={styles.fieldGroup}>
-            <label style={styles.label}>
-              Search for visitors by any Name, Contact, Email, Phone, or Vehicle
-            </label>
-
+            <label style={styles.label}>Username</label>
             <input
               style={styles.input}
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(event.target.value)
-              }
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+            />
+          </div>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              style={styles.input}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
             />
           </div>
 
           <button
-            style={styles.photoButton}
-            onClick={handleVisitorSearch}
+            style={styles.printButton}
+            onClick={handleStaffLogin}
           >
-            Search
+            Sign In
           </button>
-
-          {searchResults.map((visitor) => (
-            <div key={visitor.id} style={styles.resultCard}>
-
-              {/* Container for columns */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "180px 1fr 140px",
-                  alignItems: "start",
-                }}
-              >
-
-                {/* Column 1 */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "left",
-                    alignItems: "center",
-                  }}
-                > 
-                  {visitor.photo_path ? (
-                    <img
-                      src={getPhotoUrl(visitor.photo_path)}
-                      alt="Visitor"
-                      style={{
-                        width: "164px",
-                        height: "164px",
-                        objectFit: "cover",
-                        borderRadius: "10px",
-                        border: "1px solid #d1d5db",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "64px",
-                        height: "64px",
-                        borderRadius: "10px",
-                        border: "1px solid #d1d5db",
-                        backgroundColor: "#f3f4f6",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "12px",
-                        color: "#6b7280",
-                      }}
-                    >
-                      No Photo
-                    </div>
-                  )}
-                </div>
-
-                {/* End Column 1 */}
-
-                {/* Column 2 */}
-                <div
-                  style={{
-                      textAlign: "center",
-                      marginTop: "10px",
-                  }}
-                >
-                    <h2>
-                      {visitor.first_name} {visitor.last_name}
-                    </h2>
-
-                    <p>{visitor.visitor_type}</p>
-
-                    <p style={{ marginBottom: "12px" }}>
-                      Checked in:{" "}
-                      {new Date(visitor.check_in_time).toLocaleString()}
-                      
-                    </p>
-
-                    <button
-                      style={styles.staffActionButton}
-                      onClick={() => handleVisitorSelect(visitor.id)}
-                    >
-                      View Details
-                    </button>
-                </div>
-                {/* End Column 2 */}
-
-                {/* Column 3 */}
-                <div>
-                  <span
-                    style={{
-                      backgroundColor: visitor.check_out_time
-                        ? "#6b7280"
-                        : "#16a34a",
-                      color: "#ffffff",
-                      padding: "4px 10px",
-                      borderRadius: "999px",
-                      fontSize: "0.8rem",
-                      fontWeight: "bold",
-                      textAlign: "right",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    {visitor.check_out_time
-                      ? "CHECKED OUT"
-                      : "ACTIVE"}
-                  </span>
-
-                  <p style={{ marginTop: "12px", marginBottom: "12px" }}>
-                    Visitor ID: {visitor.id}
-                  </p>
-                </div>
-                {/* End Column 3 */}
-
-              </div>
-
-              {/* End container for columns */}
-              </div>
-          ))}
         </div>
-        {/* End styles.formContainer */}
-
       </div>
     );
   }
+
+  // User Management Screen
+  if (screen === "users") {
+
+    const totalUsers = users.length;
+
+    const enabledUsers = users.filter(
+      (user) => user.enabled
+    ).length;
+
+    const disabledUsers = users.filter(
+      (user) => !user.enabled
+    ).length;
+
+    const adminUsers = users.filter(
+      (user) => user.role === "Administrator"
+    ).length;  
+
+    return (
+
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("administration")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            User Management
+          </h1>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2>{totalUsers}</h2>
+              <p>Total Users</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{enabledUsers}</h2>
+              <p>Enabled</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{disabledUsers}</h2>
+              <p>Disabled</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{adminUsers}</h2>
+              <p>Administrators</p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "center",
+              marginBottom: "24px",
+              flexWrap: "wrap",
+            }}
+          >
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => {
+                setEditingUser(null);
+
+                setNewUser({
+                  username: "",
+                  password: "",
+                  display_name: "",
+                  email: "",
+                  role: "CheckInStaff",
+                });
+
+                setShowCreateUser(true);
+              }}
+            >
+              Create User
+            </button>
+
+
+            <button
+              style={styles.staffActionButton}
+              onClick={loadUsers}
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {users.map((user) => (
+              <div
+                key={user.id}
+                style={{
+                  backgroundColor: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: "16px",
+                  padding: "20px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 8px 0",
+                    color: theme.textPrimary,
+                  }}
+                >
+                  {user.display_name || user.username}
+                </h3>
+
+                <div
+                  style={{
+                    color: theme.textSecondary,
+                    marginBottom: "12px",
+                  }}
+                >
+                  @{user.username}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Role:</strong> {user.role}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Status:</strong>{" "}
+                  <span
+                    style={{
+                      color: user.enabled
+                        ? theme.success
+                        : theme.danger,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {user.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Email:</strong>{" "}
+                  {user.email || "Not Configured"}
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <strong>Last Login:</strong>{" "}
+                  {user.last_login
+                    ? new Date(user.last_login).toLocaleString()
+                    : "Never"}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setEditingUser(user);
+
+                      setNewUser({
+                        username: user.username || "",
+                        password: "",
+                        display_name: user.display_name || "",
+                        email: user.email || "",
+                        role: user.role || "CheckInStaff",
+                      });
+
+                      setShowCreateUser(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => handleResetPassword(user)}
+                  >
+                    Reset Password
+                  </button>
+
+                  <button
+                    style={{
+                      ...styles.staffActionButton,
+                      backgroundColor: user.enabled
+                        ? theme.danger
+                        : theme.success,
+                    }}
+                    onClick={() => handleToggleUser(user)}
+                  >
+                    {user.enabled ? "Disable" : "Enable"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+  {showCreateUser && (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: theme.surface,
+          color: theme.textPrimary,
+          borderRadius: "16px",
+          padding: "24px",
+          width: "500px",
+          maxWidth: "90%",
+        }}
+      >
+        <h2>
+          {editingUser ? "Edit User" : "Create User"}
+        </h2>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Username</label>
+          <input
+            style={styles.input}
+            value={newUser.username}
+            disabled={!!editingUser}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                username: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        {!editingUser && (
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              style={styles.input}
+              value={newUser.password}
+              onChange={(e) =>
+                setNewUser({
+                  ...newUser,
+                  password: e.target.value,
+                })
+              }
+            />
+          </div>
+        )}
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Display Name</label>
+          <input
+            style={styles.input}
+            value={newUser.display_name}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                display_name: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Email</label>
+          <input
+            style={styles.input}
+            value={newUser.email}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                email: e.target.value,
+              })
+            }
+          />
+        </div>
+
+        <div style={styles.fieldGroup}>
+          <label style={styles.label}>Role</label>
+          <select
+            style={styles.input}
+            value={newUser.role}
+            onChange={(e) =>
+              setNewUser({
+                ...newUser,
+                role: e.target.value,
+              })
+            }
+          >
+            <option value="Administrator">
+              Administrator
+            </option>
+            <option value="CheckInStaff">
+              Check-In Staff
+            </option>
+          </select>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            marginTop: "20px",
+          }}
+        >
+          <button
+            style={styles.staffActionButton}
+            onClick={async () => {
+              try {
+                if (editingUser) {
+                  await updateUser(
+                    editingUser.id,
+                    {
+                      display_name: newUser.display_name,
+                      email: newUser.email,
+                      role: newUser.role,
+                    }
+                  );
+                } else {
+                  await createUser(newUser);
+                }
+
+                await loadUsers();
+
+                setShowCreateUser(false);
+                setEditingUser(null);
+              } catch (error) {
+                console.error(error);
+                alert(error.message);
+              }
+            }}
+          >
+            Save
+          </button>
+
+          <button
+            style={styles.staffActionButton}
+            onClick={() => {
+              setShowCreateUser(false);
+              setEditingUser(null);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+
+
+      </div>
+    );
+  }  
 
   // Visitor Details Screen
   if (screen === "visitor-detail") {
@@ -2149,14 +3554,8 @@ function getPrintStationSlug() {
     );
   }
 
-  // Returning Visitor Check-In Screen
-  if (screen === "returning-checkin") {
-    const existingPhotoUrl = selectedVisitor?.photo_path
-      ? `${import.meta.env.VITE_API_BASE || ""}/${selectedVisitor.photo_path.replaceAll("\\", "/")}`
-      : null;
-
-    const displayedPhoto = returningPhotoPreview || existingPhotoUrl;
-
+  // Visitor Search Screen
+  if (screen === "visitor-search") {
     return (
       <div style={styles.page}>
 
@@ -2181,1051 +3580,168 @@ function getPrintStationSlug() {
 
         <button
           style={styles.backButton}
-          onClick={() => navigateTo("visitor-detail")}
-        >
-          ← Visitor Details
-        </button>
-
-        <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Returning Visitor Check-In</h1>
-
-          <p style={styles.instructions}>
-            Review visitor information and make updates before printing a new badge.
-          </p>
-
-          <div style={styles.contentContainer}>
-
-
-            {/* Data Column */}
-            <div style={styles.formColumn}>
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>First Name</label>
-                  <input
-                      style={styles.input}
-                      value={returningVisitor.first_name}
-                      onChange={(event) => setReturningVisitor({...returningVisitor, first_name: event.target.value})}
-                  />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Last Name</label>
-                <input
-                    style={styles.input}
-                    value={returningVisitor.last_name}
-                    onChange={(event) => setReturningVisitor({...returningVisitor, last_name: event.target.value})}
-                />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Camper or Contact Name</label>
-                <input
-                    style={styles.input}
-                    value={returningVisitor.host_name}
-                    onChange={(event) => setReturningVisitor({...returningVisitor, host_name: event.target.value})}
-                />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Visitor Type</label>
-                <select
-                    style={styles.input}
-                    value={visitorType}
-                    onChange={(event) => setVisitorType(event.target.value)}
-                >
-                  {VISITOR_TYPES.map((visitorTypeOption) => (
-                    <option key={visitorTypeOption} value={visitorTypeOption}>
-                      {visitorTypeOption}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Purpose</label>
-                <select
-                    style={styles.input}
-                    value={purpose}
-                    onChange={(event) => setPurpose(event.target.value)}
-                >
-                  {VISIT_PURPOSES.map((purposeOption) => (
-                    <option key={purposeOption} value={purposeOption}>
-                      {purposeOption}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Vehicle License Plate</label>
-                <input
-                  style={styles.input}
-                  value={returningVisitor.vehicle_plate}
-                  onChange={(event) =>
-                    setReturningVisitor({...returningVisitor, vehicle_plate: event.target.value.toUpperCase()})
-                  }
-                />
-              </div>   
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Phone</label>
-                <input
-                  style={styles.input}
-                  value={returningVisitor.phone}
-                  onChange={(event) =>
-                    setReturningVisitor({...returningVisitor, phone: event.target.value})
-                  }
-                />
-              </div>   
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Email</label>
-                <input
-                  style={styles.input}
-                  value={returningVisitor.email}
-                  onChange={(event) =>
-                    setReturningVisitor({...returningVisitor, email: event.target.value}  )
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Photo Column */}
-            <div style={styles.photoColumn}>
-              <input
-                id="returningPhotoInput"
-                type="file"
-                accept="image/*"
-                capture="user"
-                style={{ display: "none" }}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-
-                  if (!file) {
-                    return;
-                  }
-
-                  const previewUrl = URL.createObjectURL(file);
-
-                  setReturningPhotoFile(file);
-                  setReturningPhotoPreview(previewUrl);
-                }}
-              />
-
-              <div style={styles.photoPlaceholder}>
-                {displayedPhoto ? (
-                  <img
-                    src={displayedPhoto}
-                    alt="Visitor Preview"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      borderRadius: "18px",
-                    }}
-                  />
-                ) : (
-                  "Photo Preview"
-                )}
-              </div>
-
-              <p
-                style={{
-                  marginTop: 8,
-                  marginBottom: 12,
-                }}
-              >
-                <button
-                  style={styles.photoButton}
-                  onClick={() => {
-                    const supportsGetUserMedia =
-                      navigator.mediaDevices &&
-                      typeof navigator.mediaDevices.getUserMedia === "function";
-
-                    if (supportsGetUserMedia) {
-                      openCamera();
-                    } else {
-                      document.getElementById("returningPhotoInput").click();
-                    }
-                  }}
-                >
-                    Retake Visitor Photo
-                </button>
-              </p>
-            </div>
-          </div>
-
-          <div style={styles.dashboardButtonRow}>
-            <button
-              style={styles.staffActionButton}
-              onClick={handleCheckInReturningVisitor}
-              disabled={checkedInVisitorId || busy}
-            >
-              {busy ? "Checking In..." 
-                : checkedInVisitorId 
-                  ? "Visitor Checked In" 
-                  : "Check In Visitor"
-              }
-            </button>
-
-            <button
-              style={styles.staffActionButton}
-              onClick={handlePrintReturningBadge}
-              disabled={!checkedInVisitorId || busy}
-            >
-              {busy ? "Printing..." : "Print Visitor Badge"}
-
-            </button>
-          </div>
-
-        </div>
-
-        {cameraOpen && (
-          <div style={styles.cameraOverlay}>
-            <div style={styles.cameraPanel}>
-              <h2 style={styles.formTitle}>Take Visitor Photo</h2>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Camera</label>
-                <select
-                  style={styles.input}
-                  value={selectedCamera}
-                  onChange={(event) => switchCamera(event.target.value)}
-                >
-                  {videoDevices.map((device) => (
-                    <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || "Camera"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={styles.cameraVideo}
-              />
-
-              <canvas
-                ref={canvasRef}
-                style={{ display: "none" }}
-              />
-
-              <div style={styles.dashboardButtonRow}>
-                <button
-                  style={styles.staffActionButton}
-                  onClick={capturePhoto}
-                >
-                  Capture Photo
-                </button>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={closeCamera}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Staff Login Screen
-  if (screen === "staff-login") {
-    return (
-      <div style={styles.page}>
-
-        {/* Theme Overlay */}
-        {theme.logoOverlay && (
-          <img
-            src={theme.logoOverlay}
-            alt=""
-            style={styles.themeOverlay}
-          />
-        )}
-
-        {/* CRT Theme Effects */}
-        {isCrtTheme && (
-          <>
-            <div style={styles.crtOverlay} />
-            <div style={styles.crtScanline} />
-            <div style={styles.crtFlicker} />
-          </>
-        )}
-
-        <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Staff Login</h1>
-
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Username</label>
-            <input
-              style={styles.input}
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-            />
-          </div>
-
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              style={styles.input}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
-
-          <button
-            style={styles.printButton}
-            onClick={handleStaffLogin}
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Print Queue Screen
-  if (screen === "print-queue") {
-    
-    const pendingJobs = printJobs.filter(
-      (job) => job.status === "Pending"
-    ).length;
-
-    const printingJobs = printJobs.filter(
-      (job) => job.status === "Printing"
-    ).length;
-
-    const completedJobs = printJobs.filter(
-      (job) => job.status === "Completed"
-    ).length;
-
-    const failedJobs = printJobs.filter(
-      (job) => job.status === "Failed"
-    ).length;    
-    
-    return (
-      <div style={styles.page}>
-        <button
-          style={styles.backButton}
-          onClick={() => setScreen("staff")}
+          onClick={() => navigateTo("staff")}
         >
           ← Staff Dashboard
         </button>
 
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "1400px",
-            margin: "0 auto",
-            paddingTop: "80px",
-          }}
-        >
-          <h1
-            style={{
-              textAlign: "center",
-              marginBottom: "24px",
-            }}
-          >
-            Print Queue
+        {/* Styles.formContainer */}
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>
+            Search Visitors
           </h1>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "16px",
-              marginBottom: "24px",
-            }}
-          >
-          
-            <div style={styles.userStats}>
-              <h2>{pendingJobs}</h2>
-              <p>Pending</p>
-            </div>
+          {searchResults.length > 0 && (
+            <p style={styles.instructions}>
+              {searchResults.length} visitor(s) found
+            </p>
+          )}
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>
+              Search for visitors by any Name, Contact, Email, Phone, or Vehicle
+            </label>
 
-            <div style={styles.userStats}>
-              <h2>{printingJobs}</h2>
-              <p>Printing</p>
-            </div>
-
-            <div style={styles.userStats}>
-              <h2>{completedJobs}</h2>
-              <p>Completed</p>
-            </div>
-
-            <div style={styles.userStats}>
-              <h2>{failedJobs}</h2>
-              <p>Failed</p>
-            </div>
+            <input
+              style={styles.input}
+              value={searchQuery}
+              onChange={(event) =>
+                setSearchQuery(event.target.value)
+              }
+            />
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              gap: "12px",
-              marginBottom: "24px",
-            }}
+          <button
+            style={styles.photoButton}
+            onClick={handleVisitorSearch}
           >
-            <button
-              style={styles.staffActionButton}
-              onClick={loadPrintJobs}
-            >
-              Refresh
-            </button>
+            Search
+          </button>
 
-            <button
-              style={styles.staffActionButton}
-              onClick={handleClearCompletedJobs}
-            >
-              Clear Completed Jobs
-            </button>
+          {searchResults.map((visitor) => (
+            <div key={visitor.id} style={styles.resultCard}>
 
-            <button
-              style={styles.staffActionButton}
-              onClick={handleClearFailedJobs}
-            >
-              Clear Failed Jobs
-            </button>
-
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fill, minmax(450px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            {printJobs.map((job) => (
+              {/* Container for columns */}
               <div
-                key={job.id}
                 style={{
-                  backgroundColor: theme.surface,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: "16px",
-                  padding: "20px",
+                  display: "grid",
+                  gridTemplateColumns: "180px 1fr 140px",
+                  alignItems: "start",
                 }}
               >
-                <h3>
-                  {job.visitor_name}
-                </h3>
 
-                <p
+                {/* Column 1 */}
+                <div
                   style={{
-                    color: theme.textSecondary,
-                    marginBottom: "12px",
+                    display: "flex",
+                    justifyContent: "left",
+                    alignItems: "center",
+                  }}
+                > 
+                  {visitor.photo_path ? (
+                    <img
+                      src={getPhotoUrl(visitor.photo_path)}
+                      alt="Visitor"
+                      style={{
+                        width: "164px",
+                        height: "164px",
+                        objectFit: "cover",
+                        borderRadius: "10px",
+                        border: "1px solid #d1d5db",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "64px",
+                        height: "64px",
+                        borderRadius: "10px",
+                        border: "1px solid #d1d5db",
+                        backgroundColor: "#f3f4f6",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                      }}
+                    >
+                      No Photo
+                    </div>
+                  )}
+                </div>
+
+                {/* End Column 1 */}
+
+                {/* Column 2 */}
+                <div
+                  style={{
+                      textAlign: "center",
+                      marginTop: "10px",
                   }}
                 >
-                  Print Job #{job.id}
-                </p>
+                    <h2>
+                      {visitor.first_name} {visitor.last_name}
+                    </h2>
 
-                <p>
-                  <strong>Visitor:</strong> {job.visitor_name}
-                </p>
+                    <p>{visitor.visitor_type}</p>
 
-                <p>
-                  <strong>Visitor Type:</strong> {job.visitor_type}
-                </p>
-                <div style={{ marginBottom: "8px" }}>
-                  <strong>Status:</strong>{" "}
+                    <p style={{ marginBottom: "12px" }}>
+                      Checked in:{" "}
+                      {new Date(visitor.check_in_time).toLocaleString()}
+                      
+                    </p>
+
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() => handleVisitorSelect(visitor.id)}
+                    >
+                      View Details
+                    </button>
+                </div>
+                {/* End Column 2 */}
+
+                {/* Column 3 */}
+                <div>
                   <span
                     style={{
-                      color:
-                        job.status === "Completed"
-                          ? theme.success
-                          : job.status === "Failed"
-                          ? theme.danger
-                          : theme.primary,
+                      backgroundColor: visitor.check_out_time
+                        ? "#6b7280"
+                        : "#16a34a",
+                      color: "#ffffff",
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      fontSize: "0.8rem",
                       fontWeight: "bold",
+                      textAlign: "right",
+                      marginBottom: "12px",
                     }}
                   >
-                    {job.status}
+                    {visitor.check_out_time
+                      ? "CHECKED OUT"
+                      : "ACTIVE"}
                   </span>
-                </div>
 
-                <div style={{ marginBottom: "8px" }}>
-                  <strong>Printer:</strong>{" "}
-                  {job.printer_name || "Unknown"}
-                </div>
-
-                <p>
-                  <strong>Created:</strong>{" "}
-                  {new Date(job.created_time).toLocaleString()}
-                </p>
-
-                {job.completed_date && (
-                  <p>
-                    <strong>Completed:</strong>{" "}
-                    {new Date(job.completed_date).toLocaleString()}
+                  <p style={{ marginTop: "12px", marginBottom: "12px" }}>
+                    Visitor ID: {visitor.id}
                   </p>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                    marginTop: "16px",
-                  }}
-                >
-                  <button
-                    style={styles.staffActionButton}
-                    onClick={() => handleVisitorSelect(job.visitor_id)}
-                  >
-                    View Visitor
-                  </button>
-
-                  <button
-                    style={styles.staffActionButton}
-                    onClick={() => handleReprintJob(job)}
-                  >
-                    Reprint Badge
-                  </button>
-
-                  <button
-                    style={styles.staffActionButton}
-                    onClick={() => handleDeletePrintJob(job.id)}
-                  >
-                    Delete Job
-                  </button>
                 </div>
+                {/* End Column 3 */}
 
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // User Management Screen
-  if (screen === "users") {
-
-    const totalUsers = users.length;
-
-    const enabledUsers = users.filter(
-      (user) => user.enabled
-    ).length;
-
-    const disabledUsers = users.filter(
-      (user) => !user.enabled
-    ).length;
-
-    const adminUsers = users.filter(
-      (user) => user.role === "Administrator"
-    ).length;  
-
-    return (
-
-      <div style={styles.page}>
-        <button
-          style={styles.backButton}
-          onClick={() => setScreen("staff")}
-        >
-          ← Staff Dashboard
-        </button>
-
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "1400px",
-            margin: "0 auto",
-            paddingTop: "80px",
-          }}
-        >
-          <h1
-            style={{
-              textAlign: "center",
-              marginBottom: "24px",
-            }}
-          >
-            User Management
-          </h1>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "16px",
-              marginBottom: "24px",
-            }}
-          >
-            <div style={styles.userStats}>
-              <h2>{totalUsers}</h2>
-              <p>Total Users</p>
-            </div>
-
-            <div style={styles.userStats}>
-              <h2>{enabledUsers}</h2>
-              <p>Enabled</p>
-            </div>
-
-            <div style={styles.userStats}>
-              <h2>{disabledUsers}</h2>
-              <p>Disabled</p>
-            </div>
-
-            <div style={styles.userStats}>
-              <h2>{adminUsers}</h2>
-              <p>Administrators</p>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              justifyContent: "center",
-              marginBottom: "24px",
-              flexWrap: "wrap",
-            }}
-          >
-
-            <button
-              style={styles.staffActionButton}
-              onClick={() => {
-                setEditingUser(null);
-
-                setNewUser({
-                  username: "",
-                  password: "",
-                  display_name: "",
-                  email: "",
-                  role: "CheckInStaff",
-                });
-
-                setShowCreateUser(true);
-              }}
-            >
-              Create User
-            </button>
-
-
-            <button
-              style={styles.staffActionButton}
-              onClick={loadUsers}
-            >
-              Refresh
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            {users.map((user) => (
-              <div
-                key={user.id}
-                style={{
-                  backgroundColor: theme.surface,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: "16px",
-                  padding: "20px",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: "0 0 8px 0",
-                    color: theme.textPrimary,
-                  }}
-                >
-                  {user.display_name || user.username}
-                </h3>
-
-                <div
-                  style={{
-                    color: theme.textSecondary,
-                    marginBottom: "12px",
-                  }}
-                >
-                  @{user.username}
-                </div>
-
-                <div style={{ marginBottom: "6px" }}>
-                  <strong>Role:</strong> {user.role}
-                </div>
-
-                <div style={{ marginBottom: "6px" }}>
-                  <strong>Status:</strong>{" "}
-                  <span
-                    style={{
-                      color: user.enabled
-                        ? theme.success
-                        : theme.danger,
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {user.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-
-                <div style={{ marginBottom: "6px" }}>
-                  <strong>Email:</strong>{" "}
-                  {user.email || "Not Configured"}
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <strong>Last Login:</strong>{" "}
-                  {user.last_login
-                    ? new Date(user.last_login).toLocaleString()
-                    : "Never"}
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                  }}
-                >
-
-                  <button
-                    style={styles.staffActionButton}
-                    onClick={() => {
-                      setEditingUser(user);
-
-                      setNewUser({
-                        username: user.username || "",
-                        password: "",
-                        display_name: user.display_name || "",
-                        email: user.email || "",
-                        role: user.role || "CheckInStaff",
-                      });
-
-                      setShowCreateUser(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    style={styles.staffActionButton}
-                    onClick={() => handleResetPassword(user)}
-                  >
-                    Reset Password
-                  </button>
-
-                  <button
-                    style={{
-                      ...styles.staffActionButton,
-                      backgroundColor: user.enabled
-                        ? theme.danger
-                        : theme.success,
-                    }}
-                    onClick={() => handleToggleUser(user)}
-                  >
-                    {user.enabled ? "Disable" : "Enable"}
-                  </button>
-                </div>
+              {/* End container for columns */}
               </div>
-            ))}
-          </div>
+          ))}
         </div>
-
-  {showCreateUser && (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0,0,0,0.5)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: theme.surface,
-          color: theme.textPrimary,
-          borderRadius: "16px",
-          padding: "24px",
-          width: "500px",
-          maxWidth: "90%",
-        }}
-      >
-        <h2>
-          {editingUser ? "Edit User" : "Create User"}
-        </h2>
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Username</label>
-          <input
-            style={styles.input}
-            value={newUser.username}
-            disabled={!!editingUser}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                username: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        {!editingUser && (
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              style={styles.input}
-              value={newUser.password}
-              onChange={(e) =>
-                setNewUser({
-                  ...newUser,
-                  password: e.target.value,
-                })
-              }
-            />
-          </div>
-        )}
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Display Name</label>
-          <input
-            style={styles.input}
-            value={newUser.display_name}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                display_name: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            style={styles.input}
-            value={newUser.email}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                email: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Role</label>
-          <select
-            style={styles.input}
-            value={newUser.role}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                role: e.target.value,
-              })
-            }
-          >
-            <option value="Administrator">
-              Administrator
-            </option>
-            <option value="CheckInStaff">
-              Check-In Staff
-            </option>
-          </select>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            marginTop: "20px",
-          }}
-        >
-          <button
-            style={styles.staffActionButton}
-            onClick={async () => {
-              try {
-                if (editingUser) {
-                  await updateUser(
-                    editingUser.id,
-                    {
-                      display_name: newUser.display_name,
-                      email: newUser.email,
-                      role: newUser.role,
-                    }
-                  );
-                } else {
-                  await createUser(newUser);
-                }
-
-                await loadUsers();
-
-                setShowCreateUser(false);
-                setEditingUser(null);
-              } catch (error) {
-                console.error(error);
-                alert(error.message);
-              }
-            }}
-          >
-            Save
-          </button>
-
-          <button
-            style={styles.staffActionButton}
-            onClick={() => {
-              setShowCreateUser(false);
-              setEditingUser(null);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-
+        {/* End styles.formContainer */}
 
       </div>
     );
   }
 
-  // Settings Screen
-  if (screen === "settings") {
-    return (
-      <div style={styles.page}>
-        <button
-          style={styles.backButton}
-          onClick={() => setScreen("staff")}
-        >
-          ← Staff Dashboard
-        </button>
-
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "1400px",
-            margin: "0 auto",
-            paddingTop: "80px",
-          }}
-        >
-          <h1
-            style={{
-              textAlign: "center",
-              marginBottom: "24px",
-            }}
-          >
-            Settings
-          </h1>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
-              gap: "20px",
-            }}
-          >
-
-            <div style={styles.resultCard}>
-              <h2>System</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
-              </p>
 
 
-              <p>
-                <strong>Theme:</strong> Camp Green
-              </p>
 
-              <p>
-                <strong>Auto Refresh:</strong> 5 Seconds
-              </p>
 
-              <p>
-                <strong>Authentication:</strong> Database / JWT
-              </p>
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Visitor Types</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
-              </p>
-
-              {VISITOR_TYPES.map((type) => (
-                <div key={type}>
-                  • {type}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Visit Purposes</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
-              </p>
-
-              {VISIT_PURPOSES.map((purpose) => (
-                <div key={purpose}>
-                  • {purpose}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Required Check-In Fields</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
-              </p>
-
-              {REQUIRED_CHECKIN_FIELDS.map((field) => (
-                <div key={field}>
-                  • {field}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Required Returning Visitor Fields</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
-              </p>
-
-              {REQUIRED_RETURNING_CHECKIN_FIELDS.map((field) => (
-                <div key={field}>
-                  • {field}
-                </div>
-              ))}
-            </div>
-
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // App() Return
   return (

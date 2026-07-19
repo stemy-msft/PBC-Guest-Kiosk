@@ -98,8 +98,12 @@ class PrintStation(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     slug = Column(String, unique=True, nullable=False)
-
-    printer_name = Column(String)
+    print_server_host = Column(String, nullable=True)
     enabled = Column(Boolean, default=True)
+    last_seen = Column(DateTime, nullable=True)
+    agent_version = Column(String, nullable=True)
+    last_ip = Column(String, nullable=True)
+
+
 
 

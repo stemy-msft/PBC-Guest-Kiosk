@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +21,11 @@ from .schemas import (
     PrintJobCreate,
     PrintJobResponse,
     PrintJobStatusUpdate,
+    PrintStationCreate,
+    PrintStationHeartbeat,
+    PrintStationResponse,
+    PrintStationStatsResponse,
+    PrintStationUpdate,
     ReturningVisitorCheckInRequest,
     UserCreate,
     UserResponse,
@@ -277,6 +282,12 @@ def get_print_jobs(
             .first()
         )
 
+        print_station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == job.print_station_id)
+            .first()
+        )
+
         results.append({
             "id": job.id,
             "visitor_id": job.visitor_id,
@@ -288,6 +299,16 @@ def get_print_jobs(
             "visitor_type": (
                 visitor.visitor_type
                 if visitor
+                else None
+            ),
+            "station_name": (
+                print_station.name
+                if print_station
+                else None
+            ),
+            "station_slug": (
+                print_station.slug
+                if print_station
                 else None
             ),
             "badge_path": job.badge_path,
@@ -302,16 +323,33 @@ def get_print_jobs(
     return results
 
 
-@app.get("/api/print-jobs/pending", response_model=list[PrintJobResponse])
+@app.get("/api/print-jobs/pending",response_model=list[PrintJobResponse],)
 def get_pending_print_jobs(
+    station: str | None = None,
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(PrintJob)
-        .filter(PrintJob.status == "Pending")
-        .order_by(PrintJob.created_time.asc())
-        .all()
+    query = db.query(PrintJob)
+
+    query = query.filter(
+        PrintJob.status == "Pending"
     )
+
+    if station:
+        print_station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.slug == station,
+                PrintStation.enabled == True,
+            )
+            .first()
+        )
+
+        if print_station:
+            query = query.filter(
+                PrintJob.print_station_id == print_station.id
+            )
+
+    return query.order_by(PrintJob.created_time.asc()).all()
 
 @app.put("/api/print-jobs/{print_job_id}/claim", response_model=PrintJobResponse)
 def claim_print_job(
@@ -453,6 +491,180 @@ def delete_print_job(
 
     return {"status": "deleted"}
 
+@app.get("/api/print-stations",response_model=list[PrintStationResponse])
+def get_print_stations(
+    db: Session = Depends(get_db)
+):
+    return (
+        db.query(PrintStation)
+        .order_by(PrintStation.name.asc())
+        .all()
+    )
+
+@app.post("/api/print-stations",response_model=PrintStationResponse,)
+def create_print_station(
+    request: PrintStationCreate,
+    db: Session = Depends(get_db),
+):
+    existing = (
+        db.query(PrintStation)
+        .filter(PrintStation.slug == request.slug)
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Print station '{request.slug}' already exists",
+        )
+
+    station = PrintStation(
+        name=request.name,
+        slug=request.slug,
+        print_server_host=request.print_server_host,
+        enabled=request.enabled,
+    )
+
+    db.add(station)
+    db.commit()
+    db.refresh(station)
+
+    return station
+
+@app.get(
+    "/api/print-stations/{station_id}/stats",
+    response_model=PrintStationStatsResponse,
+)
+def get_print_station_stats(
+    station_id: int,
+    db: Session = Depends(get_db),
+):
+    pending_jobs = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.print_station_id == station_id,
+            PrintJob.status == "Pending",
+        )
+        .count()
+    )
+
+    printing_jobs = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.print_station_id == station_id,
+            PrintJob.status == "Printing",
+        )
+        .count()
+    )
+
+    completed_jobs = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.print_station_id == station_id,
+            PrintJob.status == "Completed",
+        )
+        .count()
+    )
+
+    failed_jobs = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.print_station_id == station_id,
+            PrintJob.status == "Failed",
+        )
+        .count()
+    )
+
+    return {
+        "pending_jobs": pending_jobs,
+        "printing_jobs": printing_jobs,
+        "completed_jobs": completed_jobs,
+        "failed_jobs": failed_jobs,
+    }
+
+@app.put("/api/print-stations/{station_id}",response_model=PrintStationResponse,)
+def update_print_station(
+    station_id: int,
+    request: PrintStationUpdate,
+    db: Session = Depends(get_db),
+):
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == station_id)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found",
+        )
+
+    station.name = request.name
+    station.slug = request.slug
+    station.print_server_host = request.print_server_host
+    station.enabled = request.enabled
+
+    db.commit()
+    db.refresh(station)
+
+    return station
+
+
+@app.delete("/api/print-stations/{station_id}")
+def delete_print_station(
+    station_id: int,
+    db: Session = Depends(get_db),
+):
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == station_id)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found",
+        )
+
+    station.enabled = False
+
+    db.commit()
+
+    return {
+        "message": f"Print station '{station.name}' disabled"
+    }
+
+@app.post("/api/print-stations/heartbeat")
+def print_station_heartbeat(
+    request: PrintStationHeartbeat,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.slug == request.station_slug)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found",
+        )
+
+    station.last_seen = datetime.utcnow()
+    station.agent_version = request.agent_version
+    station.last_ip = http_request.client.host
+
+    db.commit()
+
+    return {
+        "status": "ok",
+        "station": station.slug,
+    }
+
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
@@ -475,7 +687,6 @@ def get_users(
     db: Session = Depends(get_db)
 ):
     return db.query(User).order_by(User.username).all()
-
 
 @app.post("/api/users",response_model=UserResponse)
 def create_user(

@@ -19,6 +19,14 @@ AGENT_TOKEN = os.environ.get("PBC_PRINT_AGENT_TOKEN", "")
 
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+PRINT_STATION_SLUG = os.environ.get(
+    "PBC_PRINT_STATION_SLUG",
+    "dining-hall",
+)
+
+AGENT_VERSION = "1.0.0"
+
+print(f"Print Station: {PRINT_STATION_SLUG}")
 
 def auth_headers():
     if not AGENT_TOKEN:
@@ -28,16 +36,14 @@ def auth_headers():
         "Authorization": f"Bearer {AGENT_TOKEN}",
     }
 
-
 def get_pending_jobs():
     response = requests.get(
-        f"{API_BASE}/api/print-jobs/pending",
+        f"{API_BASE}/api/print-jobs/pending?station={PRINT_STATION_SLUG}",
         headers=auth_headers(),
         timeout=10,
     )
     response.raise_for_status()
     return response.json()
-
 
 def claim_job(job_id):
     response = requests.put(
@@ -52,7 +58,6 @@ def claim_job(job_id):
 
     response.raise_for_status()
     return response.json()
-
 
 def download_badge(job_id):
     response = requests.get(
@@ -69,7 +74,6 @@ def download_badge(job_id):
 
     return badge_path
 
-
 def mark_job_status(job_id, status, error_message=None):
     payload = {
         "status": status,
@@ -85,7 +89,6 @@ def mark_job_status(job_id, status, error_message=None):
     )
     response.raise_for_status()
     return response.json()
-
 
 def print_badge(badge_path):
     command = [
@@ -110,7 +113,6 @@ def print_badge(badge_path):
     if request_id:
         wait_for_cups_job_to_finish(request_id)
 
-
 def parse_cups_request_id(lp_output):
     words = lp_output.split()
 
@@ -120,6 +122,18 @@ def parse_cups_request_id(lp_output):
 
     return None
 
+def send_heartbeat():
+    response = requests.post(
+        f"{API_BASE}/api/print-stations/heartbeat",
+        json={
+            "station_slug": PRINT_STATION_SLUG,
+            "agent_version": AGENT_VERSION,
+        },
+        headers=auth_headers(),
+        timeout=10,
+    )
+
+    response.raise_for_status()
 
 def wait_for_cups_job_to_finish(request_id):
     deadline = time.time() + PRINT_TIMEOUT_SECONDS
@@ -138,7 +152,6 @@ def wait_for_cups_job_to_finish(request_id):
         time.sleep(1)
 
     raise TimeoutError(f"CUPS print job {request_id} did not finish within {PRINT_TIMEOUT_SECONDS} seconds")
-
 
 def process_job(job):
     job_id = job["id"]
@@ -168,7 +181,6 @@ def process_job(job):
         except Exception as status_error:
             print(f"Failed to update failed status for print job {job_id}: {status_error}")
 
-
 def main():
     print("PBC Visitor Kiosk print agent started")
     print(f"API base: {API_BASE}")
@@ -178,6 +190,8 @@ def main():
 
     while True:
         try:
+            send_heartbeat()
+            
             pending_jobs = get_pending_jobs()
 
             if pending_jobs:
@@ -190,7 +204,6 @@ def main():
             print(f"Print agent polling error: {error}")
 
         time.sleep(POLL_SECONDS)
-
 
 if __name__ == "__main__":
     main()

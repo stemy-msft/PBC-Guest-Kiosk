@@ -43,6 +43,8 @@ class PrintJobResponse(BaseModel):
     created_time: datetime
     claimed_time: Optional[datetime] = None
     completed_time: Optional[datetime] = None
+    station_name: Optional[str] = None
+    station_slug: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -52,6 +54,45 @@ class PrintJobStatusUpdate(BaseModel):
     status: str
     printer_name: Optional[str] = None
     error_message: Optional[str] = None
+
+
+class PrintStationCreate(BaseModel):
+    name: str
+    slug: str
+    print_server_host: str | None = None
+    enabled: bool = True
+
+
+class PrintStationHeartbeat(BaseModel):
+    station_slug: str
+    agent_version: str
+
+
+class PrintStationResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    print_server_host: str | None = None
+    enabled: bool
+
+    last_seen: datetime | None = None
+    agent_version: str | None = None
+    last_ip: str | None = None
+
+    class Config:
+        from_attributes = True
+
+class PrintStationStatsResponse(BaseModel):
+    pending_jobs: int
+    printing_jobs: int
+    completed_jobs: int
+    failed_jobs: int
+    
+class PrintStationUpdate(BaseModel):
+    name: str
+    slug: str
+    print_server_host: str | None = None
+    enabled: bool = True
 
 
 class ReturningVisitorCheckInRequest(BaseModel):
