@@ -55,6 +55,7 @@ class PrintJob(Base):
     badge_path = Column(String, nullable=False)
     status = Column(String, nullable=False, default="Pending")
     printer_name = Column(String, nullable=True)
+    print_station_id = Column(Integer, ForeignKey("print_stations.id"), nullable=False)
     error_message = Column(Text, nullable=True)
 
     created_time = Column(DateTime, nullable=False)
@@ -90,4 +91,15 @@ class User(Base):
     must_change_password = Column(Boolean, nullable=False, default=False)
 
     notes = Column(Text, nullable=True)
+
+class PrintStation(Base):
+    __tablename__ = "print_stations"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, nullable=False)
+
+    printer_name = Column(String)
+    enabled = Column(Boolean, default=True)
+
 

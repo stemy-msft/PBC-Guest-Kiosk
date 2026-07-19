@@ -44,7 +44,6 @@ export async function createVisitor(visitorData) {
   return await handleResponse(response, "Failed to create visitor");
 }
 
-
 export async function uploadPhoto(visitorId, file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -68,11 +67,17 @@ export async function generateBadge(visitorId) {
   return await handleResponse(response, "Failed to generate badge");
 }
 
-export async function createPrintJob(visitorId) {
+export async function createPrintJob(visitorId, station = 1) {
   const response = await fetch(
     `${API_BASE}/api/visitors/${visitorId}/print`,
     {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        station,
+      }),
     }
   );
 

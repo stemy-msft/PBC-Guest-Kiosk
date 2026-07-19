@@ -49,6 +49,9 @@ const isCrtTheme =
 
 const styles = getStyles(theme, isCrtTheme);
 
+// Temp const for setting up Print Station code
+
+
 
 export default function App() {
 
@@ -62,13 +65,23 @@ export default function App() {
   const [checkoutLastName, setCheckoutLastName] = useState("");
   const [checkoutResults, setCheckoutResults] = useState([]);
   const [contactName, setContactName] = useState("");
+  const [editingUser, setEditingUser] = useState(null);
+  const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastName, setLastName] = useState("");
+  const [newUser, setNewUser] = useState({
+    username: "",
+    password: "",
+    display_name: "",
+    email: "",
+    role: "CheckInStaff",
+  });
   const [password, setPassword] = useState("");
-
+  const [phone, setPhone] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const PRINT_STATION = getPrintStationSlug();
   const [printJobs, setPrintJobs] = useState([]);
   const [purpose, setPurpose] = useState("Visiting Camper");
   const [returningPhotoFile, setReturningPhotoFile] = useState(null);
@@ -92,6 +105,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState("");
   const [selectedVisitor, setSelectedVisitor] = useState(null);
+  const [showCreateUser, setShowCreateUser] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
   const [users, setUsers] = useState([]);
@@ -103,18 +117,7 @@ export default function App() {
   const [visitorHistory, setVisitorHistory] = useState([]);
   const [visitorType, setVisitorType] = useState("Parent");
 
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [editingUser, setEditingUser] = useState(null);
-  const [showCreateUser, setShowCreateUser] = useState(false);
 
-  const [newUser, setNewUser] = useState({
-    username: "",
-    password: "",
-    display_name: "",
-    email: "",
-    role: "CheckInStaff",
-  });
 
 
 
@@ -461,7 +464,7 @@ export default function App() {
   }
 
 
-  async function handleDeletePrintJob(job) {
+  async function handleDeletePrintJob(jobId) {
     const confirmed = window.confirm(
       `Delete Print Job #${job}?`
     );
@@ -484,7 +487,7 @@ export default function App() {
 
   async function handleReprintJob(job) {
     try {
-      await createPrintJob(job.visitor_id);
+      await createPrintJob(job.visitor_id, PRINT_STATION);
       await loadPrintJobs();
     } catch (error) {
       console.error(error);
@@ -494,7 +497,7 @@ export default function App() {
 
   async function handleReprintBadge(visitorId) {
     try {
-      await createPrintJob(visitorId);
+      await createPrintJob(visitorId, PRINT_STATION);
 
       setSuccessTitle("Badge Reprint Queued");
       setSuccessMessage(
@@ -533,7 +536,7 @@ export default function App() {
       setBusy(true);
 
       await generateBadge(checkedInVisitorId);
-      await createPrintJob(checkedInVisitorId);
+      await createPrintJob(checkedInVisitorId, PRINT_STATION);
 
       alert("Badge sent to printer.");
 
@@ -554,7 +557,17 @@ export default function App() {
       alert(error.message);
     }
   }
-    
+
+  async function queuePrintJob(visitorId) {
+    return await createPrintJob(visitorId, PRINT_STATION);
+  }  
+
+function getPrintStationSlug() {
+  const params = new URLSearchParams(window.location.search);
+
+  return params.get("station") || "dining-hall";
+}
+
   // End Badge Functions
 
 
@@ -608,7 +621,7 @@ export default function App() {
         await generateBadge(visitor.id);
       }
 
-      await createPrintJob(visitor.id);
+      await createPrintJob(visitor.id, PRINT_STATION);
 
       setSuccessTitle("Check-In Complete");
       setSuccessMessage(
@@ -720,7 +733,7 @@ export default function App() {
 
       await generateBadge(visitor.id);
 
-      await createPrintJob(visitor.id);
+      await createPrintJob(visitor.id, PRINT_STATION);
 
       setSuccessTitle("Visitor Checked In");
       setSuccessMessage(
@@ -2477,7 +2490,7 @@ export default function App() {
     );
   }
 
-  // Print Queue 
+  // Print Queue Screen
   if (screen === "print-queue") {
     
     const pendingJobs = printJobs.filter(
@@ -2672,7 +2685,7 @@ export default function App() {
 
                   <button
                     style={styles.staffActionButton}
-                    onClick={() => createPrintJob(job.visitor_id)}
+                    onClick={() => handleReprintJob(job)}
                   >
                     Reprint Badge
                   </button>
@@ -3124,6 +3137,13 @@ export default function App() {
             <div style={styles.resultCard}>
               <h2>System</h2>
 
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
+              </p>
+
+
               <p>
                 <strong>Theme:</strong> Camp Green
               </p>
@@ -3140,6 +3160,12 @@ export default function App() {
             <div style={styles.resultCard}>
               <h2>Visitor Types</h2>
 
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+              </p>
+
               {VISITOR_TYPES.map((type) => (
                 <div key={type}>
                   • {type}
@@ -3149,6 +3175,12 @@ export default function App() {
 
             <div style={styles.resultCard}>
               <h2>Visit Purposes</h2>
+
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+              </p>
 
               {VISIT_PURPOSES.map((purpose) => (
                 <div key={purpose}>
@@ -3160,6 +3192,12 @@ export default function App() {
             <div style={styles.resultCard}>
               <h2>Required Check-In Fields</h2>
 
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+              </p>
+
               {REQUIRED_CHECKIN_FIELDS.map((field) => (
                 <div key={field}>
                   • {field}
@@ -3170,14 +3208,18 @@ export default function App() {
             <div style={styles.resultCard}>
               <h2>Required Returning Visitor Fields</h2>
 
+              <p
+                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+              >
+                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+              </p>
+
               {REQUIRED_RETURNING_CHECKIN_FIELDS.map((field) => (
                 <div key={field}>
                   • {field}
                 </div>
               ))}
             </div>
-
-
 
           </div>
         </div>

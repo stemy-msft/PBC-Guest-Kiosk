@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 from .auth import (create_access_token, get_current_user, verify_password, hash_password)
 from .database import Base, engine
 from .dependencies import get_db
-from .models import PrintJob, Visitor, User
+from .models import PrintJob, PrintStation, Visitor, User
 from .schemas import (
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
     PasswordResetRequest,
+    PrintJobCreate,
     PrintJobResponse,
     PrintJobStatusUpdate,
     ReturningVisitorCheckInRequest,
@@ -41,7 +42,7 @@ with Session(engine) as db:
 
 app = FastAPI(
     title="PBC Visitor Kiosk",
-    version="0.1",
+    version="0.7",
 )
 
 app.add_middleware(
@@ -52,7 +53,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = Path("uploads")
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+
+# UPLOAD_DIR = Path("uploads")
 PHOTO_DIR = UPLOAD_DIR / "photos"
 BADGE_DIR = UPLOAD_DIR / "badges"
 
@@ -73,7 +78,7 @@ VALID_PRINT_JOB_STATUSES = {
 def root():
     return {
         "application": "PBC Visitor Kiosk",
-        "version": "0.1",
+        "version": "1.0",
     }
 
 
@@ -448,7 +453,6 @@ def delete_print_job(
 
     return {"status": "deleted"}
 
-
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
@@ -464,7 +468,6 @@ def get_user(
         )
 
     return user
-
 
 @app.get("/api/users", response_model=list[UserResponse])
 def get_users(
@@ -508,7 +511,6 @@ def create_user(
 
     return user
 
-
 @app.put("/api/users/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
@@ -551,7 +553,6 @@ def update_user(
 
     return user
 
-
 @app.post("/api/users/{user_id}/reset-password")
 def reset_password(
     user_id: int,
@@ -587,7 +588,6 @@ def reset_password(
         "status": "success",
         "message": "Password reset successfully"
     }
-
 
 @app.put("/api/users/{user_id}/status",response_model=UserResponse,)
 def update_user_status(
@@ -655,7 +655,6 @@ def create_visitor(
 
     return db_visitor
 
-
 @app.get("/api/visitors", response_model=list[VisitorResponse])
 def get_visitors(
     db: Session = Depends(get_db),
@@ -665,7 +664,6 @@ def get_visitors(
         .order_by(Visitor.check_in_time.desc())
         .all()
     )
-
 
 @app.get("/api/visitors/active", response_model=list[VisitorResponse])
 def get_active_visitors(
@@ -678,7 +676,6 @@ def get_active_visitors(
         .order_by(Visitor.check_in_time.desc())
         .all()
     )
-
 
 @app.post("/api/visitors/{visitor_id}/checkin-again",response_model=VisitorResponse,)
 def checkin_again(
@@ -750,7 +747,6 @@ def checkin_again(
 
     return new_visitor
 
-
 @app.get("/api/visitors/{visitor_id}/history")
 def get_visitor_history(
     visitor_id: int,
@@ -784,7 +780,6 @@ def get_visitor_history(
         "history": history,
     }
 
-
 @app.post("/api/visitors/bulk-checkout")
 def bulk_checkout(
     current_user: str = Depends(get_current_user),
@@ -809,7 +804,6 @@ def bulk_checkout(
         "check_out_time": checkout_time,
         "method": "Bulk Checkout",
     }
-
 
 @app.get("/api/visitors/find", response_model=list[VisitorResponse])
 def find_visitors(
@@ -841,13 +835,11 @@ def find_visitors(
         query = query.filter(or_(*filters))
     else:
         return []
-
     return (
         query
         .order_by(Visitor.check_in_time.desc())
         .all()
     )
-
 
 @app.get("/api/visitors/search", response_model=list[VisitorResponse])
 def search_visitors(
@@ -879,7 +871,6 @@ def search_visitors(
         .order_by(Visitor.check_in_time.desc())
         .all()
     )
-
 
 @app.get("/api/visitors/{visitor_id}", response_model=VisitorResponse)
 def get_visitor(
@@ -935,7 +926,6 @@ def update_visitor(
 
     return visitor
 
-
 @app.put("/api/visitors/{visitor_id}/checkout", response_model=VisitorResponse)
 def checkout_visitor(
     visitor_id: int,
@@ -958,7 +948,6 @@ def checkout_visitor(
         db.commit()
         db.refresh(visitor)
     return visitor
-
 
 @app.post("/api/visitors/{visitor_id}/photo", response_model=VisitorResponse)
 def upload_photo(
@@ -985,14 +974,13 @@ def upload_photo(
     image = image.convert("RGB")
     image.save(file_path, format="JPEG", quality=92)
 
-    visitor.photo_path = file_path.as_posix()
+    visitor.photo_path = f"uploads/photos/{visitor_id}.jpg"
     visitor.badge_path = None
 
     db.commit()
     db.refresh(visitor)
 
     return visitor
-
 
 @app.post("/api/visitors/{visitor_id}/badge", response_model=VisitorResponse)
 def generate_badge(
@@ -1024,17 +1012,17 @@ def generate_badge(
         badge_path,
     )
 
-    visitor.badge_path = badge_path.as_posix()
+    visitor.badge_path = f"uploads/badges/{visitor.id}.png"
 
     db.commit()
     db.refresh(visitor)
 
     return visitor
 
-
 @app.post("/api/visitors/{visitor_id}/print", response_model=PrintJobResponse)
 def create_print_job(
     visitor_id: int,
+    request: PrintJobCreate | None = Body(default=None),
     db: Session = Depends(get_db),
 ):
     visitor = (
@@ -1052,11 +1040,30 @@ def create_print_job(
     if not visitor.badge_path:
         raise HTTPException(
             status_code=400,
-            detail="Badge must be generated first",
+            detail="Badge generated first",
+        )
+
+    if request is not None:
+        print_station_id = request.station
+
+    print_station = (
+        db.query(PrintStation)
+        .filter(
+            PrintStation.slug == request.station,
+            PrintStation.enabled == True,
+        )
+        .first()
+    )
+
+    if print_station is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Print station {request.station} was not found.",
         )
 
     print_job = PrintJob(
         visitor_id=visitor.id,
+        print_station_id=print_station.id,
         badge_path=visitor.badge_path,
         status="Pending",
         created_time=datetime.now(),

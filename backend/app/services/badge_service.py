@@ -3,13 +3,24 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from PIL import ImageEnhance
 
-BADGE_WIDTH = 1100
-BADGE_HEIGHT = 696
+from .badge_themes import BADGE_THEMES
+from .badge_layouts import BADGE_LAYOUTS
+import os
 
-BACKGROUND = "white"
-FOREGROUND = "black"
-BORDER = "black"
+THEME = BADGE_THEMES[
+    os.getenv("PBC_BADGE_THEME", "PBC_standard")
+]
 
+BACKGROUND = THEME["background"]
+FOREGROUND = THEME["foreground"]
+BORDER = THEME["border"]
+HEADER_TEXT = THEME["header_text"]
+HEADER_BACKGROUND = THEME["header_background"]
+
+LAYOUT = BADGE_LAYOUTS["PBC_standard"]
+
+BADGE_WIDTH = LAYOUT["width"]
+BADGE_HEIGHT = LAYOUT["height"]
 
 def _font(size: int, bold: bool = False):
     candidates = []
@@ -134,13 +145,13 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
     title_font = _font(56, bold=True)
     draw.text(
         (BADGE_WIDTH // 2, 50),
-        "PBC VISITOR",
-        fill="white",
+        THEME["title"],
+        fill=HEADER_TEXT,
         font=title_font,
         anchor="mm",
     )
 
-    photo_box = (20, 120, 500, 600)
+    photo_box = LAYOUT["photo_box"]
 
     if visitor.photo_path and Path(visitor.photo_path).exists():
         photo = Image.open(visitor.photo_path).convert("RGB")
@@ -166,7 +177,7 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
 
     draw.rectangle(photo_box, outline=FOREGROUND, width=3)
 
-    text_x = 540
+    text_x = LAYOUT["text_x"]
     max_text_width = BADGE_WIDTH - text_x - 24
 
     first_name = visitor.first_name.strip().upper()
@@ -191,14 +202,14 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
     )
 
     draw.text(
-        (text_x, 120),
+        (text_x, LAYOUT["first_name_y"]),
         first_name,
         fill=FOREGROUND,
         font=first_name_font,
     )
 
     draw.text(
-        (text_x, 210),
+        (text_x, LAYOUT["last_name_y"]),
         last_name,
         fill=FOREGROUND,
         font=last_name_font,
@@ -206,7 +217,7 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
 
     type_font = _font(46, bold=True)
     draw.text(
-        (text_x, 300),
+        (text_x, LAYOUT["visitor_type_y"]),
         f"{visitor.visitor_type} Visitor",
         fill=FOREGROUND,
         font=type_font,

@@ -9,6 +9,7 @@ class Config:
         from_attributes = True
 
 
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -28,6 +29,9 @@ class PasswordResetRequest(BaseModel):
     new_password: str
     must_change_password: bool = True
 
+
+class PrintJobCreate(BaseModel):
+    station: str
 
 class PrintJobResponse(BaseModel):
     id: int
