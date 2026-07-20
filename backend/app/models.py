@@ -104,6 +104,25 @@ class PrintStation(Base):
     agent_version = Column(String, nullable=True)
     last_ip = Column(String, nullable=True)
 
+class PrintAgent(Base):
+    __tablename__ = "print_agents"
 
+    id = Column(Integer, primary_key=True)
+    agent_key = Column(String, unique=True, nullable=False)
+
+    hostname = Column(String, nullable=False)
+    printer_name = Column(String, nullable=True)
+    agent_version = Column(String, nullable=True)
+
+    last_seen = Column(DateTime, nullable=True)
+    last_ip = Column(String, nullable=True)
+
+    print_station_id = Column(
+        Integer,
+        ForeignKey("print_stations.id"),
+        nullable=True,
+    )
+
+    enabled = Column(Boolean, nullable=False, default=True)
 
 

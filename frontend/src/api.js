@@ -520,3 +520,46 @@ export async function disablePrintStation(id) {
   return await response.json();
 }
 
+export async function getPrintAgents() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-agents`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load print agents");
+  }
+
+  return await response.json();
+}
+
+export async function assignPrintAgent(agentId, stationId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-agents/${agentId}/assign`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        station_id: stationId,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to assign print agent");
+  }
+
+  return await response.json();
+}
+

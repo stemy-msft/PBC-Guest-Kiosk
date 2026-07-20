@@ -2,12 +2,14 @@ import os
 import subprocess
 import time
 from pathlib import Path
+import socket
 
 import requests
 
-from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / ".env")
+
+ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ENV_PATH)
 
 API_BASE = os.environ.get("PBC_API_BASE", "http://192.168.0.210:8000").rstrip("/")
 PRINTER_NAME = os.environ.get("PBC_PRINTER_NAME", "QL800_BROTHER")
@@ -19,14 +21,12 @@ AGENT_TOKEN = os.environ.get("PBC_PRINT_AGENT_TOKEN", "")
 
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-PRINT_STATION_SLUG = os.environ.get(
-    "PBC_PRINT_STATION_SLUG",
-    "dining-hall",
-)
-
+AGENT_KEY = os.environ.get("PBC_PRINT_AGENT_KEY", "")
+PRINT_STATION_SLUG = os.environ.get("PBC_PRINT_STATION_SLUG", "")
+DEFAULT_PRINT_STATION_SLUG = os.environ.get("PBC_DEFAULT_PRINT_STATION_SLUG", "")
 AGENT_VERSION = "1.0.0"
 
-print(f"Print Station: {PRINT_STATION_SLUG}")
+print(f"Print Station: {PRINT_STATION_SLUG or '(unassigned)'}")
 
 def auth_headers():
     if not AGENT_TOKEN:
@@ -36,12 +36,101 @@ def auth_headers():
         "Authorization": f"Bearer {AGENT_TOKEN}",
     }
 
+def set_env_value(key, value):
+    lines = []
+
+    if ENV_PATH.exists():
+        lines = ENV_PATH.read_text().splitlines()
+
+    updated = False
+    new_lines = []
+
+    for line in lines:
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            updated = True
+        else:
+            new_lines.append(line)
+
+    if not updated:
+        new_lines.append(f"{key}={value}")
+
+    ENV_PATH.write_text("\n".join(new_lines) + "\n")
+
+def register_agent():
+    global AGENT_KEY
+    global PRINT_STATION_SLUG
+
+    station_slug = PRINT_STATION_SLUG or DEFAULT_PRINT_STATION_SLUG or None
+
+    payload = {
+        "agent_key": AGENT_KEY or None,
+        "hostname": socket.gethostname(),
+        "printer_name": PRINTER_NAME,
+        "agent_version": AGENT_VERSION,
+        "station_slug": station_slug,
+    }
+
+    response = requests.post(
+        f"{API_BASE}/api/print-agents/register",
+        json=payload,
+        headers=auth_headers(),
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    #
+    # Persist agent key
+    #
+    assigned_agent_key = data.get("agent_key")
+
+    if assigned_agent_key and assigned_agent_key != AGENT_KEY:
+        print(
+            f"Persisting agent key: "
+            f"{AGENT_KEY} -> {assigned_agent_key}"
+        )
+
+        set_env_value(
+            "PBC_PRINT_AGENT_KEY",
+            assigned_agent_key,
+        )
+
+        AGENT_KEY = assigned_agent_key
+
+    #
+    # Persist station assignment
+    #
+    assigned_station_slug = data.get("station_slug")
+
+    if assigned_station_slug and assigned_station_slug != PRINT_STATION_SLUG:
+        print(
+            f"Station assignment updated: "
+            f"{PRINT_STATION_SLUG} -> {assigned_station_slug}"
+        )
+
+        set_env_value(
+            "PBC_PRINT_STATION_SLUG",
+            assigned_station_slug,
+        )
+
+        PRINT_STATION_SLUG = assigned_station_slug
+
+    return data
+
 def get_pending_jobs():
+    if not PRINT_STATION_SLUG:
+        print("Print agent is not assigned to a print station yet.")
+        return []
+
     response = requests.get(
         f"{API_BASE}/api/print-jobs/pending?station={PRINT_STATION_SLUG}",
         headers=auth_headers(),
         timeout=10,
     )
+
     response.raise_for_status()
     return response.json()
 
@@ -190,7 +279,7 @@ def main():
 
     while True:
         try:
-            send_heartbeat()
+            register_agent()
             
             pending_jobs = get_pending_jobs()
 

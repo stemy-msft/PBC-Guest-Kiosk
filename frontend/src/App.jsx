@@ -12,6 +12,7 @@ import {
   disablePrintStation,
   findVisitors,
   generateBadge,
+  getPrintAgents,
   getPrintJobs,
   getPrintStations,
   getPendingPrintJobs,
@@ -131,7 +132,9 @@ export default function App() {
   const [visitorType, setVisitorType] = useState("Parent");
 
 
-
+  const [printAgents, setPrintAgents] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
   
 
 
@@ -205,7 +208,7 @@ export default function App() {
     populateReturningVisitor(selectedVisitor);
   }, [selectedVisitor]);
 
-  // Load when the screen changes to "users" or "print-jobs" or "print-stations"
+  // Load when the screen changes to "users" or "print-jobs" or "print-stations" or "print-agents"
 useEffect(() => {
   if (screen === "users") {
     loadUsers();
@@ -215,6 +218,9 @@ useEffect(() => {
   }
   if (screen === "print-stations") {
     loadPrintStations();
+  }
+  if (screen === "print-agents") {
+    loadPrintAgents();
   }
 }, [screen]);
 
@@ -586,6 +592,16 @@ useEffect(() => {
     return ageSeconds < 60;
   }
 
+  async function loadPrintAgents() {
+    try {
+      const data = await getPrintAgents();
+      setPrintAgents(data);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
   async function loadPrintJobs() {
     try {
       const jobs = await getPrintJobs();
@@ -600,11 +616,11 @@ useEffect(() => {
     return await createPrintJob(visitorId, PRINT_STATION);
   }  
 
-function getPrintStationSlug() {
-  const params = new URLSearchParams(window.location.search);
+  function getPrintStationSlug() {
+    const params = new URLSearchParams(window.location.search);
 
-  return params.get("station") || "dining-hall";
-}
+    return params.get("station") || "dining-hall";
+  }
 
   // End Badge Functions
 
@@ -1133,6 +1149,32 @@ function getPrintStationSlug() {
               </button>
             </div>
 
+
+<div style={styles.resultCard}>
+  <h2>Print Agents</h2>
+
+  <p
+    style={{
+      marginBottom: "16px",
+      color: theme.textSecondary,
+    }}
+  >
+    Manage registered print servers and station assignments.
+  </p>
+
+  <button
+    style={styles.staffActionButton}
+    onClick={async () => {
+      await loadPrintAgents();
+      setScreen("print-agents");
+    }}
+  >
+    Print Agents
+  </button>
+</div>
+
+
+
             <div style={styles.resultCard}>
               <h2>System Settings</h2>
 
@@ -1476,6 +1518,106 @@ function getPrintStationSlug() {
     );
   }
 
+// Print Agents Screen
+if (screen === "print-agents") {
+  return (
+    <div style={styles.page}>
+      <button
+        style={styles.backButton}
+        onClick={() => setScreen("administration")}
+      >
+        ← Administration
+      </button>
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "1400px",
+          margin: "0 auto",
+          paddingTop: "80px",
+        }}
+      >
+        <h1
+          style={{
+            textAlign: "center",
+            marginBottom: "24px",
+          }}
+        >
+          Print Agents
+        </h1>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fill, minmax(400px, 1fr))",
+            gap: "20px",
+          }}
+        >
+          {printAgents.map((agent) => (
+            <div
+              key={agent.id}
+              style={{
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: "16px",
+                padding: "20px",
+              }}
+            >
+              <h3>{agent.hostname}</h3>
+
+              <div>
+                <strong>Printer:</strong>{" "}
+                {agent.printer_name || "Unknown"}
+              </div>
+
+              <div>
+                <strong>IP Address:</strong>{" "}
+                {agent.last_ip || "Unknown"}
+              </div>
+
+              <div>
+                <strong>Version:</strong>{" "}
+                {agent.agent_version || "Unknown"}
+              </div>
+
+              <div>
+                <strong>Assigned Station:</strong>{" "}
+                {agent.station_name || "UNASSIGNED"}
+              </div>
+
+              <div>
+                <strong>Last Seen:</strong>{" "}
+                {agent.last_seen
+                  ? new Date(agent.last_seen).toLocaleString()
+                  : "Never"}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginTop: "16px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setSelectedAgent(agent);
+                    setShowAssignAgentModal(true);
+                  }}
+                >
+                  Assign Station
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
   // Print Queue Screen
   if (screen === "print-queue") {
     
@@ -1698,371 +1840,371 @@ function getPrintStationSlug() {
     );
   }
 
-// Print Stations Screen
-if (screen === "print-stations") {
+  // Print Stations Screen
+  if (screen === "print-stations") {
 
-  const enabledStations = printStations.filter(
-    (station) => station.enabled
-  ).length;
+    const enabledStations = printStations.filter(
+      (station) => station.enabled
+    ).length;
 
-  const disabledStations = printStations.filter(
-    (station) => !station.enabled
-  ).length;
+    const disabledStations = printStations.filter(
+      (station) => !station.enabled
+    ).length;
 
-  return (
-    <div style={styles.page}>
-      <button
-        style={styles.backButton}
-        onClick={() => setScreen("administration")}
-      >
-        ← Administration
-      </button>
-
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1400px",
-          margin: "0 auto",
-          paddingTop: "80px",
-        }}
-      >
-        <h1
-          style={{
-            textAlign: "center",
-            marginBottom: "24px",
-          }}
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("administration")}
         >
-          Print Stations
-        </h1>
+          ← Administration
+        </button>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "16px",
-            marginBottom: "24px",
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
           }}
         >
-          <div style={styles.userStats}>
-            <h2>{printStations.length}</h2>
-            <p>Total Stations</p>
-          </div>
-
-          <div style={styles.userStats}>
-            <h2>{enabledStations}</h2>
-            <p>Enabled</p>
-          </div>
-
-          <div style={styles.userStats}>
-            <h2>{disabledStations}</h2>
-            <p>Disabled</p>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            justifyContent: "center",
-            marginBottom: "24px",
-          }}
-        >
-          <button
-            style={styles.staffActionButton}
-            onClick={loadPrintStations}
-          >
-            Refresh
-          </button>
-
-          <button
-            style={styles.staffActionButton}
-            onClick={() => {
-              setEditingPrintStation(null);
-
-              setNewPrintStation({
-                name: "",
-                slug: "",
-                print_server_host: "",
-                enabled: true,
-              });
-
-              setShowPrintStationModal(true);
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
             }}
           >
-            Add Print Station
-          </button>
-        </div>
+            Print Stations
+          </h1>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-            gap: "20px",
-          }}
-        >
-          {printStations.map((station) => (
-            <div
-              key={station.id}
-              style={{
-                backgroundColor: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: "16px",
-                padding: "20px",
-              }}
-            >
-              <h3>{station.name}</h3>
-
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Status:</strong>{" "}
-                <span
-                  style={{
-                    color: isStationOnline(station)
-                      ? theme.success
-                      : theme.danger,
-                    fontWeight: "bold",
-                  }}
-                >
-                  {isStationOnline(station)
-                    ? "ONLINE"
-                    : "OFFLINE"}
-                </span>
-              </div>
-
-              <p>
-                <strong>Slug:</strong> {station.slug}
-              </p>
-
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Print Host:</strong>{" "}
-                {station.print_server_host || "Not Configured"}
-              </div>
-
-              <div style={{ marginBottom: "6px" }}>
-                <strong>IP Address:</strong>{" "}
-                {station.last_ip || "Unknown"}
-              </div>
-
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Agent Version:</strong>{" "}
-                {station.agent_version || "Unknown"}
-              </div>
-
-              <div style={{ marginBottom: "6px" }}>
-                <strong>Last Seen:</strong>{" "}
-                {station.last_seen
-                  ? new Date(station.last_seen).toLocaleString()
-                  : "Never"}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                  marginTop: "16px",
-                }}
-              >
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => {
-                    setEditingPrintStation(station);
-
-                    setNewPrintStation({
-                      name: station.name || "",
-                      slug: station.slug || "",
-                      print_server_host: station.print_server_host || "",
-                      enabled: station.enabled,
-                    });
-
-                    setShowPrintStationModal(true);
-                  }}
-                >
-                  Edit
-                </button>
-
-                <button
-                  style={{
-                    ...styles.staffActionButton,
-                    backgroundColor: theme.danger,
-                  }}
-                  onClick={async () => {
-                    const confirmed = window.confirm(
-                      `Disable print station '${station.name}'?`
-                    );
-
-                    if (!confirmed) {
-                      return;
-                    }
-
-                    try {
-                      await disablePrintStation(station.id);
-                      await loadPrintStations();
-                    } catch (error) {
-                      console.error(error);
-                      alert(error.message);
-                    }
-                  }}
-                >
-                  Disable
-                </button>
-              </div>
-              
-            </div>
-          ))}
-        </div>
-
-        {showPrintStationModal && (
           <div
             style={{
-              position: "fixed",
-              inset: 0,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              zIndex: 1000,
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
             }}
           >
-            <div
-              style={{
-                backgroundColor: theme.surface,
-                color: theme.textPrimary,
-                borderRadius: "16px",
-                padding: "24px",
-                width: "600px",
-                maxWidth: "90%",
-              }}
-            >
-              <h2>
-                {editingPrintStation
-                  ? "Edit Print Station"
-                  : "Create Print Station"}
-              </h2>
+            <div style={styles.userStats}>
+              <h2>{printStations.length}</h2>
+              <p>Total Stations</p>
+            </div>
 
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>
-                  Station Name
-                </label>
+            <div style={styles.userStats}>
+              <h2>{enabledStations}</h2>
+              <p>Enabled</p>
+            </div>
 
-                <input
-                  style={styles.input}
-                  value={newPrintStation.name}
-                  onChange={(e) =>
-                    setNewPrintStation({
-                      ...newPrintStation,
-                      name: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>
-                  Station Slug
-                </label>
-
-                <input
-                  style={styles.input}
-                  value={newPrintStation.slug}
-                  onChange={(e) =>
-                    setNewPrintStation({
-                      ...newPrintStation,
-                      slug: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>
-                  Print Server Host
-                </label>
-
-                <input
-                  style={styles.input}
-                  value={newPrintStation.print_server_host}
-                  onChange={(e) =>
-                    setNewPrintStation({
-                      ...newPrintStation,
-                      print_server_host: e.target.value,
-                    })
-                  }
-                />
-              </div>
-
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>
-                  Enabled
-                </label>
-
-                <select
-                  style={styles.input}
-                  value={newPrintStation.enabled ? "true" : "false"}
-                  onChange={(e) =>
-                    setNewPrintStation({
-                      ...newPrintStation,
-                      enabled: e.target.value === "true",
-                    })
-                  }
-                >
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  marginTop: "20px",
-                }}
-              >
-                <button
-                  style={styles.staffActionButton}
-                  onClick={async () => {
-                    try {
-                      if (editingPrintStation) {
-                        await updatePrintStation(
-                          editingPrintStation.id,
-                          newPrintStation
-                        );
-                      } else {
-                        await createPrintStation(
-                          newPrintStation
-                        );
-                      }
-
-                      await loadPrintStations();
-
-                      setShowPrintStationModal(false);
-                      setEditingPrintStation(null);
-                    } catch (error) {
-                      console.error(error);
-                      alert(error.message);
-                    }
-                  }}
-                >
-                  Save
-                </button>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => {
-                    setShowPrintStationModal(false);
-                    setEditingPrintStation(null);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
+            <div style={styles.userStats}>
+              <h2>{disabledStations}</h2>
+              <p>Disabled</p>
             </div>
           </div>
-        )}
 
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "center",
+              marginBottom: "24px",
+            }}
+          >
+            <button
+              style={styles.staffActionButton}
+              onClick={loadPrintStations}
+            >
+              Refresh
+            </button>
+
+            <button
+              style={styles.staffActionButton}
+              onClick={() => {
+                setEditingPrintStation(null);
+
+                setNewPrintStation({
+                  name: "",
+                  slug: "",
+                  print_server_host: "",
+                  enabled: true,
+                });
+
+                setShowPrintStationModal(true);
+              }}
+            >
+              Add Print Station
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {printStations.map((station) => (
+              <div
+                key={station.id}
+                style={{
+                  backgroundColor: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: "16px",
+                  padding: "20px",
+                }}
+              >
+                <h3>{station.name}</h3>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Status:</strong>{" "}
+                  <span
+                    style={{
+                      color: isStationOnline(station)
+                        ? theme.success
+                        : theme.danger,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {isStationOnline(station)
+                      ? "ONLINE"
+                      : "OFFLINE"}
+                  </span>
+                </div>
+
+                <p>
+                  <strong>Slug:</strong> {station.slug}
+                </p>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Print Host:</strong>{" "}
+                  {station.print_server_host || "Not Configured"}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>IP Address:</strong>{" "}
+                  {station.last_ip || "Unknown"}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Agent Version:</strong>{" "}
+                  {station.agent_version || "Unknown"}
+                </div>
+
+                <div style={{ marginBottom: "6px" }}>
+                  <strong>Last Seen:</strong>{" "}
+                  {station.last_seen
+                    ? new Date(station.last_seen).toLocaleString()
+                    : "Never"}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    marginTop: "16px",
+                  }}
+                >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setEditingPrintStation(station);
+
+                      setNewPrintStation({
+                        name: station.name || "",
+                        slug: station.slug || "",
+                        print_server_host: station.print_server_host || "",
+                        enabled: station.enabled,
+                      });
+
+                      setShowPrintStationModal(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    style={{
+                      ...styles.staffActionButton,
+                      backgroundColor: theme.danger,
+                    }}
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        `Disable print station '${station.name}'?`
+                      );
+
+                      if (!confirmed) {
+                        return;
+                      }
+
+                      try {
+                        await disablePrintStation(station.id);
+                        await loadPrintStations();
+                      } catch (error) {
+                        console.error(error);
+                        alert(error.message);
+                      }
+                    }}
+                  >
+                    Disable
+                  </button>
+                </div>
+                
+              </div>
+            ))}
+          </div>
+
+          {showPrintStationModal && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0,0,0,0.5)",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                zIndex: 1000,
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: theme.surface,
+                  color: theme.textPrimary,
+                  borderRadius: "16px",
+                  padding: "24px",
+                  width: "600px",
+                  maxWidth: "90%",
+                }}
+              >
+                <h2>
+                  {editingPrintStation
+                    ? "Edit Print Station"
+                    : "Create Print Station"}
+                </h2>
+
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>
+                    Station Name
+                  </label>
+
+                  <input
+                    style={styles.input}
+                    value={newPrintStation.name}
+                    onChange={(e) =>
+                      setNewPrintStation({
+                        ...newPrintStation,
+                        name: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>
+                    Station Slug
+                  </label>
+
+                  <input
+                    style={styles.input}
+                    value={newPrintStation.slug}
+                    onChange={(e) =>
+                      setNewPrintStation({
+                        ...newPrintStation,
+                        slug: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>
+                    Print Server Host
+                  </label>
+
+                  <input
+                    style={styles.input}
+                    value={newPrintStation.print_server_host}
+                    onChange={(e) =>
+                      setNewPrintStation({
+                        ...newPrintStation,
+                        print_server_host: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>
+                    Enabled
+                  </label>
+
+                  <select
+                    style={styles.input}
+                    value={newPrintStation.enabled ? "true" : "false"}
+                    onChange={(e) =>
+                      setNewPrintStation({
+                        ...newPrintStation,
+                        enabled: e.target.value === "true",
+                      })
+                    }
+                  >
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    marginTop: "20px",
+                  }}
+                >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={async () => {
+                      try {
+                        if (editingPrintStation) {
+                          await updatePrintStation(
+                            editingPrintStation.id,
+                            newPrintStation
+                          );
+                        } else {
+                          await createPrintStation(
+                            newPrintStation
+                          );
+                        }
+
+                        await loadPrintStations();
+
+                        setShowPrintStationModal(false);
+                        setEditingPrintStation(null);
+                      } catch (error) {
+                        console.error(error);
+                        alert(error.message);
+                      }
+                    }}
+                  >
+                    Save
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setShowPrintStationModal(false);
+                      setEditingPrintStation(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   // Returning Visitor Check-In Screen
   if (screen === "returning-checkin") {

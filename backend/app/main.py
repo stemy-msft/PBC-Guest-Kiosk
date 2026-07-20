@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,12 +13,15 @@ from sqlalchemy.orm import Session
 from .auth import (create_access_token, get_current_user, verify_password, hash_password)
 from .database import Base, engine
 from .dependencies import get_db
-from .models import PrintJob, PrintStation, Visitor, User
+from .models import PrintAgent, PrintJob, PrintStation, Visitor, User
 from .schemas import (
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
     PasswordResetRequest,
+    PrintAgentAssign,
+    PrintAgentRegister,
+    PrintAgentResponse,
     PrintJobCreate,
     PrintJobResponse,
     PrintJobStatusUpdate,
@@ -233,6 +237,221 @@ def get_me(
         "must_change_password": user.must_change_password,
     }
 
+@app.get("/api/print-agents",response_model=list[PrintAgentResponse],)
+def get_print_agents(
+    db: Session = Depends(get_db),
+):
+    agents = (
+        db.query(PrintAgent)
+        .order_by(PrintAgent.hostname.asc())
+        .all()
+    )
+
+    results = []
+
+    for agent in agents:
+        station = None
+
+        if agent.print_station_id:
+            station = (
+                db.query(PrintStation)
+                .filter(
+                    PrintStation.id == agent.print_station_id
+                )
+                .first()
+            )
+
+        results.append(
+            {
+                "id": agent.id,
+                "agent_key": agent.agent_key,
+                "hostname": agent.hostname,
+                "printer_name": agent.printer_name,
+                "agent_version": agent.agent_version,
+                "last_seen": agent.last_seen,
+                "last_ip": agent.last_ip,
+                "enabled": agent.enabled,
+                "station_id": station.id if station else None,
+                "station_name": station.name if station else None,
+                "station_slug": station.slug if station else None,
+            }
+        )
+
+    return results
+
+@app.put("/api/print-agents/{agent_id}/assign",response_model=PrintAgentResponse,)
+def assign_print_agent(
+    agent_id: int,
+    request: PrintAgentAssign,
+    db: Session = Depends(get_db),
+):
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    station = None
+
+    if request.station_id is not None:
+        station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == request.station_id)
+            .first()
+        )
+
+        if station is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Print station not found",
+            )
+
+    agent.print_station_id = request.station_id
+
+    db.commit()
+    db.refresh(agent)
+
+    return {
+        "id": agent.id,
+        "agent_key": agent.agent_key,
+        "hostname": agent.hostname,
+        "printer_name": agent.printer_name,
+        "agent_version": agent.agent_version,
+        "last_seen": agent.last_seen,
+        "last_ip": agent.last_ip,
+        "enabled": agent.enabled,
+        "station_id": station.id if station else None,
+        "station_name": station.name if station else None,
+        "station_slug": station.slug if station else None,
+    }
+
+@app.put("/api/print-agents/{agent_id}/assign",response_model=PrintAgentResponse,)
+def assign_print_agent(
+    agent_id: int,
+    request: PrintAgentAssign,
+    db: Session = Depends(get_db),
+):
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    station = None
+
+    if request.station_id is not None:
+        station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == request.station_id)
+            .first()
+        )
+
+        if station is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Print station not found",
+            )
+
+    agent.print_station_id = request.station_id
+
+    db.commit()
+    db.refresh(agent)
+
+    return {
+        "id": agent.id,
+        "agent_key": agent.agent_key,
+        "hostname": agent.hostname,
+        "printer_name": agent.printer_name,
+        "agent_version": agent.agent_version,
+        "last_seen": agent.last_seen,
+        "last_ip": agent.last_ip,
+        "enabled": agent.enabled,
+        "station_id": station.id if station else None,
+        "station_name": station.name if station else None,
+        "station_slug": station.slug if station else None,
+    }
+
+@app.post("/api/print-agents/register",response_model=PrintAgentResponse,)
+def register_print_agent(
+    request: PrintAgentRegister,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    agent = None
+
+    if request.agent_key:
+        agent = (
+            db.query(PrintAgent)
+            .filter(PrintAgent.agent_key == request.agent_key)
+            .first()
+        )
+
+    if agent is None:
+        agent = PrintAgent(
+            agent_key=request.agent_key or str(uuid4()),
+            hostname=request.hostname,
+            printer_name=request.printer_name,
+            agent_version=request.agent_version,
+            enabled=True,
+        )
+
+        db.add(agent)
+
+    station = None
+
+    if request.station_slug:
+        station = (
+            db.query(PrintStation)
+            .filter(PrintStation.slug == request.station_slug)
+            .first()
+        )
+
+        if station is not None:
+            agent.print_station_id = station.id
+
+    agent.hostname = request.hostname
+    agent.printer_name = request.printer_name
+    agent.agent_version = request.agent_version
+    agent.last_seen = datetime.utcnow()
+    agent.last_ip = http_request.client.host
+
+    db.commit()
+    db.refresh(agent)
+
+    assigned_station = None
+
+    if agent.print_station_id is not None:
+        assigned_station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == agent.print_station_id)
+            .first()
+        )
+
+    return {
+        "id": agent.id,
+        "agent_key": agent.agent_key,
+        "hostname": agent.hostname,
+        "printer_name": agent.printer_name,
+        "agent_version": agent.agent_version,
+        "last_seen": agent.last_seen,
+        "last_ip": agent.last_ip,
+        "enabled": agent.enabled,
+        "station_id": assigned_station.id if assigned_station else None,
+        "station_name": assigned_station.name if assigned_station else None,
+        "station_slug": assigned_station.slug if assigned_station else None,
+    }
 
 @app.get("/api/print-jobs/{print_job_id}/badge-image")
 def get_print_job_badge_image(
@@ -531,10 +750,7 @@ def create_print_station(
 
     return station
 
-@app.get(
-    "/api/print-stations/{station_id}/stats",
-    response_model=PrintStationStatsResponse,
-)
+@app.get("/api/print-stations/{station_id}/stats",response_model=PrintStationStatsResponse,)
 def get_print_station_stats(
     station_id: int,
     db: Session = Depends(get_db),

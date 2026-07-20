@@ -29,6 +29,29 @@ class PasswordResetRequest(BaseModel):
     new_password: str
     must_change_password: bool = True
 
+class PrintAgentAssign(BaseModel):
+    station_id: int | None = None
+
+class PrintAgentRegister(BaseModel):
+    agent_key: str | None = None
+    hostname: str
+    printer_name: str
+    agent_version: str
+    station_slug: str | None = None
+
+class PrintAgentResponse(BaseModel):
+    id: int
+    agent_key: str
+    hostname: str
+    printer_name: str | None = None
+    agent_version: str | None = None
+    last_seen: datetime | None = None
+    last_ip: str | None = None
+    enabled: bool
+
+    station_id: int | None = None
+    station_name: str | None = None
+    station_slug: str | None = None
 
 class PrintJobCreate(BaseModel):
     station: str
