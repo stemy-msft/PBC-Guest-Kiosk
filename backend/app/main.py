@@ -331,58 +331,6 @@ def assign_print_agent(
         "station_slug": station.slug if station else None,
     }
 
-@app.put("/api/print-agents/{agent_id}/assign",response_model=PrintAgentResponse,)
-def assign_print_agent(
-    agent_id: int,
-    request: PrintAgentAssign,
-    db: Session = Depends(get_db),
-):
-    agent = (
-        db.query(PrintAgent)
-        .filter(PrintAgent.id == agent_id)
-        .first()
-    )
-
-    if agent is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Print agent not found",
-        )
-
-    station = None
-
-    if request.station_id is not None:
-        station = (
-            db.query(PrintStation)
-            .filter(PrintStation.id == request.station_id)
-            .first()
-        )
-
-        if station is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Print station not found",
-            )
-
-    agent.print_station_id = request.station_id
-
-    db.commit()
-    db.refresh(agent)
-
-    return {
-        "id": agent.id,
-        "agent_key": agent.agent_key,
-        "hostname": agent.hostname,
-        "printer_name": agent.printer_name,
-        "agent_version": agent.agent_version,
-        "last_seen": agent.last_seen,
-        "last_ip": agent.last_ip,
-        "enabled": agent.enabled,
-        "station_id": station.id if station else None,
-        "station_name": station.name if station else None,
-        "station_slug": station.slug if station else None,
-    }
-
 @app.post("/api/print-agents/register",response_model=PrintAgentResponse,)
 def register_print_agent(
     request: PrintAgentRegister,
@@ -409,17 +357,14 @@ def register_print_agent(
 
         db.add(agent)
 
-    station = None
+    assigned_station = None
 
-    if request.station_slug:
-        station = (
+    if agent.print_station_id is not None:
+        assigned_station = (
             db.query(PrintStation)
-            .filter(PrintStation.slug == request.station_slug)
+            .filter(PrintStation.id == agent.print_station_id)
             .first()
         )
-
-        if station is not None:
-            agent.print_station_id = station.id
 
     agent.hostname = request.hostname
     agent.printer_name = request.printer_name

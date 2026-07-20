@@ -105,7 +105,7 @@ def register_agent():
     #
     assigned_station_slug = data.get("station_slug")
 
-    if assigned_station_slug and assigned_station_slug != PRINT_STATION_SLUG:
+    if assigned_station_slug != PRINT_STATION_SLUG:
         print(
             f"Station assignment updated: "
             f"{PRINT_STATION_SLUG} -> {assigned_station_slug}"
@@ -113,7 +113,7 @@ def register_agent():
 
         set_env_value(
             "PBC_PRINT_STATION_SLUG",
-            assigned_station_slug,
+            assigned_station_slug or "",
         )
 
         PRINT_STATION_SLUG = assigned_station_slug

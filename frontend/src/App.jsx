@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  assignPrintAgent,
   bulkCheckout,
   checkInAgain,
   checkoutVisitor,
@@ -1165,6 +1166,7 @@ useEffect(() => {
   <button
     style={styles.staffActionButton}
     onClick={async () => {
+      await loadPrintStations();
       await loadPrintAgents();
       setScreen("print-agents");
     }}
@@ -1609,7 +1611,104 @@ if (screen === "print-agents") {
                 >
                   Assign Station
                 </button>
+
+                {showAssignAgentModal && selectedAgent && (
+                  <div
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      backgroundColor: "rgba(0,0,0,0.5)",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      zIndex: 1000,
+                    }}
+                  >
+                    <div
+                      style={{
+                        backgroundColor: theme.surface,
+                        color: theme.textPrimary,
+                        borderRadius: "16px",
+                        padding: "24px",
+                        width: "600px",
+                        maxWidth: "90%",
+                      }}
+                    >
+                      <h2>
+                        Assign Station - {selectedAgent.hostname}
+                      </h2>
+
+                      <select
+                        id="agent-station-select"
+                        style={styles.input}
+                        defaultValue={selectedAgent.station_id || ""}
+                      >
+                        <option value="">
+                          Unassigned
+                        </option>
+
+                        {printStations.map((station) => (
+                          <option
+                            key={station.id}
+                            value={station.id}
+                          >
+                            {station.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "12px",
+                          marginTop: "20px",
+                        }}
+                      >
+                        <button
+                          style={styles.staffActionButton}
+                          onClick={async () => {
+                            try {
+                              const stationId =
+                                document.getElementById(
+                                  "agent-station-select"
+                                ).value;
+
+                              await assignPrintAgent(
+                                selectedAgent.id,
+                                stationId
+                                  ? Number(stationId)
+                                  : null
+                              );
+
+                              await loadPrintAgents();
+
+                              setShowAssignAgentModal(false);
+                              setSelectedAgent(null);
+                            } catch (error) {
+                              console.error(error);
+                              alert(error.message);
+                            }
+                          }}
+                        >
+                          Save
+                        </button>
+
+                        <button
+                          style={styles.staffActionButton}
+                          onClick={() => {
+                            setShowAssignAgentModal(false);
+                            setSelectedAgent(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
+
             </div>
           ))}
         </div>
