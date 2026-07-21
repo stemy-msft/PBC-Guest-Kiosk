@@ -339,6 +339,8 @@ export async function updateUserStatus(id, enabled) {
   return await response.json();
 }
 
+// Print Job Management Functions
+
 export async function getPrintJobs() {
   const token = localStorage.getItem("access_token");
 
@@ -437,88 +439,8 @@ export async function clearFailedPrintJobs() {
   return await response.json();
 }
 
-export async function getPrintStations() {
-  const token = localStorage.getItem("access_token");
 
-  const response = await fetch(
-    `${API_BASE}/api/print-stations`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to load print stations");
-  }
-
-  return await response.json();
-}
-
-export async function createPrintStation(data) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-stations`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(data),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to create print station");
-  }
-
-  return await response.json();
-}
-
-export async function updatePrintStation(id, data) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-stations/${id}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(data),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to update print station");
-  }
-
-  return await response.json();
-}
-
-export async function disablePrintStation(id) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-stations/${id}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to disable print station");
-  }
-
-  return await response.json();
-}
+// Print Agent Management Functions
 
 export async function getPrintAgents() {
   const token = localStorage.getItem("access_token");
@@ -563,3 +485,136 @@ export async function assignPrintAgent(agentId, stationId) {
   return await response.json();
 }
 
+
+// Print Station Management Functions
+
+export async function deletePrintStation(stationId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-stations/${stationId}/permanent`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail || "Failed to delete print station"
+    );
+  }
+
+  return data;
+}
+
+export async function disablePrintStation(id) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-stations/${id}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to disable print station");
+  }
+
+  return await response.json();
+}
+
+export async function getPrintStations() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-stations`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load print stations");
+  }
+
+  return await response.json();
+}
+
+export async function updatePrintStation(id, data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-stations/${id}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to update print station");
+  }
+
+  return await response.json();
+}
+
+
+export async function createPrintStation(data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-stations`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to create print station");
+  }
+
+  return await response.json();
+}
+
+
+export async function printAgentTestLabel(agentId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-agents/${agentId}/test-label`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.detail || "Failed to queue print agent test label");
+  }
+
+  return data;
+}

@@ -6,7 +6,7 @@ from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Req
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -81,6 +81,144 @@ VALID_PRINT_JOB_STATUSES = {
     "Completed",
     "Failed",
 }
+
+def find_font():
+    candidates = [
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+
+        # Windows
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+
+        # macOS
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+    ]
+
+    for candidate in candidates:
+        if Path(candidate).exists():
+            print(f"Using font: {candidate}")
+            return candidate
+
+    raise RuntimeError("No TrueType font found on this system.")
+
+def get_or_create_system_test_visitor(db: Session) -> Visitor:
+    system_visitor = (
+        db.query(Visitor)
+        .filter(
+            Visitor.first_name == "System",
+            Visitor.last_name == "Printer Test",
+            Visitor.visitor_type == "System",
+        )
+        .first()
+    )
+
+    if system_visitor is not None:
+        return system_visitor
+
+    system_visitor = Visitor(
+        first_name="System",
+        last_name="Printer Test",
+        visitor_type="System",
+        phone=None,
+        email=None,
+        church=None,
+        purpose="Print Agent Test",
+        host_type="System",
+        host_name="Print Agent Test",
+        vehicle_plate=None,
+        notes="Internal system visitor used for print agent test labels.",
+        expected_departure_time=None,
+        photo_path=None,
+        badge_path=None,
+        check_in_time=datetime.now(),
+        check_out_time=datetime.now(),
+        check_out_method="System",
+        badge_printed=False,
+        badge_printed_time=None,
+    )
+
+    db.add(system_visitor)
+    db.commit()
+    db.refresh(system_visitor)
+
+    return system_visitor
+
+def generate_print_agent_test_label(
+    agent: PrintAgent,
+    station: PrintStation,
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    width = 696
+    height = 800
+
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    font_path = find_font() 
+
+    title_font = ImageFont.truetype(font_path, 44)
+    header_font = ImageFont.truetype(font_path, 32)
+    body_font = ImageFont.truetype(font_path, 30)
+
+    print("SUCCESS: TrueType fonts loaded")
+
+
+    draw.rectangle(
+        (8, 8, width - 9, height - 9),
+        outline="black",
+        width=4,
+    )
+
+    draw.rectangle(
+        (0, 0, width, 95),
+        fill="black",
+    )
+
+    draw.text(
+        (width // 2, 50),
+        "KIOSK PRINT TEST",
+        fill="white",
+        font=title_font,
+        anchor="mm",
+    )
+
+    y = 120
+
+    rows = [
+        ("Station", station.name),
+        ("Station Slug", station.slug),
+        ("Agent Hostname", agent.hostname),
+        ("Printer", agent.printer_name or "Unknown"),
+        ("Agent Version", agent.agent_version or "Unknown"),
+        ("Agent IP", agent.last_ip or "Unknown"),
+        ("Generated", datetime.now().strftime("%b %d, %Y %I:%M %p")),
+    ]
+
+    for label, value in rows:
+        draw.text(
+            (40, y),
+            f"{label}:",
+            fill="black",
+            font=header_font,
+        )
+
+        draw.text(
+            (40, y + 38),
+            str(value),
+            fill="black",
+            font=body_font,
+        )
+
+        y += 95
+
+    image.save(output_path, format="PNG")
+    return output_path
 
 
 @app.get("/")
@@ -297,6 +435,24 @@ def assign_print_agent(
             detail="Print agent not found",
         )
 
+    #
+    # Clear heartbeat data from the currently assigned station
+    # before moving the agent elsewhere.
+    #
+    old_station = None
+
+    if agent.print_station_id is not None:
+        old_station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == agent.print_station_id)
+            .first()
+        )
+
+        if old_station is not None:
+            old_station.last_seen = None
+            old_station.last_ip = None
+            old_station.agent_version = None
+
     station = None
 
     if request.station_id is not None:
@@ -329,6 +485,71 @@ def assign_print_agent(
         "station_id": station.id if station else None,
         "station_name": station.name if station else None,
         "station_slug": station.slug if station else None,
+    }
+
+@app.post("/api/print-agents/{agent_id}/test-label")
+def create_print_agent_test_label(
+    agent_id: int,
+    db: Session = Depends(get_db),
+):
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    if agent.print_station_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Print agent is not assigned to a print station",
+        )
+
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == agent.print_station_id)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Assigned print station not found",
+        )
+
+    system_visitor = get_or_create_system_test_visitor(db)
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    file_name = f"print-agent-test-{agent.id}-{timestamp}.png"
+    badge_path = BADGE_DIR / file_name
+
+    generate_print_agent_test_label(
+        agent=agent,
+        station=station,
+        output_path=badge_path,
+    )
+
+    print_job = PrintJob(
+        visitor_id=system_visitor.id,
+        print_station_id=station.id,
+        badge_path=f"uploads/badges/{file_name}",
+        status="Pending",
+        created_time=datetime.now(),
+    )
+
+    db.add(print_job)
+    db.commit()
+    db.refresh(print_job)
+
+    return {
+        "message": f"Test label queued for {agent.hostname}",
+        "print_job_id": print_job.id,
+        "station": station.name,
     }
 
 @app.post("/api/print-agents/register",response_model=PrintAgentResponse,)
@@ -772,7 +993,7 @@ def update_print_station(
     return station
 
 
-@app.delete("/api/print-stations/{station_id}")
+@app.delete("/api/print-stations/{station_id}/permanent")
 def delete_print_station(
     station_id: int,
     db: Session = Depends(get_db),
@@ -789,12 +1010,26 @@ def delete_print_station(
             detail="Print station not found",
         )
 
-    station.enabled = False
+    assigned_agents = (
+        db.query(PrintAgent)
+        .filter(
+            PrintAgent.print_station_id == station_id
+        )
+        .count()
+    )
+
+    if assigned_agents > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Unassign all print agents before deleting this station",
+        )
+
+    db.delete(station)
 
     db.commit()
 
     return {
-        "message": f"Print station '{station.name}' disabled"
+        "message": f"Print station '{station.name}' deleted"
     }
 
 @app.post("/api/print-stations/heartbeat")
