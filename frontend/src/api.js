@@ -618,3 +618,22 @@ export async function printAgentTestLabel(agentId) {
 
   return data;
 }
+
+export async function getDashboardStats() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/dashboard`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load dashboard stats");
+  }
+
+  return await response.json();
+}

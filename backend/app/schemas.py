@@ -10,6 +10,18 @@ class Config:
 
 
 
+class DashboardStatsResponse(BaseModel):
+    active_visitors: int
+
+    checked_in_today: int
+
+    online_stations: int
+    offline_stations: int
+    maintenance_stations: int
+
+    pending_jobs: int
+    failed_jobs: int
+
 class LoginRequest(BaseModel):
     username: str
     password: str

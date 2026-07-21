@@ -15,6 +15,7 @@ from .database import Base, engine
 from .dependencies import get_db
 from .models import PrintAgent, PrintJob, PrintStation, Visitor, User
 from .schemas import (
+    DashboardStatsResponse,
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
@@ -228,6 +229,81 @@ def root():
         "version": "1.0",
     }
 
+
+@app.get(
+    "/api/dashboard",
+    response_model=DashboardStatsResponse,
+)
+def get_dashboard_stats(
+    db: Session = Depends(get_db),
+):
+    today = datetime.now().date()
+
+    active_visitors = (
+        db.query(Visitor)
+        .filter(Visitor.check_out_time.is_(None))
+        .count()
+    )
+
+    checked_in_today = (
+        db.query(Visitor)
+        .filter(
+            func.date(Visitor.check_in_time) == today
+        )
+        .count()
+    )
+
+    maintenance_stations = (
+        db.query(PrintStation)
+        .filter(PrintStation.enabled == False)
+        .count()
+    )
+
+    enabled_stations = (
+        db.query(PrintStation)
+        .filter(PrintStation.enabled == True)
+        .all()
+    )
+
+    online_stations = 0
+    offline_stations = 0
+
+    for station in enabled_stations:
+        online_agent = (
+            db.query(PrintAgent)
+            .filter(
+                PrintAgent.print_station_id == station.id,
+                PrintAgent.last_seen.is_not(None),
+            )
+            .first()
+        )
+
+        if online_agent:
+            online_stations += 1
+        else:
+            offline_stations += 1
+
+    pending_jobs = (
+        db.query(PrintJob)
+        .filter(PrintJob.status == "Pending")
+        .count()
+    )
+
+    failed_jobs = (
+        db.query(PrintJob)
+        .filter(PrintJob.status == "Failed")
+        .count()
+    )
+
+    return DashboardStatsResponse(
+        active_visitors=active_visitors,
+        checked_in_today=checked_in_today,
+        online_stations=online_stations,
+        offline_stations=offline_stations,
+        maintenance_stations=maintenance_stations,
+        pending_jobs=pending_jobs,
+        failed_jobs=failed_jobs,
+    )
 
 @app.get("/health")
 def health():

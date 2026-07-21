@@ -10,6 +10,7 @@ import {
   createPrintStation,
   createUser,
   createVisitor,
+  getDashboardStats,
   deletePrintJob,
   deletePrintStation,
   disablePrintStation,
@@ -73,6 +74,7 @@ export default function App() {
   const [checkoutLastName, setCheckoutLastName] = useState("");
   const [checkoutResults, setCheckoutResults] = useState([]);
   const [contactName, setContactName] = useState("");
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [editingPrintStation, setEditingPrintStation] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [email, setEmail] = useState("");
@@ -153,6 +155,8 @@ export default function App() {
     const interval = setInterval(() => {
       console.log("Refreshing visitors");
       loadActiveVisitors();
+      console.log("Refreshing stats");
+      loadDashboardStats();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -378,6 +382,8 @@ export default function App() {
       setIsAuthenticated(true);
 
       await loadActiveVisitors();
+      await loadDashboardStats();
+
 
       setScreen("staff");
     } catch (error) {
@@ -502,19 +508,14 @@ export default function App() {
     setReturningVisitor(hydratedVisitor);
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+  async function loadDashboardStats() {
+    try {
+      const data = await getDashboardStats();
+      setDashboardStats(data);
+    } catch (error) {
+      console.error(error);
+    }
+  }
 
 
 
@@ -2559,6 +2560,41 @@ export default function App() {
       );
     }
 
+  // Reporting Screen
+  if (screen === "reporting") {
+    return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div style={styles.formContainer}>
+          <h1 style={styles.formTitle}>Reporting</h1>
+
+          <p style={styles.instructions}>
+            Reporting and analytics will appear here.
+          </p>
+
+          <div style={styles.resultCard}>
+            <h3>Planned Reports</h3>
+
+            <ul>
+              <li>Check-ins by Location</li>
+              <li>Recent Arrivals</li>
+              <li>Visitor Type Breakdown</li>
+              <li>Hourly Activity</li>
+              <li>Print Station Usage</li>
+              <li>Daily Trends</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Returning Visitor Check-In Screen
   if (screen === "returning-checkin") {
     const existingPhotoUrl = selectedVisitor?.photo_path
@@ -2973,6 +3009,21 @@ export default function App() {
     );
   }
 
+const checkedInToday = activeVisitors.filter((visitor) => {
+  const checkin = new Date(visitor.check_in_time);
+  const now = new Date();
+
+  return (
+    checkin.getFullYear() === now.getFullYear() &&
+    checkin.getMonth() === now.getMonth() &&
+    checkin.getDate() === now.getDate()
+  );
+}).length;
+const stationHealthSummary = "TBD";
+const queueHealthSummary = "TBD";
+
+
+
   // Staff Screen
   if (screen === "staff") {
     if (!isAuthenticated) {
@@ -3014,6 +3065,7 @@ export default function App() {
         </div>
       );
     }
+
 
     return (
       <div style={styles.page}>
@@ -3084,6 +3136,13 @@ export default function App() {
               Settings
             </button>
 
+<button
+  style={styles.staffActionButton}
+  onClick={() => setScreen("reporting")}
+>
+  Reporting
+</button>
+
             <button
               style={styles.staffActionButton}
               onClick={() => {
@@ -3095,6 +3154,44 @@ export default function App() {
             >
               Logout
             </button>
+
+
+{/* Dashboard Summary Cards */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: "16px",
+    marginBottom: "24px",
+  }}
+>
+  <div style={styles.userStats}>
+    <h2>{dashboardStats?.active_visitors ?? 0}</h2>
+    <p>Active Visitors</p>
+  </div>
+
+  <div style={styles.userStats}>
+    <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
+    <p>Checked In Today</p>
+  </div>
+
+  <div style={styles.userStats}>
+    <h2>
+      {dashboardStats?.online_stations ?? 0}/
+      {dashboardStats?.offline_stations ?? 0}/
+      {dashboardStats?.maintenance_stations ?? 0}
+    </h2>
+    <p>Stations O / O / M</p>
+  </div>
+
+  <div style={styles.userStats}>
+    <h2>
+      {dashboardStats?.pending_jobs ?? 0}/
+      {dashboardStats?.failed_jobs ?? 0}
+    </h2>
+    <p>Queue P / F</p>
+  </div>
+</div>
 
             <button
               style={styles.printButton}
