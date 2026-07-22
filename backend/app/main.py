@@ -1,19 +1,19 @@
-from datetime import datetime
-from pathlib import Path
-from uuid import uuid4
-
+from .auth import (create_access_token, get_current_user, verify_password, hash_password)
+from .bootstrap import create_default_admin
+from .database import Base, engine
+from .dependencies import get_db
+from .models import PrintAgent, PrintJob, PrintStation, Visitor, User
+from .services.badge_service import generate_visitor_badge
+from datetime import datetime, timedelta
 from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
-
-from .auth import (create_access_token, get_current_user, verify_password, hash_password)
-from .database import Base, engine
-from .dependencies import get_db
-from .models import PrintAgent, PrintJob, PrintStation, Visitor, User
+from uuid import uuid4
 from .schemas import (
     DashboardStatsResponse,
     LoginRequest,
@@ -24,6 +24,7 @@ from .schemas import (
     PrintAgentRegister,
     PrintAgentResponse,
     PrintJobCreate,
+    PrintJobReassign,
     PrintJobResponse,
     PrintJobStatusUpdate,
     PrintStationCreate,
@@ -31,7 +32,10 @@ from .schemas import (
     PrintStationResponse,
     PrintStationStatsResponse,
     PrintStationUpdate,
+    ReportingSummaryResponse,
     ReturningVisitorCheckInRequest,
+    SettingsResponse,
+    SettingsUpdate,
     UserCreate,
     UserResponse,
     UserStatusUpdate,
@@ -40,10 +44,8 @@ from .schemas import (
     VisitorResponse,
     VisitorUpdateRequest,
 )
-from .services.badge_service import generate_visitor_badge
+import json
 
-from sqlalchemy.orm import Session
-from .bootstrap import create_default_admin
 
 Base.metadata.create_all(bind=engine)
 
@@ -70,11 +72,17 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 # UPLOAD_DIR = Path("uploads")
 PHOTO_DIR = UPLOAD_DIR / "photos"
 BADGE_DIR = UPLOAD_DIR / "badges"
-
 PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 BADGE_DIR.mkdir(parents=True, exist_ok=True)
-
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+print("REGISTERING SETTINGS ENDPOINTS")
+# system_settings.json is used to store system-wide settings that are not stored in the database.
+CONFIG_DIR = BASE_DIR / "config"
+SETTINGS_FILE = CONFIG_DIR / "system_settings.json"
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+print(settings_file := SETTINGS_FILE)
 
 VALID_PRINT_JOB_STATUSES = {
     "Pending",
@@ -229,11 +237,11 @@ def root():
         "version": "1.0",
     }
 
+@app.get("/api/test123")
+def test123():
+    return {"message": "hello"}
 
-@app.get(
-    "/api/dashboard",
-    response_model=DashboardStatsResponse,
-)
+@app.get("/api/dashboard",response_model=DashboardStatsResponse,)
 def get_dashboard_stats(
     db: Session = Depends(get_db),
 ):
@@ -305,6 +313,45 @@ def get_dashboard_stats(
         failed_jobs=failed_jobs,
     )
 
+@app.get("/api/settings",response_model=SettingsResponse,)
+def get_settings(
+    current_user: str = Depends(get_current_user),
+):
+    print(f"Current user: {current_user}")
+    print(f"settings file: {SETTINGS_FILE}")
+    if not SETTINGS_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Settings file not found",
+        )
+
+    with open(
+        SETTINGS_FILE,
+        "r",
+        encoding="utf-8",
+    ) as f:
+        return json.load(f)
+
+@app.put("/api/settings",response_model=SettingsResponse,)
+def update_settings(
+    request: SettingsUpdate,
+    current_user: str = Depends(get_current_user),
+):
+    settings = request.model_dump()
+
+    with open(
+        SETTINGS_FILE,
+        "w",
+        encoding="utf-8",
+    ) as f:
+        json.dump(
+            settings,
+            f,
+            indent=2,
+        )
+
+    return settings
+
 @app.get("/health")
 def health():
     return {
@@ -312,38 +359,22 @@ def health():
         "authentication": "database",
     }
 
-
-@app.post("/api/auth/login",response_model=LoginResponse)
-def login(    
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(
     request: LoginRequest,
     db: Session = Depends(get_db),
 ):
+    submitted_username = request.username.strip()
 
-    print(f"Login attempt: {request.username}")
+    print(f"Login attempt: {submitted_username}")
 
     user = (
         db.query(User)
-        .filter(User.username == request.username)
+        .filter(func.lower(User.username) == submitted_username.lower())
         .first()
     )
 
     print(f"User found: {user is not None}")
-
-    if user:
-        print(f"Stored hash: {user.password_hash}")
-
-        result = verify_password(
-            request.password,
-            user.password_hash
-        )
-
-        print(f"Password match: {result}")
-
-    user = (
-        db.query(User)
-        .filter(User.username == request.username)
-        .first()
-    )
 
     if not user:
         raise HTTPException(
@@ -351,16 +382,22 @@ def login(
             detail="Invalid username or password",
         )
 
+    print(f"Stored hash: {user.password_hash}")
+
+    password_matches = verify_password(
+        request.password,
+        user.password_hash,
+    )
+
+    print(f"Password match: {password_matches}")
+
     if not user.enabled:
         raise HTTPException(
             status_code=403,
             detail="Account disabled",
         )
 
-    if not verify_password(
-        request.password,
-        user.password_hash,
-    ):
+    if not password_matches:
         user.failed_login_count += 1
         db.commit()
 
@@ -374,15 +411,14 @@ def login(
 
     db.commit()
 
-    token = create_access_token(
-        user.username
-    )
+    token = create_access_token(user.username)
 
     return LoginResponse(
         access_token=token,
         token_type="bearer",
+        username=user.username,
+        role=user.role,
     )
-
 
 @app.post("/api/change-password")
 def change_password(
@@ -392,7 +428,10 @@ def change_password(
 ):
     user = (
         db.query(User)
-        .filter(User.username == current_user)
+        .filter(
+            func.lower(User.username)
+            == request.username.lower()
+        )
         .first()
     )
 
@@ -432,7 +471,10 @@ def get_me(
 ):
     user = (
         db.query(User)
-        .filter(User.username == current_user)
+        .filter(
+            func.lower(User.username)
+            == current_user.lower()
+        )
         .first()
     )
 
@@ -726,7 +768,6 @@ def get_print_job_badge_image(
         filename=f"print-job-{print_job_id}.png",
     )
 
-
 @app.get("/api/print-jobs")
 def get_print_jobs(
     db: Session = Depends(get_db),
@@ -783,15 +824,12 @@ def get_print_jobs(
 
     return results
 
-
-@app.get("/api/print-jobs/pending",response_model=list[PrintJobResponse],)
+@app.get("/api/print-jobs/pending", response_model=list[PrintJobResponse])
 def get_pending_print_jobs(
     station: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(PrintJob)
-
-    query = query.filter(
+    query = db.query(PrintJob).filter(
         PrintJob.status == "Pending"
     )
 
@@ -805,12 +843,18 @@ def get_pending_print_jobs(
             .first()
         )
 
-        if print_station:
-            query = query.filter(
-                PrintJob.print_station_id == print_station.id
-            )
+        if print_station is None:
+            return []
 
-    return query.order_by(PrintJob.created_time.asc()).all()
+        query = query.filter(
+            PrintJob.print_station_id == print_station.id
+        )
+
+    return (
+        query
+        .order_by(PrintJob.created_time.asc())
+        .all()
+    )
 
 @app.put("/api/print-jobs/{print_job_id}/claim", response_model=PrintJobResponse)
 def claim_print_job(
@@ -844,6 +888,54 @@ def claim_print_job(
     db.refresh(print_job)
 
     return print_job
+
+@app.put("/api/print-jobs/{job_id}/reassign")
+def reassign_print_job(
+    job_id: int,
+    request: PrintJobReassign,
+    db: Session = Depends(get_db),
+):
+    job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == job_id)
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Print job not found"
+        )
+
+    if job.status != "Pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Only pending jobs may be reassigned"
+        )
+
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == request.station_id)
+        .first()
+    )
+
+    if not station:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found"
+        )
+
+    job.print_station_id = request.station_id
+
+    db.commit()
+    db.refresh(job)
+
+    return {
+        "status": "success",
+        "job_id": job.id,
+        "station_id": station.id,
+        "station_name": station.name,
+    }
 
 @app.delete("/api/print-jobs/completed")
 def clear_completed_print_jobs(
@@ -1137,18 +1229,226 @@ def print_station_heartbeat(
         "station": station.slug,
     }
 
+@app.get("/api/reporting/summary",response_model=ReportingSummaryResponse,)
+def get_reporting_summary(
+    db: Session = Depends(get_db),
+):
+    now = datetime.now()
+    start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_today = start_today + timedelta(days=1)
+
+    check_ins_by_location_rows = (
+        db.query(
+            PrintStation.name,
+            func.count(func.distinct(PrintJob.visitor_id)),
+        )
+        .join(PrintJob, PrintJob.print_station_id == PrintStation.id)
+        .filter(
+            PrintJob.created_time >= start_today,
+            PrintJob.created_time < end_today,
+        )
+        .group_by(PrintStation.name)
+        .order_by(PrintStation.name.asc())
+        .all()
+    )
+
+    check_ins_by_location = [
+        {
+            "label": station_name,
+            "count": count,
+        }
+        for station_name, count in check_ins_by_location_rows
+    ]
+
+    recent_visitors = (
+        db.query(Visitor)
+        .order_by(Visitor.check_in_time.desc())
+        .limit(10)
+        .all()
+    )
+
+    recent_arrivals = []
+
+    for visitor in recent_visitors:
+        print_job_with_station = (
+            db.query(PrintJob, PrintStation)
+            .join(PrintStation, PrintStation.id == PrintJob.print_station_id)
+            .filter(PrintJob.visitor_id == visitor.id)
+            .order_by(PrintJob.created_time.asc())
+            .first()
+        )
+
+        station_name = None
+
+        if print_job_with_station is not None:
+            station_name = print_job_with_station[1].name
+
+        recent_arrivals.append(
+            {
+                "id": visitor.id,
+                "visitor_name": f"{visitor.first_name} {visitor.last_name}",
+                "visitor_type": visitor.visitor_type,
+                "check_in_time": visitor.check_in_time,
+                "station_name": station_name,
+            }
+        )
+
+    visitor_type_rows = (
+        db.query(
+            Visitor.visitor_type,
+            func.count(Visitor.id),
+        )
+        .filter(
+            Visitor.check_in_time >= start_today,
+            Visitor.check_in_time < end_today,
+        )
+        .group_by(Visitor.visitor_type)
+        .order_by(func.count(Visitor.id).desc())
+        .all()
+    )
+
+    visitor_types = [
+        {
+            "label": visitor_type,
+            "count": count,
+        }
+        for visitor_type, count in visitor_type_rows
+    ]
+
+    hour_expr = func.strftime("%H", Visitor.check_in_time)
+
+    hourly_rows = (
+        db.query(
+            hour_expr,
+            func.count(Visitor.id),
+        )
+        .filter(
+            Visitor.check_in_time >= start_today,
+            Visitor.check_in_time < end_today,
+        )
+        .group_by(hour_expr)
+        .all()
+    )
+
+    hourly_counts = {
+        int(hour): count
+        for hour, count in hourly_rows
+        if hour is not None
+    }
+
+    hourly_activity = []
+
+    for hour in range(24):
+        hour_label = datetime.now().replace(
+            hour=hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        ).strftime("%I %p").lstrip("0")
+
+        hourly_activity.append(
+            {
+                "hour": hour,
+                "label": hour_label,
+                "count": hourly_counts.get(hour, 0),
+            }
+        )
+
+    start_trend = start_today - timedelta(days=6)
+    day_expr = func.date(Visitor.check_in_time)
+
+    daily_rows = (
+        db.query(
+            day_expr,
+            func.count(Visitor.id),
+        )
+        .filter(
+            Visitor.check_in_time >= start_trend,
+            Visitor.check_in_time < end_today,
+        )
+        .group_by(day_expr)
+        .order_by(day_expr.asc())
+        .all()
+    )
+
+    daily_counts = {
+        day: count
+        for day, count in daily_rows
+        if day is not None
+    }
+
+    daily_trends = []
+
+    for offset in range(7):
+        day = (start_today - timedelta(days=6 - offset)).date()
+        day_key = day.isoformat()
+
+        daily_trends.append(
+            {
+                "date": day_key,
+                "count": daily_counts.get(day_key, 0),
+            }
+        )
+
+    print_station_usage_rows = (
+        db.query(
+            PrintStation.name,
+            func.count(PrintJob.id),
+        )
+        .join(PrintJob, PrintJob.print_station_id == PrintStation.id)
+        .filter(
+            PrintJob.created_time >= start_today,
+            PrintJob.created_time < end_today,
+        )
+        .group_by(PrintStation.name)
+        .order_by(func.count(PrintJob.id).desc())
+        .all()
+    )
+
+    print_station_usage = [
+        {
+            "label": station_name,
+            "count": count,
+        }
+        for station_name, count in print_station_usage_rows
+    ]
+
+    peak_check_in_times = sorted(
+        [
+            item
+            for item in hourly_activity
+            if item["count"] > 0
+        ],
+        key=lambda item: item["count"],
+        reverse=True,
+    )[:3]
+
+    return ReportingSummaryResponse(
+        check_ins_by_location=check_ins_by_location,
+        recent_arrivals=recent_arrivals,
+        visitor_types=visitor_types,
+        hourly_activity=hourly_activity,
+        daily_trends=daily_trends,
+        print_station_usage=print_station_usage,
+        peak_check_in_times=peak_check_in_times,
+    )
+
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
     current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
 
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="User not found"
+            detail="User not found",
         )
 
     return user
@@ -1166,11 +1466,13 @@ def create_user(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    submitted_username = request.username.strip().lower()
+
     existing_user = (
         db.query(User)
-        .filter(User.username == request.username)
+        .filter(func.lower(User.username) == submitted_username)
         .first()
-    )
+    ).first()
 
     if existing_user:
         raise HTTPException(
@@ -1179,7 +1481,7 @@ def create_user(
         )
 
     user = User(
-        username=request.username,
+        username=func.lower(submitted_username),
         password_hash=hash_password(request.password),
         display_name=request.display_name,
         email=request.email,
@@ -1726,8 +2028,11 @@ def create_print_job(
             detail="Badge generated first",
         )
 
-    if request is not None:
-        print_station_id = request.station
+    if request is None or not request.station:
+        raise HTTPException(
+            status_code=400,
+            detail="Print station is required.",
+        )
 
     print_station = (
         db.query(PrintStation)
@@ -1741,7 +2046,7 @@ def create_print_job(
     if print_station is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Print station {request.station} was not found.",
+            detail=f"Print station {request.station} was not found or is in maintenance mode.",
         )
 
     print_job = PrintJob(
@@ -1757,7 +2062,6 @@ def create_print_job(
     db.refresh(print_job)
 
     return print_job
-
 
 
 

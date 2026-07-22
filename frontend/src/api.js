@@ -637,3 +637,89 @@ export async function getDashboardStats() {
 
   return await response.json();
 }
+
+export async function getReportingSummary() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/reporting/summary`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load reporting summary");
+  }
+
+  return await response.json();
+}
+
+export async function getSettings() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/settings`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load settings");
+  }
+
+  return await response.json();
+}
+
+export async function saveSettings(data) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/settings`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to save settings");
+  }
+
+  return await response.json();
+}
+
+export async function reassignPrintJob(jobId, stationId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/${jobId}/reassign`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        station_id: stationId,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to reassign print job");
+  }
+
+  return await response.json();
+}
+

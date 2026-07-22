@@ -10,24 +10,28 @@ import {
   createPrintStation,
   createUser,
   createVisitor,
-  getDashboardStats,
   deletePrintJob,
   deletePrintStation,
   disablePrintStation,
   findVisitors,
   generateBadge,
   getActiveVisitors,
+  getDashboardStats,
   getPrintAgents,
   getPrintJobs,
   getPrintStations,
   getPendingPrintJobs,
+  getReportingSummary,
+  getSettings,
   getUsers,
   getUser,
   getVisitor,
   getVisitorHistory,
   login,
   printAgentTestLabel,
+  reassignPrintJob,
   resetPassword,
+  saveSettings,
   searchVisitors,
   updatePrintStation,
   uploadPhoto,
@@ -40,7 +44,12 @@ import {
 import { VISITOR_TYPES, VISIT_PURPOSES } from "./constants/options";
 
 // This loads the field definitions for the check-in form
-import { FIELD_KEYS, REQUIRED_CHECKIN_FIELDS, REQUIRED_RETURNING_CHECKIN_FIELDS, getMissingRequiredFieldLabels } from "./constants/fields";
+import {
+  FIELD_KEYS,
+  REQUIRED_CHECKIN_FIELDS,
+  REQUIRED_RETURNING_CHECKIN_FIELDS,
+  getMissingRequiredFieldLabels,
+} from "./constants/fields";
 
 // Import the styles from styles.js  
 import { getStyles } from "./constants/styles";
@@ -48,102 +57,120 @@ import { getStyles } from "./constants/styles";
 // Import the themese from themes.js
 import { themes } from "./constants/themes";
 
-// Change this to switch themes
-const theme = themes.campGreen; // Change this to switch themes
 
-// This will add some retro feel to CRT themes
-const isCrtTheme =
-  theme === themes.retroTerminal ||
-  theme === themes.amberTerminal;
 
-const styles = getStyles(theme, isCrtTheme);
-
-// Temp const for setting up Print Station code
 
 
 
 export default function App() {
 
+  // State variables
   const [activeVisitors, setActiveVisitors] = useState([]);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const canvasRef = useRef(null);
-  const [checkedInVisitorId, setCheckedInVisitorId] = useState(null);
-  const [checkoutFirstName, setCheckoutFirstName] = useState("");
-  const [checkoutLastName, setCheckoutLastName] = useState("");
-  const [checkoutResults, setCheckoutResults] = useState([]);
-  const [contactName, setContactName] = useState("");
   const [dashboardStats, setDashboardStats] = useState(null);
   const [editingPrintStation, setEditingPrintStation] = useState(null);
-  const [editingUser, setEditingUser] = useState(null);
-  const [email, setEmail] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [lastName, setLastName] = useState("");
-  const [newPrintStation, setNewPrintStation] = useState({
-    name: "",
-    slug: "",
-    enabled: true,
-  });
-  const [newUser, setNewUser] = useState({
-    username: "",
-    password: "",
-    display_name: "",
-    email: "",
-    role: "CheckInStaff",
-  });
-  const [password, setPassword] = useState("");
-  const [phone, setPhone] = useState("");
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [newPrintStation, setNewPrintStation] = useState({name: "",slug: "",enabled: true,});
   const PRINT_STATION = getPrintStationSlug();
+  const [printAgents, setPrintAgents] = useState([]);
   const [printStations, setPrintStations] = useState([]);
   const [printStationsLoaded, setPrintStationsLoaded] = useState(false);
   const [printJobs, setPrintJobs] = useState([]);
   const [purpose, setPurpose] = useState("Visiting Camper");
-  const [returningPhotoFile, setReturningPhotoFile] = useState(null);
-  const [returningPhotoPreview, setReturningPhotoPreview] = useState(null);
-  const [returningVisitor, setReturningVisitor] = useState({
-    first_name: "",
-    last_name: "",
-    visitor_type: "",
-    purpose: "",
-    host_type: "",
-    host_name: "",
-    vehicle_plate: "",
-    phone: "",
-    email: "",
-    notes: "",
-    expected_departure_time: null,
-  });
+  const [reportingSummary, setReportingSummary] = useState(null);
   const [screen, setScreen] = useState("home");
   const [screenHistory, setScreenHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedCamera, setSelectedCamera] = useState("");
-  const [selectedVisitor, setSelectedVisitor] = useState(null);
-  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
   const [showPrintStationModal, setShowPrintStationModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
-  const [users, setUsers] = useState([]);
-  const [username, setUsername] = useState("");
   const [videoDevices, setVideoDevices] = useState([]);
   const videoRef = useRef(null);
-  const [vehiclePlate, setVehiclePlate] = useState("");
-  const [visitCount, setVisitCount] = useState(0);
-  const [visitorHistory, setVisitorHistory] = useState([]);
-  const [visitorType, setVisitorType] = useState("Parent");
+
+  const [systemSettings, setSystemSettings] = useState(null);
+  const [editingSettings, setEditingSettings] = useState(null);
+
+  const [selectedPrintJob, setSelectedPrintJob] = useState(null);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [reassignStationId, setReassignStationId] = useState("");
 
 
-  const [printAgents, setPrintAgents] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
+    // User State variables
+    const [editingUser, setEditingUser] = useState(null);
+    const [newUser, setNewUser] = useState({
+      username: "",
+      password: "",
+      display_name: "",
+      email: "",
+      role: "CheckInStaff",
+    });
+    const [password, setPassword] = useState("");
+    const [role, setRole] = useState("");
+    const [showCreateUser, setShowCreateUser] = useState(false);
+    const [users, setUsers] = useState([]);
+    const [username, setUsername] = useState("");
+
+
+    // Visitor State variables
+    const [checkedInVisitorId, setCheckedInVisitorId] = useState(null);
+    const [checkoutFirstName, setCheckoutFirstName] = useState("");
+    const [checkoutLastName, setCheckoutLastName] = useState("");
+    const [checkoutResults, setCheckoutResults] = useState([]);
+    const [contactName, setContactName] = useState("");
+    const [email, setEmail] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [lastName, setLastName] = useState("");
+    const [phone, setPhone] = useState("");
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(null);
+    const [returningPhotoFile, setReturningPhotoFile] = useState(null);
+    const [returningPhotoPreview, setReturningPhotoPreview] = useState(null);
+    const [returningVisitor, setReturningVisitor] = useState({
+      first_name: "",
+      last_name: "",
+      visitor_type: "",
+      purpose: "",
+      host_type: "",
+      host_name: "",
+      vehicle_plate: "",
+      phone: "",
+      email: "",
+      notes: "",
+      expected_departure_time: null,
+    }); 
+    const [selectedVisitor, setSelectedVisitor] = useState(null);
+    const [staffPrintStation, setStaffPrintStation] = useState("");
+    const [vehiclePlate, setVehiclePlate] = useState("");
+    const [visitCount, setVisitCount] = useState(0);
+    const [visitorHistory, setVisitorHistory] = useState([]);
+    const [visitorType, setVisitorType] = useState("Parent");
+
+
+    const refreshSeconds = systemSettings?.auto_refresh_seconds ?? 5;
+
+  // Load system settings on mount
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+  loadSettings();
+}, [isAuthenticated]);
+
+  // Load Camera devices on mount
+  useEffect(() => {
+    loadCameras();
+  }, []);
+
+
   
-
-
-
   // Staff screen refresh every 5 seconds
   useEffect(() => {
     if (screen !== "staff" || !isAuthenticated) {
@@ -157,7 +184,7 @@ export default function App() {
       loadActiveVisitors();
       console.log("Refreshing stats");
       loadDashboardStats();
-    }, 5000);
+    }, refreshSeconds * 1000);
 
     return () => clearInterval(interval);
   }, [screen, isAuthenticated]);
@@ -183,6 +210,11 @@ export default function App() {
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     const savedUsername = localStorage.getItem("username");
+    const savedRole = localStorage.getItem("role");
+
+    console.log("TOKEN:", token);
+    console.log("USERNAME:", savedUsername);
+    console.log("ROLE:", savedRole);
 
     if (token) {
       setIsAuthenticated(true);
@@ -191,10 +223,21 @@ export default function App() {
         setUsername(savedUsername);
       }
 
+      console.log("savedRole =", savedRole);
+
+      if (savedRole) {
+        setRole(savedRole);
+      }
+
       setScreen("staff");
       loadActiveVisitors();
     }
   }, []);
+
+  // Log role state changes for debugging  
+  useEffect(() => {
+    console.log("ROLE STATE:", role);
+  }, [role]);
 
   // Handle camera stream when camera is open
   useEffect(() => {
@@ -234,12 +277,62 @@ export default function App() {
       loadPrintStations();
       loadPrintAgents();
     }
+
+    if (screen === "reporting") {
+      loadReportingSummary();
+    }
+
+    if (screen === "settings") {
+      loadSettings();
+    }
+
   }, [screen]);
 
   // Load station configuration for kiosk users
   useEffect(() => {
     loadPrintStations();
   }, []);
+
+
+// Runtime settings loaded from config/system_settings.json.
+// Constants are only used as safe fallbacks if settings fail to load.
+const defaultThemeName = "campGreen";
+
+const themeName = systemSettings?.theme || defaultThemeName;
+
+const theme =
+  themes[themeName] ||
+  themes[defaultThemeName] ||
+  Object.values(themes)[0];
+
+const visitorTypes =
+  Array.isArray(systemSettings?.visitor_types) &&
+  systemSettings.visitor_types.length > 0
+    ? systemSettings.visitor_types
+    : VISITOR_TYPES;
+
+const visitPurposes =
+  Array.isArray(systemSettings?.visit_purposes) &&
+  systemSettings.visit_purposes.length > 0
+    ? systemSettings.visit_purposes
+    : VISIT_PURPOSES;
+
+const requiredCheckinFields =
+  Array.isArray(systemSettings?.required_checkin_fields)
+    ? systemSettings.required_checkin_fields
+    : REQUIRED_CHECKIN_FIELDS;
+
+const requiredReturningCheckinFields =
+  Array.isArray(systemSettings?.required_returning_checkin_fields)
+    ? systemSettings.required_returning_checkin_fields
+    : REQUIRED_RETURNING_CHECKIN_FIELDS;
+
+// This will add some retro feel to CRT themes.
+const isCrtTheme =
+  theme === themes.retroTerminal ||
+  theme === themes.amberTerminal;
+
+const styles = getStyles(theme, isCrtTheme);
 
 
 
@@ -311,7 +404,6 @@ export default function App() {
     }
   }
 
-
   async function handleFindVisitor() {
     try {
       const results = await findVisitors(
@@ -372,12 +464,31 @@ export default function App() {
     }
   }
   
+  async function handleSaveSettings() {
+    try {
+      const saved = await saveSettings(editingSettings);
+
+      const refreshed = await getSettings();
+
+      setSystemSettings(refreshed);
+      setEditingSettings(refreshed);
+
+      alert("Settings saved successfully.");
+
+      setScreen("settings");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
   async function handleStaffLogin() {
     try {
       const result = await login(username, password);
 
-      localStorage.setItem("access_token", result.access_token);
-      localStorage.setItem("username", username);
+      localStorage.setItem("access_token",result.access_token);
+      localStorage.setItem("username",result.username);
+      localStorage.setItem("role",result.role);
 
       setIsAuthenticated(true);
 
@@ -418,15 +529,32 @@ export default function App() {
     }
   }
 
-  async function loadPrintStations() {
+async function loadPrintStations() {
+  try {
+    const data = await getPrintStations();
+
+    setPrintStations(data);
+
+    if (!staffPrintStation && data.length > 0) {
+      setStaffPrintStation(data[0].slug);
+    }
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  } finally {
+    setPrintStationsLoaded(true);
+  }
+}
+
+  async function loadSettings() {
     try {
-      const data = await getPrintStations();
-      setPrintStations(data);
+      const data = await getSettings();
+
+      setSystemSettings(data);
+      setEditingSettings(data);
     } catch (error) {
       console.error(error);
       alert(error.message);
-    } finally {
-      setPrintStationsLoaded(true);
     }
   }
 
@@ -517,7 +645,15 @@ export default function App() {
     }
   }
 
-
+  async function loadReportingSummary() {
+    try {
+      const data = await getReportingSummary();
+      setReportingSummary(data);
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
 
 
 
@@ -570,7 +706,6 @@ export default function App() {
       color: theme.danger,
     };
   }
-
 
   async function handleClearCompletedJobs() {
     const confirmed = window.confirm(
@@ -630,7 +765,7 @@ export default function App() {
   }
   async function handleReprintJob(job) {
     try {
-      await createPrintJob(job.visitor_id, PRINT_STATION);
+      await createPrintJob(job.visitor_id, staffPrintStation);
       await loadPrintJobs();
     } catch (error) {
       console.error(error);
@@ -640,7 +775,7 @@ export default function App() {
 
   async function handleReprintBadge(visitorId) {
     try {
-      await createPrintJob(visitorId, PRINT_STATION);
+      await createPrintJob(visitorId, staffPrintStation);
 
       setSuccessTitle("Badge Reprint Queued");
       setSuccessMessage(
@@ -679,7 +814,7 @@ export default function App() {
       setBusy(true);
 
       await generateBadge(checkedInVisitorId);
-      await createPrintJob(checkedInVisitorId, PRINT_STATION);
+      await createPrintJob(checkedInVisitorId, staffPrintStation);
 
       alert("Badge sent to printer.");
 
@@ -691,7 +826,6 @@ export default function App() {
     }
   }
 
-
   function isAgentOnline(agent) {
     if (!agent || !agent.last_seen) {
       return false;
@@ -702,7 +836,6 @@ export default function App() {
 
     return ageInSeconds < 60;
   }
-
 
   function isStationOnline(station) {
     const assignedAgent = getAssignedAgentForStation(station);
@@ -720,7 +853,7 @@ export default function App() {
   }
 
   async function queuePrintJob(visitorId) {
-    return await createPrintJob(visitorId, PRINT_STATION);
+    return await createPrintJob(visitorId, staffPrintStation);
   }  
 
   function getPrintStationSlug() {
@@ -771,7 +904,7 @@ export default function App() {
 
   const missingFields = getMissingRequiredFieldLabels(
     checkInValues,
-    REQUIRED_CHECKIN_FIELDS
+    requiredCheckinFields
   );
 
   if (missingFields.length > 0) {
@@ -817,8 +950,8 @@ export default function App() {
       setTimeout(() => {
         setFirstName("");
         setLastName("");
-        setVisitorType("Parent");
-        setPurpose("Visiting Camper");
+        setVisitorType(visitorTypes[0] || "");
+        setPurpose(visitPurposes[0] || "");
         setContactName("");
         setPhotoFile(null);
         setPhotoPreview(null);
@@ -917,7 +1050,7 @@ export default function App() {
 
       await generateBadge(visitor.id);
 
-      await createPrintJob(visitor.id, PRINT_STATION);
+      await createPrintJob(visitor.id, staffPrintStation);
 
       setSuccessTitle("Visitor Checked In");
       setSuccessMessage(
@@ -949,28 +1082,28 @@ export default function App() {
     const missing = [];
 
     if (
-      REQUIRED_CHECKIN_FIELDS.includes("first_name") &&
+      requiredCheckinFields.includes("first_name") &&
       !firstName.trim()
     ) {
       missing.push("First Name");
     }
 
     if (
-      REQUIRED_CHECKIN_FIELDS.includes("last_name") &&
+      requiredCheckinFields.includes("last_name") &&
       !lastName.trim()
     ) {
       missing.push("Last Name");
     }
 
     if (
-      REQUIRED_CHECKIN_FIELDS.includes("host_name") &&
+      requiredCheckinFields.includes("host_name") &&
       !contactName.trim()
     ) {
       missing.push("Camper or Contact Name");
     }
 
     if (
-      REQUIRED_CHECKIN_FIELDS.includes("photo") &&
+      requiredCheckinFields.includes("photo") &&
       !photoFile
     ) {
       missing.push("Visitor Photo");
@@ -1109,7 +1242,7 @@ export default function App() {
     setCameraOpen(false);
   }
 
-  async function loadCamerasDEPRECATED() {
+  async function loadCameras() {
     try {
       // Deprecated?
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1132,6 +1265,7 @@ export default function App() {
       console.error(error);
     }
   }
+
 
   async function openCamera() {
     try {
@@ -1160,6 +1294,8 @@ export default function App() {
         ?.click();
     }
   }
+
+
 
   async function switchCamera(deviceId) {
     if (!deviceId) {
@@ -1204,9 +1340,26 @@ export default function App() {
 
   // Administration Screen
   if (screen === "administration") {
+    if (role !== "Administrator") {
+      return (
+        <div style={styles.page}>
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>Access Denied</h1>
+            <p style={styles.instructions}>
+              Administrator privileges are required to access this screen.
+            </p>
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("staff")}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       
-
       <div style={styles.page}>
         <button
           style={styles.backButton}
@@ -1327,8 +1480,6 @@ export default function App() {
       </div>
     );
   }
-
-
 
   // Check-in Screen
   if (screen === "checkin") {
@@ -1493,7 +1644,7 @@ export default function App() {
                     value={visitorType}
                     onChange={(event) => setVisitorType(event.target.value)}
                 >
-                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                  {visitorTypes.map((visitorTypeOption) => (
                     <option key={visitorTypeOption} value={visitorTypeOption}>
                       {visitorTypeOption}
                     </option>
@@ -1508,7 +1659,7 @@ export default function App() {
                     value={purpose}
                     onChange={(event) => setPurpose(event.target.value)}
                 >
-                  {VISIT_PURPOSES.map((purposeOption) => (
+                  {visitPurposes.map((purposeOption) => (
                     <option key={purposeOption} value={purposeOption}>
                       {purposeOption}
                     </option>
@@ -1586,9 +1737,19 @@ export default function App() {
                   marginBottom: 12,
                 }}
               >
+
+<button
+  style={styles.photoButton}
+  onClick={openCamera}
+>
+  Take Visitor Photo
+</button>
+
+{/*
                 <button
                   style={styles.photoButton}
                   onClick={() => {
+                    
                     const supportsGetUserMedia =
                       navigator.mediaDevices &&
                       typeof navigator.mediaDevices.getUserMedia === "function";
@@ -1602,6 +1763,7 @@ export default function App() {
                   >
                   Take Visitor Photo
                 </button> 
+*/}
                 </p>
             </div>
           </div>
@@ -1735,6 +1897,380 @@ export default function App() {
       </div>
     );
   }
+
+  //Edit Settings Screen
+  if (screen === "edit-settings") {
+    if (role !== "Administrator") {
+      return (
+        <div style={styles.page}>
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>Access Denied</h1>
+            <p style={styles.instructions}>
+              Administrator privileges are required to access this screen.
+            </p>
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("staff")}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+      return (
+      <div style={styles.page}>
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("settings")}
+        >
+          ← Settings
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1000px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Edit System Settings
+          </h1>
+
+
+          {editingSettings && (
+            <>
+              {/* Theme */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Theme</label>
+                <select
+                  style={styles.input}
+                  value={editingSettings.theme}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      theme: e.target.value,
+                    })
+                  }
+                >
+                  {Object.keys(themes).map((themeName) => (
+                    <option key={themeName} value={themeName}>
+                      {themeName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auto Refresh */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Auto Refresh Seconds</label>
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={editingSettings.auto_refresh_seconds}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      auto_refresh_seconds: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+
+              {/* Visitor Types */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Visitor Types</label>
+
+                {editingSettings.visitor_types.map((type, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <input
+                      style={styles.input}
+                      value={type}
+                      onChange={(e) => {
+                        const updated = [...editingSettings.visitor_types];
+                        updated[index] = e.target.value;
+
+                        setEditingSettings({
+                          ...editingSettings,
+                          visitor_types: updated,
+                        });
+                      }}
+                    />
+
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() =>
+                        setEditingSettings({
+                          ...editingSettings,
+                          visitor_types: editingSettings.visitor_types.filter(
+                            (_, i) => i !== index
+                          ),
+                        })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      visitor_types: [
+                        ...editingSettings.visitor_types,
+                        "",
+                      ],
+                    })
+                  }
+                >
+                  Add Visitor Type
+                </button>
+              </div>
+
+              {/* Visit Purposes */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Visit Purposes</label>
+
+                {editingSettings.visit_purposes.map((purpose, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <input
+                      style={styles.input}
+                      value={purpose}
+                      onChange={(e) => {
+                        const updated = [...editingSettings.visit_purposes];
+                        updated[index] = e.target.value;
+
+                        setEditingSettings({
+                          ...editingSettings,
+                          visit_purposes: updated,
+                        });
+                      }}
+                    />
+
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() =>
+                        setEditingSettings({
+                          ...editingSettings,
+                          visit_purposes: editingSettings.visit_purposes.filter(
+                            (_, i) => i !== index
+                          ),
+                        })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      visit_purposes: [
+                        ...editingSettings.visit_purposes,
+                        "",
+                      ],
+                    })
+                  }
+                >
+                  Add Visit Purpose
+                </button>
+              </div>
+
+              {/* Required Check-in Fields */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Required Check-in Fields
+                </label>
+
+                {editingSettings.required_checkin_fields.map(
+                  (field, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <input
+                        style={styles.input}
+                        value={field}
+                        onChange={(e) => {
+                          const updated = [
+                            ...editingSettings.required_checkin_fields,
+                          ];
+
+                          updated[index] = e.target.value;
+
+                          setEditingSettings({
+                            ...editingSettings,
+                            required_checkin_fields: updated,
+                          });
+                        }}
+                      />
+
+                      <button
+                        style={styles.staffActionButton}
+                        onClick={() =>
+                          setEditingSettings({
+                            ...editingSettings,
+                            required_checkin_fields:
+                              editingSettings.required_checkin_fields.filter(
+                                (_, i) => i !== index
+                              ),
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )
+                )}
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      required_checkin_fields: [
+                        ...editingSettings.required_checkin_fields,
+                        "",
+                      ],
+                    })
+                  }
+                >
+                  Add Required Check-in Field
+                </button>
+              </div>
+
+              {/* Required Returning Check-in Fields */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Required Returning Check-in Fields
+                </label>
+
+                {editingSettings.required_returning_checkin_fields.map(
+                  (field, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <input
+                        style={styles.input}
+                        value={field}
+                        onChange={(e) => {
+                          const updated = [
+                            ...editingSettings.required_returning_checkin_fields,
+                          ];
+
+                          updated[index] = e.target.value;
+
+                          setEditingSettings({
+                            ...editingSettings,
+                            required_returning_checkin_fields: updated,
+                          });
+                        }}
+                      />
+
+                      <button
+                        style={styles.staffActionButton}
+                        onClick={() =>
+                          setEditingSettings({
+                            ...editingSettings,
+                            required_returning_checkin_fields:
+                              editingSettings.required_returning_checkin_fields.filter(
+                                (_, i) => i !== index
+                              ),
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )
+                )}
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      required_returning_checkin_fields: [
+                        ...editingSettings.required_returning_checkin_fields,
+                        "",
+                      ],
+                    })
+                  }
+                >
+                  Add Required Returning Field
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  marginTop: "24px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={handleSaveSettings}
+                >
+                  Save Settings
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => setScreen("settings")}
+                >
+                  Cancel
+                </button>
+              </div>
+
+
+
+
+            </>
+          )}
+        </div>
+
+
+
+      </div>
+    );
+  }
+
 
   // Print Agents Screen
   if (screen === "print-agents") {
@@ -2140,6 +2676,20 @@ export default function App() {
                     View Visitor
                   </button>
 
+
+<button
+  style={styles.staffActionButton}
+  onClick={() => {
+    console.log("selectedPrintJob setter", typeof setSelectedPrintJob);
+    console.log("showReassignModal setter", typeof setShowReassignModal);
+
+    setSelectedPrintJob(job);
+    setShowReassignModal(true);
+  }}
+>
+  Redirect
+</button>
+
                   <button
                     style={styles.staffActionButton}
                     onClick={() => handleReprintJob(job)}
@@ -2159,6 +2709,110 @@ export default function App() {
             ))}
           </div>
         </div>
+
+
+{showReassignModal && selectedPrintJob && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+    }}
+  >
+    <div
+      style={{
+        backgroundColor: theme.surface,
+        color: theme.textPrimary,
+        borderRadius: "16px",
+        padding: "24px",
+        width: "600px",
+        maxWidth: "90%",
+      }}
+    >
+      <h2>Redirect Print Job</h2>
+
+      <p>
+        <strong>Visitor:</strong> {selectedPrintJob.visitor_name}
+      </p>
+
+      <p>
+        <strong>Current Station:</strong>{" "}
+        {selectedPrintJob.station_name || "Unknown"}
+      </p>
+
+      <select
+        style={styles.input}
+        value={reassignStationId}
+        onChange={(e) =>
+          setReassignStationId(Number(e.target.value))
+        }
+      >
+        <option value="">
+          Select Destination Station
+        </option>
+
+        {printStations
+          .filter((station) => station.enabled)
+          .map((station) => (
+            <option
+              key={station.id}
+              value={station.id}
+            >
+              {station.name}
+            </option>
+          ))}
+      </select>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          marginTop: "20px",
+        }}
+      >
+        <button
+          style={styles.staffActionButton}
+          onClick={async () => {
+            try {
+              await reassignPrintJob(
+                selectedPrintJob.id,
+                reassignStationId
+              );
+
+              await loadPrintJobs();
+
+              setShowReassignModal(false);
+              setSelectedPrintJob(null);
+              setReassignStationId("");
+            } catch (error) {
+              console.error(error);
+              alert(error.message);
+            }
+          }}
+        >
+          Redirect
+        </button>
+
+        <button
+          style={styles.staffActionButton}
+          onClick={() => {
+            setShowReassignModal(false);
+            setSelectedPrintJob(null);
+            setReassignStationId("");
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
       </div>
     );
   }
@@ -2562,6 +3216,16 @@ export default function App() {
 
   // Reporting Screen
   if (screen === "reporting") {
+    const report = reportingSummary || {
+      check_ins_by_location: [],
+      recent_arrivals: [],
+      visitorTypes: [],
+      hourly_activity: [],
+      daily_trends: [],
+      print_station_usage: [],
+      peak_check_in_times: [],
+    };
+
     return (
       <div style={styles.page}>
         <button
@@ -2571,24 +3235,207 @@ export default function App() {
           ← Staff Dashboard
         </button>
 
-        <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Reporting</h1>
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1400px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            Reporting
+          </h1>
 
-          <p style={styles.instructions}>
-            Reporting and analytics will appear here.
-          </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "24px",
+            }}
+          >
+            <button
+              style={styles.staffActionButton}
+              onClick={loadReportingSummary}
+            >
+              Refresh Reporting
+            </button>
+          </div>
 
-          <div style={styles.resultCard}>
-            <h3>Planned Reports</h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            <div style={styles.resultCard}>
+              <h2>Check-ins by Location</h2>
 
-            <ul>
-              <li>Check-ins by Location</li>
-              <li>Recent Arrivals</li>
-              <li>Visitor Type Breakdown</li>
-              <li>Hourly Activity</li>
-              <li>Print Station Usage</li>
-              <li>Daily Trends</li>
-            </ul>
+              {report.check_ins_by_location.length === 0 ? (
+                <p>No check-ins by location found.</p>
+              ) : (
+                report.check_ins_by_location.map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Recent Arrivals</h2>
+
+              {report.recent_arrivals.length === 0 ? (
+                <p>No recent arrivals found.</p>
+              ) : (
+                report.recent_arrivals.map((arrival) => (
+                  <div
+                    key={arrival.id}
+                    style={{
+                      borderBottom: `1px solid ${theme.border}`,
+                      paddingBottom: "8px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <strong>{arrival.visitor_name}</strong>
+
+                    <div
+                      style={{
+                        color: theme.textSecondary,
+                      }}
+                    >
+                      {arrival.visitor_type}
+                      {" • "}
+                      {arrival.station_name || "Unknown Station"}
+                      {" • "}
+                      {new Date(arrival.check_in_time).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Visitor Types</h2>
+
+              {report.visitorTypes.length === 0 ? (
+                <p>No visitor type data found.</p>
+              ) : (
+                report.visitorTypes.map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Hourly Activity</h2>
+
+              {report.hourly_activity.every((item) => item.count === 0) ? (
+                <p>No hourly activity found for today.</p>
+              ) : (
+                report.hourly_activity
+                  .filter((item) => item.count > 0)
+                  .map((item) => (
+                    <div
+                      key={item.hour}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Daily Trends</h2>
+
+              {report.daily_trends.map((item) => (
+                <div
+                  key={item.date}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span>{new Date(`${item.date}T00:00:00`).toLocaleDateString()}</span>
+                  <strong>{item.count}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Print Station Usage</h2>
+
+              {report.print_station_usage.length === 0 ? (
+                <p>No print station usage found.</p>
+              ) : (
+                report.print_station_usage.map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2>Peak Check-In Times</h2>
+
+              {report.peak_check_in_times.length === 0 ? (
+                <p>No peak check-in times found for today.</p>
+              ) : (
+                report.peak_check_in_times.map((item) => (
+                  <div
+                    key={item.hour}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -2678,7 +3525,7 @@ export default function App() {
                     value={visitorType}
                     onChange={(event) => setVisitorType(event.target.value)}
                 >
-                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                  {visitorTypes.map((visitorTypeOption) => (
                     <option key={visitorTypeOption} value={visitorTypeOption}>
                       {visitorTypeOption}
                     </option>
@@ -2693,7 +3540,7 @@ export default function App() {
                     value={purpose}
                     onChange={(event) => setPurpose(event.target.value)}
                 >
-                  {VISIT_PURPOSES.map((purposeOption) => (
+                  {visitPurposes.map((purposeOption) => (
                     <option key={purposeOption} value={purposeOption}>
                       {purposeOption}
                     </option>
@@ -2891,127 +3738,157 @@ export default function App() {
           ← Staff Dashboard
         </button>
 
-        <div
+        {/* <div
           style={{
-            width: "100%",
-            maxWidth: "1400px",
-            margin: "0 auto",
-            paddingTop: "80px",
+            backgroundColor: "#ffffcc",
+            padding: "10px",
+            marginBottom: "10px",
           }}
         >
-          <h1
-            style={{
-              textAlign: "center",
-              marginBottom: "24px",
-            }}
-          >
-            Settings
-          </h1>
+          username state = [{String(username)}]
+          <br />
+          role state = [{String(role)}]
+          <br />
+          localStorage username = [{String(localStorage.getItem("username"))}]
+          <br />
+          localStorage role = [{String(localStorage.getItem("role"))}]
+        </div> */}
+
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
-              gap: "20px",
+              width: "100%",
+              maxWidth: "1400px",
+              margin: "0 auto",
+              paddingTop: "80px",
             }}
           >
+            <h1
+              style={{
+                textAlign: "center",
+                marginBottom: "24px",
+              }}
+            >
+              Settings
+            </h1>
 
-            <div style={styles.resultCard}>
-              <h2>System</h2>
 
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
-              </p>
+          {/* This button only for admins */}
+          {role === "Administrator" && (
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("edit-settings")}
+            >
+              Edit System Settings
+            </button>
+          )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
+                gap: "20px",
+              }}
+            >
+
+              <div style={styles.resultCard}>
+                <h2>System</h2>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
+                </p>
 
 
-              <p>
-                <strong>Theme:</strong> Camp Green
-              </p>
+                <p>
+                  <strong>Theme:</strong> {systemSettings?.theme ?? "Unknown"}
+                </p>
 
-              <p>
-                <strong>Auto Refresh:</strong> 5 Seconds
-              </p>
+                <p>
+                  <strong>Auto Refresh:</strong>{" "}
+                  {systemSettings?.auto_refresh_seconds ?? 5} Seconds
+                </p>
 
-              <p>
-                <strong>Authentication:</strong> Database / JWT
-              </p>
+                <p>
+                  <strong>Authentication:</strong> Database / JWT
+                </p>
+              </div>
+
+              <div style={styles.resultCard}>
+                <h2>Visitor Types</h2>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+                </p>
+
+                {visitorTypes.map((type) => (
+                  <div key={type}>
+                    • {type}
+                  </div>
+                ))}
+              </div>
+
+              <div style={styles.resultCard}>
+                <h2>Visit Purposes</h2>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+                </p>
+
+                {visitPurposes.map((purpose) => (
+                  <div key={purpose}>
+                    • {purpose}
+                  </div>
+                ))}
+              </div>
+
+              <div style={styles.resultCard}>
+                <h2>Required Check-In Fields</h2>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+                </p>
+
+                {requiredCheckinFields.map((field) => (
+                  <div key={field}>
+                    • {field}
+                  </div>
+                ))}
+              </div>
+
+              <div style={styles.resultCard}>
+                <h2>Required Returning Visitor Fields</h2>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+                </p>
+
+                {required_returning_checkin_fields.map((field) => (
+                  <div key={field}>
+                    • {field}
+                  </div>
+                ))}
+              </div>
+
             </div>
-
-            <div style={styles.resultCard}>
-              <h2>Visitor Types</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
-              </p>
-
-              {VISITOR_TYPES.map((type) => (
-                <div key={type}>
-                  • {type}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Visit Purposes</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
-              </p>
-
-              {VISIT_PURPOSES.map((purpose) => (
-                <div key={purpose}>
-                  • {purpose}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Required Check-In Fields</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
-              </p>
-
-              {REQUIRED_CHECKIN_FIELDS.map((field) => (
-                <div key={field}>
-                  • {field}
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.resultCard}>
-              <h2>Required Returning Visitor Fields</h2>
-
-              <p
-                style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
-              >
-                <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
-              </p>
-
-              {REQUIRED_RETURNING_CHECKIN_FIELDS.map((field) => (
-                <div key={field}>
-                  • {field}
-                </div>
-              ))}
-            </div>
-
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-const checkedInToday = activeVisitors.filter((visitor) => {
-  const checkin = new Date(visitor.check_in_time);
-  const now = new Date();
+
+  const checkedInToday = activeVisitors.filter((visitor) => {
+    const checkin = new Date(visitor.check_in_time);
+    const now = new Date();
 
   return (
     checkin.getFullYear() === now.getFullYear() &&
@@ -3098,11 +3975,72 @@ const queueHealthSummary = "TBD";
         <div style={styles.formContainer}>
           <h1 style={styles.formTitle}>Staff Dashboard</h1>
 
-          <p style={styles.instructions}>
-            <strong>Logged in as {username}</strong>
-            <br />
-            {activeVisitors.length} active visitor(s) currently on campus.
-          </p>
+          {/* Dashboard Summary Cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+              marginTop: "48px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2>{dashboardStats?.active_visitors ?? 0}</h2>
+              <p>Active Visitors</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
+              <p>Checked In Today</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>
+                {dashboardStats?.online_stations ?? 0}/
+                {dashboardStats?.offline_stations ?? 0}/
+                {dashboardStats?.maintenance_stations ?? 0}
+              </h2>
+              <p>Stations</p>
+              <p>Online / Offline / Maint.</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2>
+                {dashboardStats?.pending_jobs ?? 0}/
+                {dashboardStats?.failed_jobs ?? 0}
+              </h2>
+              <p>Queue P / F</p>
+            </div>
+          </div>
+          {/* End Dashboard Summary Cards */}
+
+
+          {/*}
+                    <p style={styles.instructions}>
+                      <strong>Logged in as {username}</strong>
+                      <br />
+                      {activeVisitors.length} active visitor(s) currently on campus.
+                    </p>
+          */}
+
+Your Print Station:
+<select
+  style={styles.input}
+  value={staffPrintStation}
+  onChange={(e) => setStaffPrintStation(e.target.value)}
+>
+  {printStations
+    .filter((station) => station.enabled)
+    .map((station) => (
+      <option
+        key={station.id}
+        value={station.slug}
+      >
+        {station.name}
+      </option>
+    ))}
+</select>          
 
           {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>
@@ -3122,12 +4060,15 @@ const queueHealthSummary = "TBD";
               Print Queue
             </button>
 
-            <button
-              style={styles.staffActionButton}
-              onClick={() => setScreen("administration")}
-            >
-              Administration
-            </button>
+            {/* This button only for admins */}
+            {role === "Administrator" && (
+              <button
+                style={styles.staffActionButton}
+                onClick={() => setScreen("administration")}
+              >
+                Administration
+              </button>
+            )}
 
             <button
               style={styles.staffActionButton}
@@ -3136,12 +4077,12 @@ const queueHealthSummary = "TBD";
               Settings
             </button>
 
-<button
-  style={styles.staffActionButton}
-  onClick={() => setScreen("reporting")}
->
-  Reporting
-</button>
+            <button
+              style={styles.staffActionButton}
+              onClick={() => setScreen("reporting")}
+            >
+              Reporting
+            </button>
 
             <button
               style={styles.staffActionButton}
@@ -3155,46 +4096,8 @@ const queueHealthSummary = "TBD";
               Logout
             </button>
 
-
-{/* Dashboard Summary Cards */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "16px",
-    marginBottom: "24px",
-  }}
->
-  <div style={styles.userStats}>
-    <h2>{dashboardStats?.active_visitors ?? 0}</h2>
-    <p>Active Visitors</p>
-  </div>
-
-  <div style={styles.userStats}>
-    <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
-    <p>Checked In Today</p>
-  </div>
-
-  <div style={styles.userStats}>
-    <h2>
-      {dashboardStats?.online_stations ?? 0}/
-      {dashboardStats?.offline_stations ?? 0}/
-      {dashboardStats?.maintenance_stations ?? 0}
-    </h2>
-    <p>Stations O / O / M</p>
-  </div>
-
-  <div style={styles.userStats}>
-    <h2>
-      {dashboardStats?.pending_jobs ?? 0}/
-      {dashboardStats?.failed_jobs ?? 0}
-    </h2>
-    <p>Queue P / F</p>
-  </div>
-</div>
-
             <button
-              style={styles.printButton}
+              style={{ ...styles.printButton, marginTop: "48px" }}
               onClick={handleBulkCheckout}
             >
               Bulk Checkout Active Visitors
@@ -3706,6 +4609,7 @@ const queueHealthSummary = "TBD";
               })
             }
           >
+            {/* This controls the available roles for users */}
             <option value="Administrator">
               Administrator
             </option>
@@ -3951,7 +4855,7 @@ const queueHealthSummary = "TBD";
                     })
                   }
                 >
-                  {VISITOR_TYPES.map((visitorTypeOption) => (
+                  {visitorTypes.map((visitorTypeOption) => (
                     <option key={visitorTypeOption} value={visitorTypeOption}>
                       {visitorTypeOption}
                     </option>
@@ -3971,7 +4875,7 @@ const queueHealthSummary = "TBD";
                     })
                   }
                 >
-                  {VISIT_PURPOSES.map((visitPurposeOption) => (
+                  {visitPurposes.map((visitPurposeOption) => (
                     <option key={visitPurposeOption} value={visitPurposeOption}>
                       {visitPurposeOption}
                     </option>

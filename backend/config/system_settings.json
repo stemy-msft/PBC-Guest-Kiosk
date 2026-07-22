@@ -1,0 +1,41 @@
+{
+  "theme": "campGreen",
+  "auto_refresh_seconds": 5,
+  "visitor_types": [
+    "Parent",
+    "Grandparent",
+    "Family Member",
+    "Vendor/Service",
+    "Friend",
+    "Minister",
+    "Board Members",
+    "Other Guest",
+    "Land Shark"
+  ],
+  "visit_purposes": [
+    "Visiting Camper",
+    "Dinner",
+    "Family Night",
+    "Awards Ceremony",
+    "Talent Show",
+    "Vendor Delivery",
+    "Service Call",
+    "Other",
+    "Land Shark"
+  ],
+  "required_checkin_fields": [
+    "first_name",
+    "last_name",
+    "host_name",
+    "visitor_type",
+    "purpose",
+    "photo"
+  ],
+  "required_returning_checkin_fields": [
+    "first_name",
+    "last_name",
+    "host_name",
+    "visitor_type",
+    "purpose"
+  ]
+}

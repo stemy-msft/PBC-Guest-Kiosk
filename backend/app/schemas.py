@@ -30,6 +30,8 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+    username: str
+    role: str
 
 
 class PasswordChangeRequest(BaseModel):
@@ -144,6 +146,22 @@ class ReturningVisitorCheckInRequest(BaseModel):
     expected_departure_time: datetime | None = None
     reuse_existing_photo: bool = True
 
+class SettingsResponse(BaseModel):
+    theme: str
+    auto_refresh_seconds: int
+    visitor_types: list[str]
+    visit_purposes: list[str]
+    required_checkin_fields: list[str]
+    required_returning_checkin_fields: list[str]
+
+
+class SettingsUpdate(BaseModel):
+    theme: str
+    auto_refresh_seconds: int
+    visitor_types: list[str]
+    visit_purposes: list[str]
+    required_checkin_fields: list[str]
+    required_returning_checkin_fields: list[str]
 
 class UserCreate(BaseModel):
     username: str
@@ -230,3 +248,47 @@ class VisitorUpdateRequest(BaseModel):
     notes: str | None = None
 
 
+
+
+class PrintJobReassign(BaseModel):
+    station_id: int
+    
+
+class ReportingCountItem(BaseModel):
+    label: str
+    count: int
+
+
+class ReportingRecentArrival(BaseModel):
+    id: int
+    visitor_name: str
+    visitor_type: str
+    check_in_time: datetime
+    station_name: str | None = None
+
+
+class ReportingHourlyItem(BaseModel):
+    hour: int
+    label: str
+    count: int
+
+
+class ReportingDailyTrendItem(BaseModel):
+    date: str
+    count: int
+
+
+class ReportingPeakTimeItem(BaseModel):
+    hour: int
+    label: str
+    count: int
+
+
+class ReportingSummaryResponse(BaseModel):
+    check_ins_by_location: list[ReportingCountItem]
+    recent_arrivals: list[ReportingRecentArrival]
+    visitor_types: list[ReportingCountItem]
+    hourly_activity: list[ReportingHourlyItem]
+    daily_trends: list[ReportingDailyTrendItem]
+    print_station_usage: list[ReportingCountItem]
+    peak_check_in_times: list[ReportingPeakTimeItem]
