@@ -45,6 +45,7 @@ from .schemas import (
     VisitorUpdateRequest,
 )
 import json
+import qrcode
 
 
 Base.metadata.create_all(bind=engine)
@@ -63,17 +64,22 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-UPLOAD_DIR = BASE_DIR / "uploads"
 
 # UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = BASE_DIR / "uploads"
 PHOTO_DIR = UPLOAD_DIR / "photos"
 BADGE_DIR = UPLOAD_DIR / "badges"
+QR_DIR = UPLOAD_DIR / "qr-codes"
+
 PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 BADGE_DIR.mkdir(parents=True, exist_ok=True)
+QR_DIR.mkdir(parents=True, exist_ok=True)
+
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 print("REGISTERING SETTINGS ENDPOINTS")
@@ -229,6 +235,173 @@ def generate_print_agent_test_label(
     image.save(output_path, format="PNG")
     return output_path
 
+def load_system_settings() -> dict:
+    if not SETTINGS_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Settings file not found",
+        )
+
+    with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def build_station_checkin_url(station: PrintStation) -> str:
+    settings = load_system_settings()
+
+    base_url = settings.get("base_checkin_url", "").strip()
+
+    if not base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Base check-in URL is not configured.",
+        )
+
+    base_url = base_url.rstrip("/")
+
+    return f"{base_url}?station={station.slug}"
+
+
+def get_or_create_system_qr_visitor(db: Session) -> Visitor:
+    system_visitor = (
+        db.query(Visitor)
+        .filter(
+            Visitor.first_name == "System",
+            Visitor.last_name == "QR Label",
+            Visitor.visitor_type == "System",
+        )
+        .first()
+    )
+
+    if system_visitor is not None:
+        return system_visitor
+
+    system_visitor = Visitor(
+        first_name="System",
+        last_name="QR Label",
+        visitor_type="System",
+        phone=None,
+        email=None,
+        church=None,
+        purpose="Print Station QR",
+        host_type="System",
+        host_name="Print Station QR",
+        vehicle_plate=None,
+        notes="Internal system visitor used for print station QR code labels.",
+        expected_departure_time=None,
+        photo_path=None,
+        badge_path=None,
+        check_in_time=datetime.now(),
+        check_out_time=datetime.now(),
+        check_out_method="System",
+        badge_printed=False,
+        badge_printed_time=None,
+    )
+
+    db.add(system_visitor)
+    db.commit()
+    db.refresh(system_visitor)
+
+    return system_visitor
+
+
+def generate_print_station_qr_label(
+    station: PrintStation,
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    checkin_url = build_station_checkin_url(station)
+
+    width = 696
+    height = 800
+
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    font_path = find_font()
+
+    title_font = ImageFont.truetype(font_path, 44)
+    station_font = ImageFont.truetype(font_path, 38)
+    body_font = ImageFont.truetype(font_path, 26)
+    small_font = ImageFont.truetype(font_path, 22)
+
+    draw.rectangle(
+        (8, 8, width - 9, height - 9),
+        outline="black",
+        width=4,
+    )
+
+    draw.rectangle(
+        (0, 0, width, 95),
+        fill="black",
+    )
+
+    draw.text(
+        (width // 2, 50),
+        "VISITOR CHECK-IN",
+        fill="white",
+        font=title_font,
+        anchor="mm",
+    )
+
+    draw.text(
+        (width // 2, 135),
+        station.name,
+        fill="black",
+        font=station_font,
+        anchor="mm",
+    )
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
+
+    qr.add_data(checkin_url)
+    qr.make(fit=True)
+
+    qr_image = qr.make_image(
+        fill_color="black",
+        back_color="white",
+    ).convert("RGB")
+
+    qr_image = qr_image.resize((460, 460))
+
+    qr_x = (width - 460) // 2
+    qr_y = 175
+
+    image.paste(qr_image, (qr_x, qr_y))
+
+    draw.text(
+        (width // 2, 675),
+        "Scan to check in at this station",
+        fill="black",
+        font=body_font,
+        anchor="mm",
+    )
+
+    draw.text(
+        (width // 2, 715),
+        f"Station: {station.slug}",
+        fill="black",
+        font=small_font,
+        anchor="mm",
+    )
+
+    draw.text(
+        (width // 2, 750),
+        checkin_url,
+        fill="black",
+        font=small_font,
+        anchor="mm",
+    )
+
+    image.save(output_path, format="PNG")
+
+    return output_path
 
 @app.get("/")
 def root():
@@ -314,17 +487,12 @@ def get_dashboard_stats(
     )
 
 @app.get("/api/settings",response_model=SettingsResponse,)
-def get_settings(
-    current_user: str = Depends(get_current_user),
-):
-    print(f"Current user: {current_user}")
-    print(f"settings file: {SETTINGS_FILE}")
+def get_settings():
     if not SETTINGS_FILE.exists():
         raise HTTPException(
             status_code=404,
             detail="Settings file not found",
         )
-
     with open(
         SETTINGS_FILE,
         "r",
@@ -428,10 +596,7 @@ def change_password(
 ):
     user = (
         db.query(User)
-        .filter(
-            func.lower(User.username)
-            == request.username.lower()
-        )
+        .filter(func.lower(User.username) == current_user.lower())
         .first()
     )
 
@@ -447,22 +612,21 @@ def change_password(
     ):
         raise HTTPException(
             status_code=400,
-            detail="Current password is incorrect",
+            detail="Current password is incorrect.",
         )
 
-    user.password_hash = hash_password(
-        request.new_password
-    )
+    user.password_hash = hash_password(request.new_password)
     user.password_changed_date = datetime.now()
     user.must_change_password = False
+    user.modified_by = current_user
+    user.modified_date = datetime.now()
 
     db.commit()
 
     return {
         "status": "success",
-        "message": "Password updated successfully",
+        "message": "Password updated successfully.",
     }
-
 
 @app.get("/api/me")
 def get_me(
@@ -1132,6 +1296,94 @@ def get_print_station_stats(
         "failed_jobs": failed_jobs,
     }
 
+
+@app.get("/api/print-stations/{station_id}/qr")
+def download_print_station_qr(
+    station_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == station_id)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found",
+        )
+
+    file_name = f"station-qr-{station.slug}.png"
+    qr_path = QR_DIR / file_name
+
+    generate_print_station_qr_label(
+        station=station,
+        output_path=qr_path,
+    )
+
+    return FileResponse(
+        path=str(qr_path),
+        media_type="image/png",
+        filename=file_name,
+    )
+
+@app.post("/api/print-stations/{station_id}/print-qr")
+def print_station_qr_label(
+    station_id: int,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == station_id)
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print station not found",
+        )
+
+    if not station.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Print station is in maintenance mode.",
+        )
+
+    system_visitor = get_or_create_system_qr_visitor(db)
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    file_name = f"print-station-qr-{station.slug}-{timestamp}.png"
+    qr_path = QR_DIR / file_name
+
+    generate_print_station_qr_label(
+        station=station,
+        output_path=qr_path,
+    )
+
+    print_job = PrintJob(
+        visitor_id=system_visitor.id,
+        print_station_id=station.id,
+        badge_path=f"uploads/qr-codes/{file_name}",
+        status="Pending",
+        created_time=datetime.now(),
+    )
+
+    db.add(print_job)
+    db.commit()
+    db.refresh(print_job)
+
+    return {
+        "message": f"QR label queued for {station.name}",
+        "print_job_id": print_job.id,
+        "station": station.name,
+        "station_slug": station.slug,
+        "checkin_url": build_station_checkin_url(station),
+    }
+
 @app.put("/api/print-stations/{station_id}",response_model=PrintStationResponse,)
 def update_print_station(
     station_id: int,
@@ -1472,7 +1724,7 @@ def create_user(
         db.query(User)
         .filter(func.lower(User.username) == submitted_username)
         .first()
-    ).first()
+    )
 
     if existing_user:
         raise HTTPException(
@@ -1481,7 +1733,7 @@ def create_user(
         )
 
     user = User(
-        username=func.lower(submitted_username),
+        username=submitted_username,
         password_hash=hash_password(request.password),
         display_name=request.display_name,
         email=request.email,

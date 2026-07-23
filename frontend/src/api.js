@@ -237,6 +237,7 @@ export async function getUsers() {
   return await response.json();
 }
 
+// Deprecated?
 export async function getUser(id) {
   const token = localStorage.getItem("access_token");
 
@@ -315,6 +316,7 @@ export async function resetPassword(id, newPassword) {
   return await response.json();
 }
 
+
 export async function updateUserStatus(id, enabled) {
   const token = localStorage.getItem("access_token");
 
@@ -360,6 +362,7 @@ export async function getPrintJobs() {
   return await response.json();
 }
 
+// Deprecated?
 export async function getPendingPrintJobs() {
   const token = localStorage.getItem("access_token");
 
@@ -512,6 +515,7 @@ export async function deletePrintStation(stationId) {
   return data;
 }
 
+// Deprecated?
 export async function disablePrintStation(id) {
   const token = localStorage.getItem("access_token");
 
@@ -658,21 +662,12 @@ export async function getReportingSummary() {
 }
 
 export async function getSettings() {
-  const token = localStorage.getItem("access_token");
-
   const response = await fetch(
-    `${API_BASE}/api/settings`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+    `${API_BASE}/api/settings`
   );
-
   if (!response.ok) {
     throw new Error("Failed to load settings");
   }
-
   return await response.json();
 }
 
@@ -723,3 +718,96 @@ export async function reassignPrintJob(jobId, stationId) {
   return await response.json();
 }
 
+  export async function printStationQrLabel(stationId) {
+    const token = localStorage.getItem("access_token");
+
+    const response = await fetch(
+      `${API_BASE}/api/print-stations/${stationId}/print-qr`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Failed to queue print station QR label");
+    }
+
+    return data;
+  }
+
+  export async function downloadPrintStationQr(stationId) {
+    const token = localStorage.getItem("access_token");
+
+    const response = await fetch(
+      `${API_BASE}/api/print-stations/${stationId}/qr`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to download QR code");
+    }
+
+    const blob = await response.blob();
+
+    const disposition = response.headers.get("Content-Disposition");
+
+    let filename = `station-${stationId}-qr.png`;
+
+    if (disposition) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    console.log("Content-Disposition:", disposition);
+    console.log("Filename:", filename);
+
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  }
+
+
+
+
+  export async function changePassword(data) {
+    const token = localStorage.getItem("access_token");
+  const response = await fetch(
+    `${API_BASE}/api/change-password`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      error.detail || "Failed to change password"
+    );
+  }
+    return await response.json();
+  }

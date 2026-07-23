@@ -1,14 +1,11 @@
 from datetime import datetime
 from typing import Optional
-
 from pydantic import BaseModel
 
 
 
 class Config:
         from_attributes = True
-
-
 
 class DashboardStatsResponse(BaseModel):
     active_visitors: int
@@ -149,6 +146,7 @@ class ReturningVisitorCheckInRequest(BaseModel):
 class SettingsResponse(BaseModel):
     theme: str
     auto_refresh_seconds: int
+    base_checkin_url: str
     visitor_types: list[str]
     visit_purposes: list[str]
     required_checkin_fields: list[str]
@@ -158,10 +156,12 @@ class SettingsResponse(BaseModel):
 class SettingsUpdate(BaseModel):
     theme: str
     auto_refresh_seconds: int
+    base_checkin_url: str
     visitor_types: list[str]
     visit_purposes: list[str]
     required_checkin_fields: list[str]
     required_returning_checkin_fields: list[str]
+
 
 class UserCreate(BaseModel):
     username: str
@@ -252,7 +252,7 @@ class VisitorUpdateRequest(BaseModel):
 
 class PrintJobReassign(BaseModel):
     station_id: int
-    
+
 
 class ReportingCountItem(BaseModel):
     label: str

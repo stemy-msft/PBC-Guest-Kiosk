@@ -1,6 +1,32 @@
 // Styles
 export function getStyles(theme, isCrtTheme) {
     return {
+        accountMenuButton: {
+            width: "100%",
+            padding: "10px 14px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "600",
+            textAlign: "left",
+            backgroundColor: theme.primary,
+            color: "#fff",
+            },
+
+        accountMenuDangerButton: {
+            width: "100%",
+            padding: "10px 14px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "600",
+            textAlign: "left",
+            backgroundColor: theme.danger,
+            color: "#fff",
+            },            
+            
         backButton: {
             background: theme.surface,
             border: `1px solid ${theme.border}`,
@@ -317,6 +343,44 @@ export function getStyles(theme, isCrtTheme) {
             fontWeight: 700,
             height: "180px",
             width: "320px",
+        },
+
+        settingsAddButton: {
+            backgroundColor: theme.success,
+            color: theme.successText,
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 16px",
+            cursor: "pointer",
+            fontWeight: 600,
+            marginTop: "8px",
+        },
+
+        settingsDeleteButton: {
+            backgroundColor: theme.danger,
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "0 12px",
+            height: "42px",
+            cursor: "pointer",
+            fontWeight: 600,
+            flexShrink: 0,
+        },
+
+        settingsSectionTitle: {
+            color: theme.primary,
+            fontSize: "1.4rem",
+            fontWeight: 700,
+            marginTop: 0,
+            marginBottom: "16px",
+        },
+
+        settingsListRow: {
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+            marginBottom: "8px",
         },
 
         staffActionButton: {

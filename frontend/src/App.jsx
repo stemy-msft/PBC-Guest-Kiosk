@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   assignPrintAgent,
   bulkCheckout,
+  changePassword,
   checkInAgain,
   checkoutVisitor,
   clearCompletedPrintJobs,
@@ -12,7 +13,7 @@ import {
   createVisitor,
   deletePrintJob,
   deletePrintStation,
-  disablePrintStation,
+  downloadPrintStationQr,
   findVisitors,
   generateBadge,
   getActiveVisitors,
@@ -20,15 +21,14 @@ import {
   getPrintAgents,
   getPrintJobs,
   getPrintStations,
-  getPendingPrintJobs,
   getReportingSummary,
   getSettings,
   getUsers,
-  getUser,
   getVisitor,
   getVisitorHistory,
   login,
   printAgentTestLabel,
+  printStationQrLabel,
   reassignPrintJob,
   resetPassword,
   saveSettings,
@@ -39,6 +39,8 @@ import {
   updateUserStatus,
   updateVisitor,
 } from "./api";
+
+
 
 // This loads the configurable options in the app
 import { VISITOR_TYPES, VISIT_PURPOSES } from "./constants/options";
@@ -59,9 +61,6 @@ import { themes } from "./constants/themes";
 
 
 
-
-
-
 export default function App() {
 
   // State variables
@@ -69,6 +68,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
+  const [cameraTarget, setCameraTarget] = useState("new");
   const canvasRef = useRef(null);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [editingPrintStation, setEditingPrintStation] = useState(null);
@@ -102,7 +102,10 @@ export default function App() {
 
 
     // User State variables
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [currentPassword, setCurrentPassword] = useState("");
     const [editingUser, setEditingUser] = useState(null);
+    const [newPassword, setNewPassword] = useState("");
     const [newUser, setNewUser] = useState({
       username: "",
       password: "",
@@ -111,6 +114,11 @@ export default function App() {
       role: "CheckInStaff",
     });
     const [password, setPassword] = useState("");
+    const [profileUser, setProfileUser] = useState(null);
+    const [profileForm, setProfileForm] = useState({
+      display_name: "",
+      email: "",
+    });
     const [role, setRole] = useState("");
     const [showCreateUser, setShowCreateUser] = useState(false);
     const [users, setUsers] = useState([]);
@@ -151,25 +159,20 @@ export default function App() {
     const [visitCount, setVisitCount] = useState(0);
     const [visitorHistory, setVisitorHistory] = useState([]);
     const [visitorType, setVisitorType] = useState("Parent");
-
+    const [showAccountMenu, setShowAccountMenu] = useState(false);
 
     const refreshSeconds = systemSettings?.auto_refresh_seconds ?? 5;
 
+
   // Load system settings on mount
   useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-
-  loadSettings();
-}, [isAuthenticated]);
+    loadSettings();
+  }, []);
 
   // Load Camera devices on mount
   useEffect(() => {
     loadCameras();
   }, []);
-
-
   
   // Staff screen refresh every 5 seconds
   useEffect(() => {
@@ -177,12 +180,8 @@ export default function App() {
       return;
     }
 
-    console.log("Starting staff auto refresh");
-
     const interval = setInterval(() => {
-      console.log("Refreshing visitors");
       loadActiveVisitors();
-      console.log("Refreshing stats");
       loadDashboardStats();
     }, refreshSeconds * 1000);
 
@@ -194,8 +193,6 @@ export default function App() {
     if (screen !== "print-queue" || !isAuthenticated) {
       return;
     }
-
-    console.log("Starting print queue auto refresh");
 
     loadPrintJobs();
 
@@ -212,18 +209,12 @@ export default function App() {
     const savedUsername = localStorage.getItem("username");
     const savedRole = localStorage.getItem("role");
 
-    console.log("TOKEN:", token);
-    console.log("USERNAME:", savedUsername);
-    console.log("ROLE:", savedRole);
-
     if (token) {
       setIsAuthenticated(true);
 
       if (savedUsername) {
         setUsername(savedUsername);
       }
-
-      console.log("savedRole =", savedRole);
 
       if (savedRole) {
         setRole(savedRole);
@@ -234,29 +225,28 @@ export default function App() {
     }
   }, []);
 
-  // Log role state changes for debugging  
+  // Load camera stream into video element when camera is open
   useEffect(() => {
-    console.log("ROLE STATE:", role);
-  }, [role]);
 
-  // Handle camera stream when camera is open
-  useEffect(() => {
     if (cameraOpen && cameraStream && videoRef.current) {
+
       videoRef.current.srcObject = cameraStream;
 
-      videoRef.current.play().catch((error) => {
-        console.error("Video play error:", error);
-      });
+      videoRef.current
+        .play()
+        .catch((error) => {
+          console.error("Video play error:", error);
+        });
     }
   }, [cameraOpen, cameraStream]);
 
   // Populate returning visitor details when selectedVisitor changes
-  useEffect(() => {
-    if (!selectedVisitor) {
-      return;
-    }
-    populateReturningVisitor(selectedVisitor);
-  }, [selectedVisitor]);
+    useEffect(() => {
+      if (!selectedVisitor) {
+        return;
+      }
+      populateReturningVisitor(selectedVisitor);
+    }, [selectedVisitor]);
 
   // Load data when screens change
   useEffect(() => {
@@ -323,8 +313,8 @@ const requiredCheckinFields =
     : REQUIRED_CHECKIN_FIELDS;
 
 const requiredReturningCheckinFields =
-  Array.isArray(systemSettings?.required_returning_checkin_fields)
-    ? systemSettings.required_returning_checkin_fields
+  Array.isArray(systemSettings?.requiredReturningCheckinFields)
+    ? systemSettings.requiredReturningCheckinFields
     : REQUIRED_RETURNING_CHECKIN_FIELDS;
 
 // This will add some retro feel to CRT themes.
@@ -344,7 +334,7 @@ const styles = getStyles(theme, isCrtTheme);
       return null;
     }
 
-    return `${import.meta.env.VITE_API_BASE}/${photoPath.replaceAll("\\", "/")}`;
+    return `${import.meta.env.VITE_API_BASE || ""}/${photoPath.replaceAll("\\", "/")}`;
   }
 
   function goBack() {
@@ -361,27 +351,6 @@ const styles = getStyles(theme, isCrtTheme);
 
     setScreen(previousScreen);
   }  
-
-  async function handleCreateUser() {
-    try {
-      await createUser(newUser);
-
-      setShowCreateUser(false);
-
-      setNewUser({
-        username: "",
-        password: "",
-        display_name: "",
-        email: "",
-        role: "CheckInStaff",
-      });
-
-      await loadUsers();
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    }
-  }
 
   async function handleDeletePrintStation(station) {
     const confirmed = window.confirm(
@@ -495,7 +464,6 @@ const styles = getStyles(theme, isCrtTheme);
       await loadActiveVisitors();
       await loadDashboardStats();
 
-
       setScreen("staff");
     } catch (error) {
       alert(error.message);
@@ -529,22 +497,22 @@ const styles = getStyles(theme, isCrtTheme);
     }
   }
 
-async function loadPrintStations() {
-  try {
-    const data = await getPrintStations();
+  async function loadPrintStations() {
+    try {
+      const data = await getPrintStations();
 
-    setPrintStations(data);
+      setPrintStations(data);
 
-    if (!staffPrintStation && data.length > 0) {
-      setStaffPrintStation(data[0].slug);
+      if (!staffPrintStation && data.length > 0) {
+        setStaffPrintStation(data[0].slug);
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    } finally {
+      setPrintStationsLoaded(true);
     }
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
-  } finally {
-    setPrintStationsLoaded(true);
   }
-}
 
   async function loadSettings() {
     try {
@@ -655,6 +623,246 @@ async function loadPrintStations() {
     }
   }
 
+  async function handlePrintStationQrLabel(station) {
+  const confirmed = window.confirm(
+    `Print a QR code label for '${station.name}'?\n\nThis will print to the station's assigned printer.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const result = await printStationQrLabel(station.id);
+
+    alert(result.message);
+
+    await loadPrintJobs();
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+}
+
+
+  // Account Menu Functions
+
+  async function handleChangePassword() {
+    if (!currentPassword) {
+      alert("Current password is required.");
+      return;
+    }
+
+    if (!newPassword) {
+      alert("New password is required.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      await changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+
+      alert("Password changed successfully.");
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      setScreen("staff");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleCreateUser() {
+    try {
+      await createUser(newUser);
+
+      setShowCreateUser(false);
+
+      setNewUser({
+        username: "",
+        password: "",
+        display_name: "",
+        email: "",
+        role: "CheckInStaff",
+      });
+
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+  
+
+  function handleOpenChangePassword() {
+    setShowAccountMenu(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setScreen("change-password");
+  }
+
+ async function handleOpenMyProfile() {
+  try {
+    const data = await getUsers();
+
+    const currentProfileUser = data.find(
+      (user) =>
+        user.username.toLowerCase() === username.toLowerCase()
+    );
+
+    if (!currentProfileUser) {
+      alert("Your user profile could not be found.");
+      return;
+    }
+
+    setProfileUser(currentProfileUser);
+    setProfileForm({
+      display_name: currentProfileUser.display_name || "",
+      email: currentProfileUser.email || "",
+    });
+
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+
+    setShowAccountMenu(false);
+    setScreen("my-profile");
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+}
+
+  async function handleSaveMyProfile() {
+    if (!profileUser) {
+      alert("No profile is loaded.");
+      return;
+    }
+
+    try {
+      await updateUser(
+        profileUser.id,
+        {
+          display_name: profileForm.display_name,
+          email: profileForm.email,
+        }
+      );
+
+      alert("Profile updated successfully.");
+
+      setProfileUser({
+        ...profileUser,
+        display_name: profileForm.display_name,
+        email: profileForm.email,
+      });
+
+      setScreen("staff");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  function renderAccountMenu() {
+    if (!username) return null;
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: "12px",
+          right: "12px",
+          zIndex: 9999,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            backgroundColor: theme.surface,
+            border: `1px solid ${theme.border}`,
+            borderRadius: "16px",
+            padding: "16px",
+            minWidth: "150px",
+            overflow: "hidden",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+          }}
+        >
+          <button
+            type="button"
+            style={styles.accountMenuButton}
+            onClick={() =>
+              setShowAccountMenu(!showAccountMenu)
+            }
+          >
+            <div style={{ fontWeight: "bold" }}>
+              {username}
+            </div>
+
+            <div
+              style={{
+                fontSize: "12px",
+                color: theme.neutraltext,
+              }}
+            >
+              {role}
+            </div>
+          </button>
+
+          {showAccountMenu && (
+            <>
+              <button
+                type="button"
+                style={styles.accountMenuButton}
+                onClick={handleOpenMyProfile}
+              >
+                Edit My Profile
+              </button>
+
+              <button
+                type="button"
+                style={styles.accountMenuButton}
+                onClick={handleOpenChangePassword}
+              >
+                Change Password
+              </button>
+
+              <button
+                type="button"
+                style={styles.accountMenuDangerButton}
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("access_token");
+
+    setUsername(null);
+    setRole(null);
+    setIsAuthenticated(false);
+    setShowAccountMenu(false);
+    setScreen("home");
+  }
+
 
 
   // Badge Functions
@@ -763,6 +971,8 @@ async function loadPrintStations() {
       alert(error.message);
     }
   }
+
+
   async function handleReprintJob(job) {
     try {
       await createPrintJob(job.visitor_id, staffPrintStation);
@@ -1199,38 +1409,54 @@ async function loadPrintStations() {
 
   // Camera Functions
   function capturePhoto() {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
 
-      if (!video || !canvas) {
-          console.log("video or canvas missing");
+    if (!video || !canvas) {
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext("2d");
+    context.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
           return;
-      }
+        }
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob((blob) => {
-          if (!blob) {
-              return;
+        const file = new File(
+          [blob],
+          "visitor-photo.jpg",
+          {
+            type: "image/jpeg",
           }
+        );
 
-          const file = new File(
-              [blob],
-              "visitor-photo.jpg",
-              { type: "image/jpeg" }
-          );
+        const previewUrl = URL.createObjectURL(file);
 
-          const previewUrl = URL.createObjectURL(file);
-
+        if (cameraTarget === "returning") {
           setReturningPhotoFile(file);
           setReturningPhotoPreview(previewUrl);
+        } else {
+          setPhotoFile(file);
+          setPhotoPreview(previewUrl);
+        }
 
-          closeCamera();
-      }, "image/jpeg", 0.95);
+        closeCamera();
+      },
+      "image/jpeg",
+      0.95
+    );
   }
 
   function closeCamera() {
@@ -1240,6 +1466,19 @@ async function loadPrintStations() {
 
     setCameraStream(null);
     setCameraOpen(false);
+  }
+
+  function isMobileCameraDevice() {
+    const userAgent = navigator.userAgent || "";
+    const platform = navigator.platform || "";
+
+    return (
+      /Android|iPhone|iPad|iPod/i.test(userAgent) ||
+      (
+        platform === "MacIntel" &&
+        navigator.maxTouchPoints > 1
+      )
+    );
   }
 
   async function loadCameras() {
@@ -1266,36 +1505,117 @@ async function loadPrintStations() {
     }
   }
 
-
-  async function openCamera() {
+  async function openCamera(target = "new", fallbackInputId = "photoInput") {
     try {
-      if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
-        document
-          .getElementById("returningPhotoInput")
-          ?.click();
+      setCameraTarget(target);
+
+      const shouldUseNativeCamera =
+        isMobileCameraDevice();
+
+      if (shouldUseNativeCamera) {
+        document.getElementById(fallbackInputId)?.click();
         return;
       }
 
+      if (
+        !navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !== "function"
+      ) {
+        document.getElementById(fallbackInputId)?.click();
+        return;
+      }
+
+      const videoConstraint = selectedCamera
+        ? {
+            deviceId: {
+              exact: selectedCamera,
+            },
+          }
+        : true;
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: videoConstraint,
         audio: false,
       });
 
       setCameraStream(stream);
       setCameraOpen(true);
     } catch (error) {
-      console.error(error);
+      console.error("Camera failed:", error);
+      console.error("Error name:", error?.name);
+      console.error("Error message:", error?.message);
 
       document
-        .getElementById("returningPhotoInput")
+        .getElementById(fallbackInputId)
         ?.click();
     }
   }
 
+  function renderCameraModal() {
+    if (!cameraOpen) {
+      return null;
+    }
 
+    return (
+      <div style={styles.cameraOverlay}>
+        <div style={styles.cameraPanel}>
+          <h2 style={styles.formTitle}>Take Visitor Photo</h2>
+
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Camera</label>
+
+            <select
+              style={styles.input}
+              value={selectedCamera}
+              onChange={(event) =>
+                switchCamera(event.target.value)
+              }
+            >
+              {videoDevices.map((device) => (
+                <option
+                  key={device.deviceId}
+                  value={device.deviceId}
+                >
+                  {device.label || "Camera"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={styles.cameraVideo}
+          />
+
+          <canvas
+            ref={canvasRef}
+            style={{ display: "none" }}
+          />
+
+          <div style={styles.dashboardButtonRow}>
+            <button
+              type="button"
+              style={styles.staffActionButton}
+              onClick={capturePhoto}
+            >
+              Capture Photo
+            </button>
+
+            <button
+              type="button"
+              style={styles.staffActionButton}
+              onClick={closeCamera}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   async function switchCamera(deviceId) {
     if (!deviceId) {
@@ -1338,6 +1658,9 @@ async function loadPrintStations() {
   // End Camera Functions
 
 
+
+  {/* Start Screen Switching Blocks */}
+
   // Administration Screen
   if (screen === "administration") {
     if (role !== "Administrator") {
@@ -1349,6 +1672,7 @@ async function loadPrintStations() {
               Administrator privileges are required to access this screen.
             </p>
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("staff")}
             >
@@ -1361,7 +1685,10 @@ async function loadPrintStations() {
     return (
       
       <div style={styles.page}>
+        {renderAccountMenu()}
+
         <button
+          type="button"
           style={styles.backButton}
           onClick={() => setScreen("staff")}
         >
@@ -1405,6 +1732,7 @@ async function loadPrintStations() {
               </p>
 
               <button
+                type="button"
                 style={styles.staffActionButton}
                 onClick={() => setScreen("users")}
               >
@@ -1425,6 +1753,7 @@ async function loadPrintStations() {
               </p>
 
               <button
+                type="button"
                 style={styles.staffActionButton}
                 onClick={() => setScreen("print-stations")}
               >
@@ -1445,6 +1774,7 @@ async function loadPrintStations() {
               </p>
 
               <button
+                type="button"
                 style={styles.staffActionButton}
                 onClick={async () => {
                   await loadPrintStations();
@@ -1469,10 +1799,116 @@ async function loadPrintStations() {
               </p>
 
               <button
+                type="button"
                 style={styles.staffActionButton}
                 onClick={() => setScreen("settings")}
               >
                 Open Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Change Password Screen
+  if (screen === "change-password") {
+
+    return (
+      <div style={styles.page}>
+        {renderAccountMenu()}
+
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Back
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "700px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>
+              Change Password
+            </h1>
+
+            <p style={styles.instructions}>
+              Update your account password.
+            </p>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>
+                Current Password
+              </label>
+
+              <input
+                type="password"
+                style={styles.input}
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value)
+                } }
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>
+                New Password
+              </label>
+
+              <input
+                type="password"
+                style={styles.input}
+                value={newPassword}
+                onChange={(e) =>
+                  setNewPassword(e.target.value)
+                }
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>
+                Confirm New Password
+              </label>
+
+              <input
+                type="password"
+                style={styles.input}
+                value={confirmPassword}
+                onChange={(e) =>
+                  setConfirmPassword(e.target.value)
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                marginTop: "24px",
+              }}
+            >
+              <button
+                type="button"
+                style={styles.staffActionButton}
+                onClick={handleChangePassword}
+              >
+                Change Password
+              </button>
+
+              <button
+                type="button"
+                style={styles.staffActionButton}
+                onClick={() => setScreen("staff")}
+              >
+                Cancel
               </button>
             </div>
           </div>
@@ -1573,6 +2009,7 @@ async function loadPrintStations() {
     }
     return (
       <div style={styles.page}>
+        
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -1582,7 +2019,6 @@ async function loadPrintStations() {
             style={styles.themeOverlay}
           />
         )}
-
 
         {/* CRT Theme Effects */}
         {isCrtTheme && (
@@ -1594,6 +2030,7 @@ async function loadPrintStations() {
         )}
 
         <button
+          type="button"
           style={styles.backButton}
           onClick={() => navigateTo("home")}
         >
@@ -1702,7 +2139,6 @@ async function loadPrintStations() {
 
             </div>
          
-
             {/* Photo Column */}
             <div style={styles.photoColumn}>
               <input
@@ -1738,37 +2174,22 @@ async function loadPrintStations() {
                 }}
               >
 
-<button
-  style={styles.photoButton}
-  onClick={openCamera}
->
-  Take Visitor Photo
-</button>
-
-{/*
                 <button
+                  type="button"
                   style={styles.photoButton}
-                  onClick={() => {
-                    
-                    const supportsGetUserMedia =
-                      navigator.mediaDevices &&
-                      typeof navigator.mediaDevices.getUserMedia === "function";
-
-                    if (supportsGetUserMedia) {
-                      openCamera();
-                    } else {
-                      document.getElementById("photoInput").click();
-                    }
-                  }}
-                  >
+                  onClick={() =>
+                    openCamera("new", "photoInput")
+                  }
+                >
                   Take Visitor Photo
-                </button> 
-*/}
-                </p>
+                </button>
+
+              </p>
             </div>
           </div>
 
           <button
+            type="button"
             style={styles.printButton}
             onClick={handleCheckIn}
             disabled={busy}
@@ -1777,6 +2198,10 @@ async function loadPrintStations() {
           </button>
 
         </div>
+
+        {/* Super Important Camera Code */}
+        {renderCameraModal()}
+
       </div>
     );
   }
@@ -1806,6 +2231,7 @@ async function loadPrintStations() {
         )}
 
         <button
+          type="button"
           style={styles.backButton}
           onClick={() => navigateTo("home")}
         >
@@ -1842,6 +2268,7 @@ async function loadPrintStations() {
           </div>
 
           <button
+            type="button"
             style={styles.photoButton}
             onClick={handleFindVisitor}
           >
@@ -1885,6 +2312,7 @@ async function loadPrintStations() {
               <p>{visitor.visitor_type}</p>
 
               <button
+                type="button"
                 style={styles.printButton}
                 onClick={() => handleGuestCheckout(visitor.id)}
               >
@@ -1903,12 +2331,14 @@ async function loadPrintStations() {
     if (role !== "Administrator") {
       return (
         <div style={styles.page}>
+          {renderAccountMenu()}
           <div style={styles.formContainer}>
             <h1 style={styles.formTitle}>Access Denied</h1>
             <p style={styles.instructions}>
               Administrator privileges are required to access this screen.
             </p>
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("staff")}
             >
@@ -1920,7 +2350,9 @@ async function loadPrintStations() {
     }
       return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
+          type="button"
           style={styles.backButton}
           onClick={() => setScreen("settings")}
         >
@@ -1943,7 +2375,6 @@ async function loadPrintStations() {
           >
             Edit System Settings
           </h1>
-
 
           {editingSettings && (
             <>
@@ -1984,6 +2415,30 @@ async function loadPrintStations() {
                 />
               </div>
 
+              {/* Base Check-in URL */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Base Check-in URL</label>
+                <input
+                  style={styles.input}
+                  value={editingSettings.base_checkin_url}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      base_checkin_url: e.target.value,
+                    })
+                  }
+                />
+                <p
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "13px",
+                    color: theme.textSecondary,
+                  }}
+                >
+                  Example: http://192.168.0.210:5173
+                </p>
+              </div>
+
               {/* Visitor Types */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Visitor Types</label>
@@ -2012,6 +2467,7 @@ async function loadPrintStations() {
                     />
 
                     <button
+                      type="button"
                       style={styles.staffActionButton}
                       onClick={() =>
                         setEditingSettings({
@@ -2028,6 +2484,7 @@ async function loadPrintStations() {
                 ))}
 
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={() =>
                     setEditingSettings({
@@ -2071,6 +2528,7 @@ async function loadPrintStations() {
                     />
 
                     <button
+                      type="button"
                       style={styles.staffActionButton}
                       onClick={() =>
                         setEditingSettings({
@@ -2087,6 +2545,7 @@ async function loadPrintStations() {
                 ))}
 
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={() =>
                     setEditingSettings({
@@ -2136,6 +2595,7 @@ async function loadPrintStations() {
                       />
 
                       <button
+                        type="button"
                         style={styles.staffActionButton}
                         onClick={() =>
                           setEditingSettings({
@@ -2154,6 +2614,7 @@ async function loadPrintStations() {
                 )}
 
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={() =>
                     setEditingSettings({
@@ -2203,6 +2664,7 @@ async function loadPrintStations() {
                       />
 
                       <button
+                        type="button"
                         style={styles.staffActionButton}
                         onClick={() =>
                           setEditingSettings({
@@ -2221,6 +2683,7 @@ async function loadPrintStations() {
                 )}
 
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={() =>
                     setEditingSettings({
@@ -2244,6 +2707,7 @@ async function loadPrintStations() {
                 }}
               >
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={handleSaveSettings}
                 >
@@ -2251,6 +2715,7 @@ async function loadPrintStations() {
                 </button>
 
                 <button
+                  type="button"
                   style={styles.staffActionButton}
                   onClick={() => setScreen("settings")}
                 >
@@ -2258,24 +2723,132 @@ async function loadPrintStations() {
                 </button>
               </div>
 
-
-
-
             </>
           )}
         </div>
-
-
 
       </div>
     );
   }
 
+  // My Profile Screen
+  if (screen === "my-profile") {
+    return (
+      <div style={styles.page}>
+        {renderAccountMenu()}
+
+        <button
+          type="button"
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "700px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>My Profile</h1>
+
+            <p style={styles.instructions}>
+              Update your display name and email address.
+            </p>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Username</label>
+              <input
+                style={{
+                  ...styles.input,
+                  opacity: 0.75,
+                  cursor: "not-allowed",
+                }}
+                value={profileUser?.username || username || ""}
+                disabled
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Role</label>
+              <input
+                style={{
+                  ...styles.input,
+                  opacity: 0.75,
+                  cursor: "not-allowed",
+                }}
+                value={profileUser?.role || role || ""}
+                disabled
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Display Name</label>
+              <input
+                style={styles.input}
+                value={profileForm.display_name}
+                onChange={(event) =>
+                  setProfileForm({
+                    ...profileForm,
+                    display_name: event.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Email</label>
+              <input
+                style={styles.input}
+                value={profileForm.email}
+                onChange={(event) =>
+                  setProfileForm({
+                    ...profileForm,
+                    email: event.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                marginTop: "24px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                style={styles.staffActionButton}
+                onClick={handleSaveMyProfile}
+              >
+                Save Profile
+              </button>
+
+              <button
+                type="button"
+                style={styles.staffActionButton}
+                onClick={() => setScreen("staff")}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Print Agents Screen
   if (screen === "print-agents") {
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("administration")}
@@ -2498,6 +3071,7 @@ async function loadPrintStations() {
     
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("staff")}
@@ -2676,19 +3250,15 @@ async function loadPrintStations() {
                     View Visitor
                   </button>
 
-
-<button
-  style={styles.staffActionButton}
-  onClick={() => {
-    console.log("selectedPrintJob setter", typeof setSelectedPrintJob);
-    console.log("showReassignModal setter", typeof setShowReassignModal);
-
-    setSelectedPrintJob(job);
-    setShowReassignModal(true);
-  }}
->
-  Redirect
-</button>
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setSelectedPrintJob(job);
+                      setShowReassignModal(true);
+                    }}
+                  >
+                    Redirect
+                  </button>
 
                   <button
                     style={styles.staffActionButton}
@@ -2710,108 +3280,106 @@ async function loadPrintStations() {
           </div>
         </div>
 
-
-{showReassignModal && selectedPrintJob && (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 1000,
-    }}
-  >
-    <div
-      style={{
-        backgroundColor: theme.surface,
-        color: theme.textPrimary,
-        borderRadius: "16px",
-        padding: "24px",
-        width: "600px",
-        maxWidth: "90%",
-      }}
-    >
-      <h2>Redirect Print Job</h2>
-
-      <p>
-        <strong>Visitor:</strong> {selectedPrintJob.visitor_name}
-      </p>
-
-      <p>
-        <strong>Current Station:</strong>{" "}
-        {selectedPrintJob.station_name || "Unknown"}
-      </p>
-
-      <select
-        style={styles.input}
-        value={reassignStationId}
-        onChange={(e) =>
-          setReassignStationId(Number(e.target.value))
-        }
-      >
-        <option value="">
-          Select Destination Station
-        </option>
-
-        {printStations
-          .filter((station) => station.enabled)
-          .map((station) => (
-            <option
-              key={station.id}
-              value={station.id}
+        {showReassignModal && selectedPrintJob && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: theme.surface,
+                color: theme.textPrimary,
+                borderRadius: "16px",
+                padding: "24px",
+                width: "600px",
+                maxWidth: "90%",
+              }}
             >
-              {station.name}
-            </option>
-          ))}
-      </select>
+              <h2>Redirect Print Job</h2>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          marginTop: "20px",
-        }}
-      >
-        <button
-          style={styles.staffActionButton}
-          onClick={async () => {
-            try {
-              await reassignPrintJob(
-                selectedPrintJob.id,
-                reassignStationId
-              );
+              <p>
+                <strong>Visitor:</strong> {selectedPrintJob.visitor_name}
+              </p>
 
-              await loadPrintJobs();
+              <p>
+                <strong>Current Station:</strong>{" "}
+                {selectedPrintJob.station_name || "Unknown"}
+              </p>
 
-              setShowReassignModal(false);
-              setSelectedPrintJob(null);
-              setReassignStationId("");
-            } catch (error) {
-              console.error(error);
-              alert(error.message);
-            }
-          }}
-        >
-          Redirect
-        </button>
+              <select
+                style={styles.input}
+                value={reassignStationId}
+                onChange={(e) =>
+                  setReassignStationId(Number(e.target.value))
+                }
+              >
+                <option value="">
+                  Select Destination Station
+                </option>
 
-        <button
-          style={styles.staffActionButton}
-          onClick={() => {
-            setShowReassignModal(false);
-            setSelectedPrintJob(null);
-            setReassignStationId("");
-          }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+                {printStations
+                  .filter((station) => station.enabled)
+                  .map((station) => (
+                    <option
+                      key={station.id}
+                      value={station.id}
+                    >
+                      {station.name}
+                    </option>
+                  ))}
+              </select>
 
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  marginTop: "20px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={async () => {
+                    try {
+                      await reassignPrintJob(
+                        selectedPrintJob.id,
+                        reassignStationId
+                      );
+
+                      await loadPrintJobs();
+
+                      setShowReassignModal(false);
+                      setSelectedPrintJob(null);
+                      setReassignStationId("");
+                    } catch (error) {
+                      console.error(error);
+                      alert(error.message);
+                    }
+                  }}
+                >
+                  Redirect
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setShowReassignModal(false);
+                    setSelectedPrintJob(null);
+                    setReassignStationId("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     );
@@ -2819,7 +3387,6 @@ async function loadPrintStations() {
 
   // Print Stations Screen
   if (screen === "print-stations") {
-
     const activeStations = printStations.filter(
       (station) => station.enabled
     ).length;
@@ -2830,6 +3397,7 @@ async function loadPrintStations() {
 
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("administration")}
@@ -3048,15 +3616,25 @@ async function loadPrintStations() {
                         : "Restore"}
                     </button>
 
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() => handlePrintStationQrLabel(station)}
+                    >
+                      Print QR Code
+                    </button>
 
-
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() => downloadPrintStationQr(station.id)}
+                    >
+                      Download QR Code
+                    </button>
 
                   </div>
                 </div>
               );
             })}
           </div>
-
 
             {showPrintStationModal && (
               <div
@@ -3216,18 +3794,19 @@ async function loadPrintStations() {
 
   // Reporting Screen
   if (screen === "reporting") {
-    const report = reportingSummary || {
-      check_ins_by_location: [],
-      recent_arrivals: [],
-      visitorTypes: [],
-      hourly_activity: [],
-      daily_trends: [],
-      print_station_usage: [],
-      peak_check_in_times: [],
+    const report = {
+      check_ins_by_location: reportingSummary?.check_ins_by_location ?? [],
+      recent_arrivals: reportingSummary?.recent_arrivals ?? [],
+      visitorTypes: reportingSummary?.visitor_types ?? [],
+      hourly_activity: reportingSummary?.hourly_activity ?? [],
+      daily_trends: reportingSummary?.daily_trends ?? [],
+      print_station_usage: reportingSummary?.print_station_usage ?? [],
+      peak_check_in_times: reportingSummary?.peak_check_in_times ?? [],
     };
 
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("staff")}
@@ -3452,6 +4031,7 @@ async function loadPrintStations() {
 
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -3461,7 +4041,6 @@ async function loadPrintStations() {
             style={styles.themeOverlay}
           />
         )}
-
 
         {/* CRT Theme Effects */}
         {isCrtTheme && (
@@ -3487,7 +4066,6 @@ async function loadPrintStations() {
           </p>
 
           <div style={styles.contentContainer}>
-
 
             {/* Data Column */}
             <div style={styles.formColumn}>
@@ -3627,22 +4205,14 @@ async function loadPrintStations() {
                   marginBottom: 12,
                 }}
               >
-                <button
-                  style={styles.photoButton}
-                  onClick={() => {
-                    const supportsGetUserMedia =
-                      navigator.mediaDevices &&
-                      typeof navigator.mediaDevices.getUserMedia === "function";
-
-                    if (supportsGetUserMedia) {
-                      openCamera();
-                    } else {
-                      document.getElementById("returningPhotoInput").click();
-                    }
-                  }}
-                >
-                    Retake Visitor Photo
-                </button>
+              <button
+                style={styles.photoButton}
+                onClick={() =>
+                  openCamera("returning", "returningPhotoInput")
+                }
+              >
+                Retake Visitor Photo
+              </button>
               </p>
             </div>
           </div>
@@ -3672,57 +4242,9 @@ async function loadPrintStations() {
 
         </div>
 
-        {cameraOpen && (
-          <div style={styles.cameraOverlay}>
-            <div style={styles.cameraPanel}>
-              <h2 style={styles.formTitle}>Take Visitor Photo</h2>
+        {/* Super Important Camera Code */}
+        {renderCameraModal()}
 
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Camera</label>
-                <select
-                  style={styles.input}
-                  value={selectedCamera}
-                  onChange={(event) => switchCamera(event.target.value)}
-                >
-                  {videoDevices.map((device) => (
-                    <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || "Camera"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={styles.cameraVideo}
-              />
-
-              <canvas
-                ref={canvasRef}
-                style={{ display: "none" }}
-              />
-
-              <div style={styles.dashboardButtonRow}>
-                <button
-                  style={styles.staffActionButton}
-                  onClick={capturePhoto}
-                >
-                  Capture Photo
-                </button>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={closeCamera}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -3731,29 +4253,13 @@ async function loadPrintStations() {
   if (screen === "settings") {
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("staff")}
         >
           ← Staff Dashboard
         </button>
-
-        {/* <div
-          style={{
-            backgroundColor: "#ffffcc",
-            padding: "10px",
-            marginBottom: "10px",
-          }}
-        >
-          username state = [{String(username)}]
-          <br />
-          role state = [{String(role)}]
-          <br />
-          localStorage username = [{String(localStorage.getItem("username"))}]
-          <br />
-          localStorage role = [{String(localStorage.getItem("role"))}]
-        </div> */}
-
 
           <div
             style={{
@@ -3771,7 +4277,6 @@ async function loadPrintStations() {
             >
               Settings
             </h1>
-
 
           {/* This button only for admins */}
           {role === "Administrator" && (
@@ -3872,7 +4377,7 @@ async function loadPrintStations() {
                   <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
                 </p>
 
-                {required_returning_checkin_fields.map((field) => (
+                {requiredReturningCheckinFields.map((field) => (
                   <div key={field}>
                     • {field}
                   </div>
@@ -3885,20 +4390,18 @@ async function loadPrintStations() {
       );
     }
 
+    const checkedInToday = activeVisitors.filter((visitor) => {
+      const checkin = new Date(visitor.check_in_time);
+      const now = new Date();
 
-  const checkedInToday = activeVisitors.filter((visitor) => {
-    const checkin = new Date(visitor.check_in_time);
-    const now = new Date();
-
-  return (
-    checkin.getFullYear() === now.getFullYear() &&
-    checkin.getMonth() === now.getMonth() &&
-    checkin.getDate() === now.getDate()
-  );
-}).length;
-const stationHealthSummary = "TBD";
-const queueHealthSummary = "TBD";
-
+    return (
+      checkin.getFullYear() === now.getFullYear() &&
+      checkin.getMonth() === now.getMonth() &&
+      checkin.getDate() === now.getDate()
+    );
+    }).length;
+    const stationHealthSummary = "TBD";
+    const queueHealthSummary = "TBD";
 
 
   // Staff Screen
@@ -3906,6 +4409,7 @@ const queueHealthSummary = "TBD";
     if (!isAuthenticated) {
       return (
         <div style={styles.page}>
+          {renderAccountMenu()}
 
           {/* Theme Overlay */}
           {theme.logoOverlay && (
@@ -3933,6 +4437,7 @@ const queueHealthSummary = "TBD";
             </p>
 
             <button
+              type="button"
               style={styles.printButton}
               onClick={() => navigateTo("staff-login")}
             >
@@ -3942,10 +4447,9 @@ const queueHealthSummary = "TBD";
         </div>
       );
     }
-
-
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -3966,6 +4470,7 @@ const queueHealthSummary = "TBD";
         )}
 
         <button
+          type="button"
           style={styles.backButton}
           onClick={() => navigateTo("home")}
         >
@@ -3987,11 +4492,13 @@ const queueHealthSummary = "TBD";
           >
             <div style={styles.userStats}>
               <h2>{dashboardStats?.active_visitors ?? 0}</h2>
-              <p>Active Visitors</p>
+              <p>Active</p>
+              <p>Visitors</p>
             </div>
 
             <div style={styles.userStats}>
               <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
+              <p>Visitors</p>
               <p>Checked In Today</p>
             </div>
 
@@ -4001,8 +4508,8 @@ const queueHealthSummary = "TBD";
                 {dashboardStats?.offline_stations ?? 0}/
                 {dashboardStats?.maintenance_stations ?? 0}
               </h2>
-              <p>Stations</p>
-              <p>Online / Offline / Maint.</p>
+              <p>Print Stations</p>
+              <p>On / Off / Maint.</p>
             </div>
 
             <div style={styles.userStats}>
@@ -4010,11 +4517,11 @@ const queueHealthSummary = "TBD";
                 {dashboardStats?.pending_jobs ?? 0}/
                 {dashboardStats?.failed_jobs ?? 0}
               </h2>
-              <p>Queue P / F</p>
+              <p>Print Queue</p>
+              <p>Pending / Failed</p>
             </div>
           </div>
           {/* End Dashboard Summary Cards */}
-
 
           {/*}
                     <p style={styles.instructions}>
@@ -4024,29 +4531,29 @@ const queueHealthSummary = "TBD";
                     </p>
           */}
 
-Your Print Station:
-<select
-  style={styles.input}
-  value={staffPrintStation}
-  onChange={(e) => setStaffPrintStation(e.target.value)}
->
-  {printStations
-    .filter((station) => station.enabled)
-    .map((station) => (
-      <option
-        key={station.id}
-        value={station.slug}
-      >
-        {station.name}
-      </option>
-    ))}
-</select>          
+          Your Print Station:
+          <select
+            style={styles.input}
+            value={staffPrintStation}
+            onChange={(e) => setStaffPrintStation(e.target.value)}
+          >
+            {printStations
+              .filter((station) => station.enabled)
+              .map((station) => (
+                <option
+                  key={station.id}
+                  value={station.slug}
+                >
+                  {station.name}
+                </option>
+              ))}
+          </select>          
 
           {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>
 
-
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("visitor-search")}
             >
@@ -4054,6 +4561,7 @@ Your Print Station:
             </button>
 
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("print-queue")}
             >
@@ -4063,6 +4571,7 @@ Your Print Station:
             {/* This button only for admins */}
             {role === "Administrator" && (
               <button
+                type="button"
                 style={styles.staffActionButton}
                 onClick={() => setScreen("administration")}
               >
@@ -4071,6 +4580,7 @@ Your Print Station:
             )}
 
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("settings")}
             >
@@ -4078,6 +4588,7 @@ Your Print Station:
             </button>
 
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => setScreen("reporting")}
             >
@@ -4085,6 +4596,7 @@ Your Print Station:
             </button>
 
             <button
+              type="button"
               style={styles.staffActionButton}
               onClick={() => {
                 localStorage.removeItem("access_token");
@@ -4097,6 +4609,7 @@ Your Print Station:
             </button>
 
             <button
+              type="button"
               style={{ ...styles.printButton, marginTop: "48px" }}
               onClick={handleBulkCheckout}
             >
@@ -4303,6 +4816,7 @@ Your Print Station:
     return (
 
       <div style={styles.page}>
+        {renderAccountMenu()}
         <button
           style={styles.backButton}
           onClick={() => setScreen("administration")}
@@ -4384,7 +4898,6 @@ Your Print Station:
             >
               Create User
             </button>
-
 
             <button
               style={styles.staffActionButton}
@@ -4511,166 +5024,164 @@ Your Print Station:
           </div>
         </div>
 
-  {showCreateUser && (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0,0,0,0.5)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: theme.surface,
-          color: theme.textPrimary,
-          borderRadius: "16px",
-          padding: "24px",
-          width: "500px",
-          maxWidth: "90%",
-        }}
-      >
-        <h2>
-          {editingUser ? "Edit User" : "Create User"}
-        </h2>
+        {showCreateUser && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: theme.surface,
+                color: theme.textPrimary,
+                borderRadius: "16px",
+                padding: "24px",
+                width: "500px",
+                maxWidth: "90%",
+              }}
+            >
+              <h2>
+                {editingUser ? "Edit User" : "Create User"}
+              </h2>
 
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Username</label>
-          <input
-            style={styles.input}
-            value={newUser.username}
-            disabled={!!editingUser}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                username: e.target.value,
-              })
-            }
-          />
-        </div>
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Username</label>
+                <input
+                  style={styles.input}
+                  value={newUser.username}
+                  disabled={!!editingUser}
+                  onChange={(e) =>
+                    setNewUser({
+                      ...newUser,
+                      username: e.target.value,
+                    })
+                  }
+                />
+              </div>
 
-        {!editingUser && (
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              style={styles.input}
-              value={newUser.password}
-              onChange={(e) =>
-                setNewUser({
-                  ...newUser,
-                  password: e.target.value,
-                })
-              }
-            />
+              {!editingUser && (
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>Password</label>
+                  <input
+                    type="password"
+                    style={styles.input}
+                    value={newUser.password}
+                    onChange={(e) =>
+                      setNewUser({
+                        ...newUser,
+                        password: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Display Name</label>
+                <input
+                  style={styles.input}
+                  value={newUser.display_name}
+                  onChange={(e) =>
+                    setNewUser({
+                      ...newUser,
+                      display_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Email</label>
+                <input
+                  style={styles.input}
+                  value={newUser.email}
+                  onChange={(e) =>
+                    setNewUser({
+                      ...newUser,
+                      email: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Role</label>
+                <select
+                  style={styles.input}
+                  value={newUser.role}
+                  onChange={(e) =>
+                    setNewUser({
+                      ...newUser,
+                      role: e.target.value,
+                    })
+                  }
+                >
+                  {/* This controls the available roles for users */}
+                  <option value="Administrator">
+                    Administrator
+                  </option>
+                  <option value="CheckInStaff">
+                    Check-In Staff
+                  </option>
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  marginTop: "20px",
+                }}
+              >
+                <button
+                  style={styles.staffActionButton}
+                  onClick={async () => {
+                    try {
+                      if (editingUser) {
+                        await updateUser(
+                          editingUser.id,
+                          {
+                            display_name: newUser.display_name,
+                            email: newUser.email,
+                            role: newUser.role,
+                          }
+                        );
+                      } else {
+                        await createUser(newUser);
+                      }
+
+                      await loadUsers();
+
+                      setShowCreateUser(false);
+                      setEditingUser(null);
+                    } catch (error) {
+                      console.error(error);
+                      alert(error.message);
+                    }
+                  }}
+                >
+                  Save
+                </button>
+
+                <button
+                  style={styles.staffActionButton}
+                  onClick={() => {
+                    setShowCreateUser(false);
+                    setEditingUser(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Display Name</label>
-          <input
-            style={styles.input}
-            value={newUser.display_name}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                display_name: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            style={styles.input}
-            value={newUser.email}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                email: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Role</label>
-          <select
-            style={styles.input}
-            value={newUser.role}
-            onChange={(e) =>
-              setNewUser({
-                ...newUser,
-                role: e.target.value,
-              })
-            }
-          >
-            {/* This controls the available roles for users */}
-            <option value="Administrator">
-              Administrator
-            </option>
-            <option value="CheckInStaff">
-              Check-In Staff
-            </option>
-          </select>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            marginTop: "20px",
-          }}
-        >
-          <button
-            style={styles.staffActionButton}
-            onClick={async () => {
-              try {
-                if (editingUser) {
-                  await updateUser(
-                    editingUser.id,
-                    {
-                      display_name: newUser.display_name,
-                      email: newUser.email,
-                      role: newUser.role,
-                    }
-                  );
-                } else {
-                  await createUser(newUser);
-                }
-
-                await loadUsers();
-
-                setShowCreateUser(false);
-                setEditingUser(null);
-              } catch (error) {
-                console.error(error);
-                alert(error.message);
-              }
-            }}
-          >
-            Save
-          </button>
-
-          <button
-            style={styles.staffActionButton}
-            onClick={() => {
-              setShowCreateUser(false);
-              setEditingUser(null);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-
 
       </div>
     );
@@ -4680,6 +5191,7 @@ Your Print Station:
   if (screen === "visitor-detail") {
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -4744,7 +5256,6 @@ Your Print Station:
               Visitor Summary
             </h3>
 
-
             <div style={styles.fieldGroup_oneColumn}>
               <p>
                 <strong>Visit Count:</strong> {visitCount}
@@ -4807,7 +5318,6 @@ Your Print Station:
               </div>
 
             </div>
-
 
             <h3 style={{ marginTop: "48px" }}>
               Update Visitor Details
@@ -5054,6 +5564,7 @@ Your Print Station:
   if (screen === "visitor-search") {
     return (
       <div style={styles.page}>
+        {renderAccountMenu()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -5063,7 +5574,6 @@ Your Print Station:
             style={styles.themeOverlay}
           />
         )}
-
 
         {/* CRT Theme Effects */}
         {isCrtTheme && (
@@ -5236,9 +5746,6 @@ Your Print Station:
 
 
 
-
-
-
   // App() Return
   return (
       
@@ -5269,6 +5776,7 @@ Your Print Station:
 
       <div style={styles.cardContainer}>
         <button
+          type="button"
           style={styles.primaryCard}
           onClick={() => navigateTo("checkin")}
         >
@@ -5276,6 +5784,7 @@ Your Print Station:
         </button>
 
         <button
+          type="button"
           style={styles.secondaryCard}
           onClick={() => navigateTo("checkout")}
         >
@@ -5284,6 +5793,7 @@ Your Print Station:
       </div>
 
       <button
+        type="button"
         style={styles.staffButton}
         onClick={() => navigateTo("staff-login")}
       >
