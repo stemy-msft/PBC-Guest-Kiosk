@@ -2349,35 +2349,27 @@ const styles = getStyles(theme, isCrtTheme);
       );
     }
       return (
-      <div style={styles.page}>
-        {renderAccountMenu()}
-        <button
-          type="button"
-          style={styles.backButton}
-          onClick={() => setScreen("settings")}
-        >
-          ← Settings
-        </button>
+        <div style={styles.page}>
+          {renderAccountMenu()}
+          <button
+            type="button"
+            style={styles.backButton}
+            onClick={() => setScreen("settings")}
+          >
+            ← Settings
+          </button>
 
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "1000px",
-            margin: "0 auto",
-            paddingTop: "80px",
-          }}
-        >
-          <h1
+          <div
             style={{
-              textAlign: "center",
-              marginBottom: "24px",
+              display: "grid",
+              gap: "20px",
             }}
           >
-            Edit System Settings
-          </h1>
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                General Settings
+              </h2>
 
-          {editingSettings && (
-            <>
               {/* Theme */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Theme</label>
@@ -2414,7 +2406,7 @@ const styles = getStyles(theme, isCrtTheme);
                   }
                 />
               </div>
-
+              
               {/* Base Check-in URL */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Base Check-in URL</label>
@@ -2438,19 +2430,21 @@ const styles = getStyles(theme, isCrtTheme);
                   Example: http://192.168.0.210:5173
                 </p>
               </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Visitor
+              </h2>
 
               {/* Visitor Types */}
               <div style={styles.fieldGroup}>
-                <label style={styles.label}>Visitor Types</label>
+                <label style={styles.label}>Types</label>
 
                 {editingSettings.visitor_types.map((type, index) => (
                   <div
                     key={index}
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      marginBottom: "8px",
-                    }}
+                    style={styles.settingsListRow}
                   >
                     <input
                       style={styles.input}
@@ -2468,7 +2462,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                     <button
                       type="button"
-                      style={styles.staffActionButton}
+                      style={styles.settingsDeleteButton}
                       onClick={() =>
                         setEditingSettings({
                           ...editingSettings,
@@ -2485,7 +2479,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                 <button
                   type="button"
-                  style={styles.staffActionButton}
+                  style={styles.settingsAddButton}
                   onClick={() =>
                     setEditingSettings({
                       ...editingSettings,
@@ -2499,19 +2493,21 @@ const styles = getStyles(theme, isCrtTheme);
                   Add Visitor Type
                 </button>
               </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Visit
+              </h2>
 
               {/* Visit Purposes */}
               <div style={styles.fieldGroup}>
-                <label style={styles.label}>Visit Purposes</label>
+                <label style={styles.label}>Purposes</label>
 
                 {editingSettings.visit_purposes.map((purpose, index) => (
                   <div
                     key={index}
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      marginBottom: "8px",
-                    }}
+                    style={styles.settingsListRow}
                   >
                     <input
                       style={styles.input}
@@ -2529,7 +2525,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                     <button
                       type="button"
-                      style={styles.staffActionButton}
+                      style={styles.settingsDeleteButton}
                       onClick={() =>
                         setEditingSettings({
                           ...editingSettings,
@@ -2546,7 +2542,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                 <button
                   type="button"
-                  style={styles.staffActionButton}
+                  style={styles.settingsAddButton}
                   onClick={() =>
                     setEditingSettings({
                       ...editingSettings,
@@ -2561,7 +2557,16 @@ const styles = getStyles(theme, isCrtTheme);
                 </button>
               </div>
 
-              {/* Required Check-in Fields */}
+            </div>
+
+
+            {/* Required Check-in Fields */}        
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Initial Check-in
+              </h2>
+
+              {/* Required Check-In Fields */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>
                   Required Check-in Fields
@@ -2571,11 +2576,7 @@ const styles = getStyles(theme, isCrtTheme);
                   (field, index) => (
                     <div
                       key={index}
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        marginBottom: "8px",
-                      }}
+                      style={styles.settingsListRow}
                     >
                       <input
                         style={styles.input}
@@ -2596,7 +2597,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                       <button
                         type="button"
-                        style={styles.staffActionButton}
+                        style={styles.settingsDeleteButton}
                         onClick={() =>
                           setEditingSettings({
                             ...editingSettings,
@@ -2615,7 +2616,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                 <button
                   type="button"
-                  style={styles.staffActionButton}
+                  style={styles.settingsAddButton}
                   onClick={() =>
                     setEditingSettings({
                       ...editingSettings,
@@ -2630,7 +2631,15 @@ const styles = getStyles(theme, isCrtTheme);
                 </button>
               </div>
 
-              {/* Required Returning Check-in Fields */}
+            </div>
+
+            {/* Returning Visitor Fields */}
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Returning Check-in
+              </h2>
+
+              {/* Required Returning Fields */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>
                   Required Returning Check-in Fields
@@ -2640,11 +2649,7 @@ const styles = getStyles(theme, isCrtTheme);
                   (field, index) => (
                     <div
                       key={index}
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        marginBottom: "8px",
-                      }}
+                      style={styles.settingsListRow}
                     >
                       <input
                         style={styles.input}
@@ -2665,7 +2670,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                       <button
                         type="button"
-                        style={styles.staffActionButton}
+                        style={styles.settingsDeleteButton}
                         onClick={() =>
                           setEditingSettings({
                             ...editingSettings,
@@ -2684,7 +2689,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                 <button
                   type="button"
-                  style={styles.staffActionButton}
+                  style={styles.settingsAddButton}
                   onClick={() =>
                     setEditingSettings({
                       ...editingSettings,
@@ -2698,38 +2703,38 @@ const styles = getStyles(theme, isCrtTheme);
                   Add Required Returning Field
                 </button>
               </div>
+          </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  marginTop: "24px",
-                }}
+          {/* Save and Cancel Buttons */}
+          <div style={styles.resultCard}>
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <button
+                style={styles.staffActionButton}
+                onClick={handleSaveSettings}
               >
-                <button
-                  type="button"
-                  style={styles.staffActionButton}
-                  onClick={handleSaveSettings}
-                >
-                  Save Settings
-                </button>
+                Save Settings
+              </button>
 
-                <button
-                  type="button"
-                  style={styles.staffActionButton}
-                  onClick={() => setScreen("settings")}
-                >
-                  Cancel
-                </button>
-              </div>
+              <button
+                style={styles.staffActionButton}
+                onClick={() => setScreen("settings")}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
 
-            </>
-          )}
         </div>
-
       </div>
-    );
+    )
   }
+
 
   // My Profile Screen
   if (screen === "my-profile") {
@@ -4326,7 +4331,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
                 >
-                  <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+                  <strong>Source:</strong> <code>backend/config/system_settings.json</code>
                 </p>
 
                 {visitorTypes.map((type) => (
@@ -4342,7 +4347,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
                 >
-                  <strong>Source:</strong> <code>frontend/src/constants/options.js</code>
+                  <strong>Source:</strong> <code>backend/config/system_settings.json</code>
                 </p>
 
                 {visitPurposes.map((purpose) => (
@@ -4358,7 +4363,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
                 >
-                  <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+                  <strong>Source:</strong> <code>backend/config/system_settings.json</code>
                 </p>
 
                 {requiredCheckinFields.map((field) => (
@@ -4374,7 +4379,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
                 >
-                  <strong>Source:</strong> <code>frontend/src/constants/fields.js</code>
+                  <strong>Source:</strong> <code>backend/config/system_settings.json</code>
                 </p>
 
                 {requiredReturningCheckinFields.map((field) => (
@@ -4391,8 +4396,8 @@ const styles = getStyles(theme, isCrtTheme);
     }
 
     const checkedInToday = activeVisitors.filter((visitor) => {
-      const checkin = new Date(visitor.check_in_time);
-      const now = new Date();
+    const checkin = new Date(visitor.check_in_time);
+    const now = new Date();
 
     return (
       checkin.getFullYear() === now.getFullYear() &&
@@ -4492,32 +4497,29 @@ const styles = getStyles(theme, isCrtTheme);
           >
             <div style={styles.userStats}>
               <h2>{dashboardStats?.active_visitors ?? 0}</h2>
+              <h2>Visitors</h2>
               <p>Active</p>
-              <p>Visitors</p>
             </div>
 
             <div style={styles.userStats}>
               <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
-              <p>Visitors</p>
+              <h2>Visitors</h2>
               <p>Checked In Today</p>
             </div>
 
             <div style={styles.userStats}>
               <h2>
-                {dashboardStats?.online_stations ?? 0}/
-                {dashboardStats?.offline_stations ?? 0}/
-                {dashboardStats?.maintenance_stations ?? 0}
+                {dashboardStats?.online_stations ?? 0} / {dashboardStats?.offline_stations ?? 0} / {dashboardStats?.maintenance_stations ?? 0}
               </h2>
-              <p>Print Stations</p>
+              <h2>Print Stations</h2>
               <p>On / Off / Maint.</p>
             </div>
 
             <div style={styles.userStats}>
               <h2>
-                {dashboardStats?.pending_jobs ?? 0}/
-                {dashboardStats?.failed_jobs ?? 0}
+                {dashboardStats?.pending_jobs ?? 0} / {dashboardStats?.failed_jobs ?? 0}
               </h2>
-              <p>Print Queue</p>
+              <h2>Print Queue</h2>
               <p>Pending / Failed</p>
             </div>
           </div>
@@ -4531,7 +4533,7 @@ const styles = getStyles(theme, isCrtTheme);
                     </p>
           */}
 
-          Your Print Station:
+          Your Print Station:{" "}
           <select
             style={styles.input}
             value={staffPrintStation}
@@ -4613,7 +4615,7 @@ const styles = getStyles(theme, isCrtTheme);
               style={{ ...styles.printButton, marginTop: "48px" }}
               onClick={handleBulkCheckout}
             >
-              Bulk Checkout Active Visitors
+              Checkout All Active Visitors
             </button>
 
             <h3 style={styles.screenTitle}>Active Visitors</h3>
