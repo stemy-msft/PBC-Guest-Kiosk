@@ -43,6 +43,19 @@ export function getStyles(theme, isCrtTheme) {
             zIndex: 1000,
         },
 
+        bulkCheckoutButton: {
+            width: "80%",
+            backgroundColor: theme.primary,
+            border: "none",
+            borderRadius: "16px",
+            color: theme.buttonText,
+            cursor: "pointer",
+            fontSize: "2rem",
+            fontWeight: 700,
+            height: "60px",
+            marginTop: "8px",
+        },
+
         cardContainer: {
             display: "flex",
             flexWrap: "wrap",
@@ -56,6 +69,7 @@ export function getStyles(theme, isCrtTheme) {
             gap: "40px",
             justifyContent: "space-between",
             width: "100%",
+            flexWrap: "wrap",
         },
 
         contentContainer: {
@@ -164,6 +178,20 @@ export function getStyles(theme, isCrtTheme) {
             alignItems: "start",
             fontSize: "1.0rem",
         },
+
+        helpContent: {
+            maxWidth: "600px",
+            margin: "0 auto",
+            textAlign: "center",
+            lineHeight: "1.6",
+        },
+
+        helpList: {
+            listStylePosition: "inside",
+            paddingLeft: 0,
+            margin: "12px 0",
+            textAlign: "center",
+        },        
 
         hero: {
             alignItems: "center",
@@ -280,7 +308,8 @@ export function getStyles(theme, isCrtTheme) {
         },
 
         photoColumn: {
-            width: "420px",
+            width: "100%",
+            maxWidth: "420px",
         },
 
         photoPlaceholder: {
@@ -292,7 +321,8 @@ export function getStyles(theme, isCrtTheme) {
             fontSize: "1.2rem",
             height: "500px",
             justifyContent: "center",
-            width: "420px",
+            width: "100%",
+            maxWidth: "420px",
         },
 
         primaryCard: {
@@ -331,7 +361,15 @@ export function getStyles(theme, isCrtTheme) {
         screenTitle: {
             color: theme.textPrimary,
             fontSize: "3rem",
+            textAlign: "center",
         },
+
+        screenSubtitle: {
+            color: theme.textPrimary,
+            fontSize: "2.0rem",
+            textAlign: "center",
+            margin: "16px auto 8px auto",
+        },        
 
         secondaryCard: {
             background: theme.success,
@@ -343,6 +381,12 @@ export function getStyles(theme, isCrtTheme) {
             fontWeight: 700,
             height: "180px",
             width: "320px",
+        },
+
+        sectionDivider: {
+            width: "80%",
+            margin: "32px auto 8px auto",
+            borderTop: `2px solid ${theme.border}`,
         },
 
         settingsAddButton: {
@@ -405,6 +449,18 @@ export function getStyles(theme, isCrtTheme) {
             cursor: "pointer",
             fontSize: "1rem",
             marginTop: "40px",
+        },
+
+        staffCard: {
+            background: theme.primary,
+            border: "none",
+            borderRadius: "24px",
+            color: theme.primaryText,
+            cursor: "pointer",
+            fontSize: "2rem",
+            fontWeight: 700,
+            height: "100px",
+            width: "320px",
         },
 
         subtitle: {

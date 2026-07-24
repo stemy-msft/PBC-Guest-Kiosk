@@ -64,6 +64,10 @@ import { themes } from "./constants/themes";
 export default function App() {
 
   // State variables
+
+  const APP_VERSION = "0.7.0 Milestone 7.7";
+  const APP_NAME = "PBC Guest Kiosk";
+
   const [activeVisitors, setActiveVisitors] = useState([]);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -162,6 +166,8 @@ export default function App() {
     const [showAccountMenu, setShowAccountMenu] = useState(false);
 
     const refreshSeconds = systemSettings?.auto_refresh_seconds ?? 5;
+    const [showCompletedJobs, setShowCompletedJobs] = useState(false);
+
 
 
   // Load system settings on mount
@@ -329,6 +335,25 @@ const styles = getStyles(theme, isCrtTheme);
     
   // Functions in App()
 
+  function renderVersionFooter() {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          bottom: "10px",
+          right: "14px",
+          fontSize: "0.75rem",
+          color: theme.textSecondary,
+          opacity: 0.75,
+          zIndex: 1000,
+          pointerEvents: "none",
+        }}
+      >
+        {APP_NAME} v{APP_VERSION}
+      </div>
+    );
+  }  
+
   function getPhotoUrl(photoPath) {
     if (!photoPath) {
       return null;
@@ -459,6 +484,8 @@ const styles = getStyles(theme, isCrtTheme);
       localStorage.setItem("username",result.username);
       localStorage.setItem("role",result.role);
 
+      setUsername(result.username);
+      setRole(result.role);
       setIsAuthenticated(true);
 
       await loadActiveVisitors();
@@ -504,7 +531,15 @@ const styles = getStyles(theme, isCrtTheme);
       setPrintStations(data);
 
       if (!staffPrintStation && data.length > 0) {
-        setStaffPrintStation(data[0].slug);
+        const stationFromUrl = data.find(
+          (station) => station.slug === PRINT_STATION
+        );
+
+        if (stationFromUrl) {
+          setStaffPrintStation(stationFromUrl.slug);
+        } else {
+          setStaffPrintStation(data[0].slug);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -703,7 +738,6 @@ const styles = getStyles(theme, isCrtTheme);
     }
   }
   
-
   function handleOpenChangePassword() {
     setShowAccountMenu(false);
     setCurrentPassword("");
@@ -712,37 +746,37 @@ const styles = getStyles(theme, isCrtTheme);
     setScreen("change-password");
   }
 
- async function handleOpenMyProfile() {
-  try {
-    const data = await getUsers();
+  async function handleOpenMyProfile() {
+    try {
+      const data = await getUsers();
 
-    const currentProfileUser = data.find(
-      (user) =>
-        user.username.toLowerCase() === username.toLowerCase()
-    );
+      const currentProfileUser = data.find(
+        (user) =>
+          user.username.toLowerCase() === username.toLowerCase()
+      );
 
-    if (!currentProfileUser) {
-      alert("Your user profile could not be found.");
-      return;
+      if (!currentProfileUser) {
+        alert("Your user profile could not be found.");
+        return;
+      }
+
+      setProfileUser(currentProfileUser);
+      setProfileForm({
+        display_name: currentProfileUser.display_name || "",
+        email: currentProfileUser.email || "",
+      });
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      setShowAccountMenu(false);
+      setScreen("my-profile");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
-
-    setProfileUser(currentProfileUser);
-    setProfileForm({
-      display_name: currentProfileUser.display_name || "",
-      email: currentProfileUser.email || "",
-    });
-
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-
-    setShowAccountMenu(false);
-    setScreen("my-profile");
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
   }
-}
 
   async function handleSaveMyProfile() {
     if (!profileUser) {
@@ -841,6 +875,25 @@ const styles = getStyles(theme, isCrtTheme);
 
               <button
                 type="button"
+                style={styles.accountMenuButton}
+                onClick={() => {
+                  setShowAccountMenu(false);
+                  setScreen("help");
+                }}
+              >
+                Help
+              </button>
+
+              <div
+                style={{
+                  height: "1px",
+                  backgroundColor: theme.border,
+                  margin: "4px 0",
+                }}
+              />
+
+              <button
+                type="button"
                 style={styles.accountMenuDangerButton}
                 onClick={handleLogout}
               >
@@ -855,11 +908,14 @@ const styles = getStyles(theme, isCrtTheme);
 
   function handleLogout() {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("role");
 
-    setUsername(null);
-    setRole(null);
     setIsAuthenticated(false);
+    setUsername("");
+    setRole("");
     setShowAccountMenu(false);
+
     setScreen("home");
   }
 
@@ -972,7 +1028,6 @@ const styles = getStyles(theme, isCrtTheme);
     }
   }
 
-
   async function handleReprintJob(job) {
     try {
       await createPrintJob(job.visitor_id, staffPrintStation);
@@ -1015,6 +1070,7 @@ const styles = getStyles(theme, isCrtTheme);
   }  
 
   async function handlePrintReturningBadge() {
+    console.log("handlePrintReturningBadge fired");
     try {
       if (!checkedInVisitorId) {
         alert("Please check in the visitor first.");
@@ -1144,10 +1200,14 @@ const styles = getStyles(theme, isCrtTheme);
     });
 
       if (photoFile) {
+        console.log("Uploading photo...");
         await uploadPhoto(visitor.id, photoFile);
+
+        console.log("Generating badge...");
         await generateBadge(visitor.id);
       }
 
+      console.log("Creating print job...");
       await createPrintJob(visitor.id, PRINT_STATION);
 
       setSuccessTitle("Check-In Complete");
@@ -1180,10 +1240,16 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   function handleCheckInAgain(visitor) {
+    console.log("handleCheckInAgain called with visitor:", visitor);
     populateReturningVisitor(visitor);
 
+    console.log("Returning visitor state set to:", returningVisitor);
     setReturningPhotoFile(null);
+
+    console.log("Returning photo file state set to null");
     setReturningPhotoPreview(null);
+
+    console.log("Returning photo preview state set to null");
     setCheckedInVisitorId(null);
 
     setScreen("returning-checkin");
@@ -1196,6 +1262,8 @@ const styles = getStyles(theme, isCrtTheme);
     const visitor = await checkInAgain(
       selectedVisitor.id,
       {
+        first_name: returningVisitor.first_name,
+        last_name: returningVisitor.last_name,
         visitor_type: returningVisitor.visitor_type,
         purpose: returningVisitor.purpose,
         host_name: returningVisitor.host_name,
@@ -1210,6 +1278,12 @@ const styles = getStyles(theme, isCrtTheme);
     if (returningPhotoFile) {
       await uploadPhoto(visitor.id, returningPhotoFile);
     }
+
+    await generateBadge(visitor.id);
+    await createPrintJob(
+      visitor.id, 
+      staffPrintStation
+    );
 
     const updatedVisitor = await getVisitor(visitor.id);
     const historyData = await getVisitorHistory(visitor.id);
@@ -1666,6 +1740,7 @@ const styles = getStyles(theme, isCrtTheme);
     if (role !== "Administrator") {
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           <div style={styles.formContainer}>
             <h1 style={styles.formTitle}>Access Denied</h1>
             <p style={styles.instructions}>
@@ -1685,6 +1760,7 @@ const styles = getStyles(theme, isCrtTheme);
     return (
       
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         <button
@@ -1817,6 +1893,7 @@ const styles = getStyles(theme, isCrtTheme);
 
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         <button
@@ -1927,6 +2004,7 @@ const styles = getStyles(theme, isCrtTheme);
     ) {
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           <div style={styles.formContainer}>
             <h1 style={styles.formTitle}>
               Invalid Check-In Station
@@ -1949,6 +2027,7 @@ const styles = getStyles(theme, isCrtTheme);
     if (!printStationsLoaded) {
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           <div style={styles.formContainer}>
             <h1 style={styles.formTitle}>
               Loading Check-In Station
@@ -2009,6 +2088,7 @@ const styles = getStyles(theme, isCrtTheme);
     }
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         
 
         {/* Theme Overlay */}
@@ -2210,6 +2290,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "checkout") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -2326,11 +2407,12 @@ const styles = getStyles(theme, isCrtTheme);
     );
   }
 
-  //Edit Settings Screen
+  // Edit Settings Screen
   if (screen === "edit-settings") {
     if (role !== "Administrator") {
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           {renderAccountMenu()}
           <div style={styles.formContainer}>
             <h1 style={styles.formTitle}>Access Denied</h1>
@@ -2350,6 +2432,7 @@ const styles = getStyles(theme, isCrtTheme);
     }
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           {renderAccountMenu()}
           <button
             type="button"
@@ -2559,7 +2642,6 @@ const styles = getStyles(theme, isCrtTheme);
 
             </div>
 
-
             {/* Required Check-in Fields */}        
             <div style={styles.resultCard}>
               <h2 style={styles.settingsSectionTitle}>
@@ -2735,11 +2817,579 @@ const styles = getStyles(theme, isCrtTheme);
     )
   }
 
+  // Help Screen
+  if (screen === "help") {
+    return (
+      <div style={styles.page}>
+        {renderVersionFooter()}
+        {renderAccountMenu()}
+
+        <button
+          style={styles.backButton}
+          onClick={() => setScreen("staff")}
+        >
+          ← Staff Dashboard
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "1200px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "12px",
+              color: theme.textPrimary,
+            }}
+          >
+            Guest Kiosk Help
+          </h1>
+
+          <p style={styles.instructions}>
+            Operational documentation for camp staff, registration teams,
+            and administrators.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "20px",
+            }}
+          >
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                System Overview
+              </h2>
+
+              <div style={styles.helpContent}>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  The Guest Kiosk system is used to check visitors into
+                  camp, print visitor badges, maintain visitor history,  
+                  generate QR codes, and manage badge printing throughout
+                  the property.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Staff members primarily use Check-In, Visitor Search,
+                  Check-Out, Reporting, and Badge Reprint functions.
+                </p>
+              </div>              
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                User Roles
+              </h2>
+
+              <h3>Visitor</h3>
+
+              <div style={styles.helpContent}>              
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  A visitor is any person being checked into camp.
+                </p>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Examples include parents, vendors, volunteers,
+                  maintenance personnel, guests, and church visitors.
+                </p>
+
+                <h3>Check-In Staff</h3>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Check-In Staff can:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Check visitors in</li>
+                  <li>Check visitors out</li>
+                  <li>Search for visitors</li>
+                  <li>View visitor details</li>
+                  <li>Reprint badges</li>
+                  <li>View reports</li>
+                </ul>
+
+                <h3>Administrator</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Administrators have full access to the system.
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Create and manage users</li>
+                  <li>Reset passwords</li>
+                  <li>Configure print stations</li>
+                  <li>Manage print agents</li>
+                  <li>Modify system settings</li>
+                  <li>Generate QR codes</li>
+                  <li>View and manage print queues</li>
+                </ul>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Administrator accounts should only be assigned
+                  to trusted camp leadership and technical staff.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Printing Architecture
+              </h2>
+
+              <div style={styles.helpContent}>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  The printing system consists of three parts:
+                </p>
+
+                <ol style={styles.helpList}>
+                  <li>Print Stations</li>
+                  <li>Print Agents</li>
+                  <li>Print Queue</li>
+                </ol>
+
+                <h3>Print Stations</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  A Print Station is a logical destination where badges
+                  should print.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Examples:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Dining Hall</li>
+                  <li>Front Gate</li>
+                  <li>Upper Room</li>
+                  <li>Registration Center</li>
+                </ul>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  A Print Station is NOT a printer.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  It represents the location where badges should be routed.
+                </p>
+
+                <h3>Print Agents</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  A Print Agent is software running on a Raspberry Pi
+                  or computer attached to a physical printer.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Print Agents:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Receive print jobs</li>
+                  <li>Print badges</li>
+                  <li>Report online status</li>
+                  <li>Communicate with the kiosk server</li>
+                </ul>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  If a Print Agent is offline, printing will stop even if
+                  the Print Station still exists.
+                </p>
+
+                <h3>Print Queue</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Every badge enters the Print Queue before printing.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Lifecycle:
+                </p>
+
+                <pre
+                  style={{
+                    backgroundColor: theme.surfaceSecondary,
+                    padding: "16px",
+                    borderRadius: "12px",
+                    overflowX: "auto",
+                  }}
+                >
+    {`Visitor Check-In
+  ↓
+    Badge Generated
+  ↓
+    Print Queue
+  ↓
+    Print Agent
+  ↓
+    Printer`}
+                </pre>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Administrators can review:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Pending jobs</li>
+                  <li>Completed jobs</li>
+                  <li>Failed jobs</li>
+                  <li>Reassigned jobs</li>
+                </ul>
+              </div>
+            </div>
+
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Print Stations and Slugs
+              </h2>
+
+              <div style={styles.helpContent}>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Every Print Station includes a unique slug.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Example:
+                </p>
+
+                <pre
+                  style={{
+                    backgroundColor: theme.surfaceSecondary,
+                    padding: "16px",
+                    borderRadius: "12px",
+                  }}
+                >
+    {`Station Name: Dining Hall
+    Slug: dining-hall`}
+                </pre>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Slugs are used for:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>QR codes</li>
+                  <li>Kiosk routing</li>
+                  <li>Print routing</li>
+                </ul>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Slugs should be unique and generally should not be changed
+                  after deployment.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                QR Codes
+              </h2>
+
+              <div style={styles.helpContent}>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Each Print Station can generate its own QR code.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  When a visitor scans the QR code, the kiosk automatically
+                  routes check-ins to the correct station.
+                </p>
+
+                <pre
+                  style={{
+                    backgroundColor: theme.surfaceSecondary,
+                    padding: "16px",
+                    borderRadius: "12px",
+                  }}
+                >
+    {`Dining Hall QR
+  ↓
+    station=dining-hall
+  ↓
+    Badge routed to Dining Hall printer`}
+                </pre>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  After changing station slugs or the Base Check-In URL,
+                  QR codes should be regenerated.
+                </p>
+              </div>
+            </div>
+
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                System Settings
+              </h2>
+
+              <h3>Theme</h3>
+
+              <div style={styles.helpContent}>
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Themes control the appearance and branding of the system.
+                </p>
+
+                <h3>Auto Refresh Seconds</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Controls how often dashboards automatically refresh.
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Lower values = more frequent updates</li>
+                  <li>Higher values = less server activity</li>
+                </ul>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Recommended: 5 seconds
+                </p>
+
+                <h3>Base Check-In URL</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Used when generating QR codes.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  If this value changes, QR codes should be regenerated.
+                </p>
+
+                <h3>Visitor Types</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Examples:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Parent</li>
+                  <li>Guest</li>
+                  <li>Volunteer</li>
+                  <li>Vendor</li>
+                  <li>Staff</li>
+                </ul>
+
+                <h3>Visit Purposes</h3>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Defines the reason a visitor is on campus.
+                </p>
+
+                <p style={{
+                  maxWidth: "800px",
+                  margin: "0 auto 16px auto",
+                  textAlign: "center",
+                }}>
+                  Examples:
+                </p>
+
+                <ul style={styles.helpList}>
+                  <li>Visiting Camper</li>
+                  <li>Dinner</li>
+                  <li>Family Night</li>
+                  <li>Awards Ceremony</li>
+                  <li>Talent Show</li>
+                  <li>Vendor Delivery</li>
+                  <li>Service Call</li>
+                  <li>Other</li>
+                </ul>
+
+              </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Common Problems
+              </h2>
+
+
+              <div style={styles.helpContent}>
+                <h3>Badge Not Printing</h3>
+
+                <ol style={styles.helpList}>
+                  <li>Verify Print Station is enabled</li>
+                  <li>Verify Print Agent is online</li>
+                  <li>Verify printer is powered on</li>
+                  <li>Review Print Queue for failed jobs</li>
+                </ol>
+
+                <h3>Visitor Cannot Check In</h3>
+
+                <ol style={styles.helpList}>
+                  <li>Verify required fields are completed</li>
+                  <li>Verify camera/photo requirements</li>
+                  <li>Verify network connectivity</li>
+                </ol>
+
+                <h3>QR Code Routes To Wrong Printer</h3>
+
+                <ol style={styles.helpList}>
+                  <li>Verify Print Station slug</li>
+                  <li>Verify QR code was regenerated</li>
+                  <li>Verify Base Check-In URL</li>
+                </ol>
+              </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
+                Operational Best Practices
+              </h2>
+
+              <div style={styles.helpContent}>
+                <ul style={styles.helpList}>
+                  <li>Use individual staff accounts</li>
+                  <li>Do not share Administrator accounts</li>
+                  <li>Test badge printing before major events</li>
+                  <li>Monitor Print Queue during registration</li>
+                  <li>Check Print Agent status daily</li>
+                  <li>Keep a backup printer available</li>
+                  <li>Review failed print jobs regularly</li>
+                  <li>Regenerate QR codes after major routing changes</li>
+                </ul>
+              </div>
+            </div>            
+          </div>
+        </div>
+      </div>
+    );
+  }  
 
   // My Profile Screen
   if (screen === "my-profile") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         <button
@@ -2853,6 +3503,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "print-agents") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -3073,9 +3724,16 @@ const styles = getStyles(theme, isCrtTheme);
     const failedJobs = printJobs.filter(
       (job) => job.status === "Failed"
     ).length;    
-    
+
+    const visiblePrintJobs = showCompletedJobs
+      ? printJobs
+      : printJobs.filter(
+          (job) => job.status !== "Completed"
+        );
+        
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -3148,6 +3806,17 @@ const styles = getStyles(theme, isCrtTheme);
 
             <button
               style={styles.staffActionButton}
+              onClick={() =>
+                setShowCompletedJobs(!showCompletedJobs)
+              }
+            >
+              {showCompletedJobs
+                ? "Hide Completed"
+                : `Show ${completedJobs} Completed`}
+            </button>
+
+            <button
+              style={styles.staffActionButton}
               onClick={handleClearCompletedJobs}
             >
               Clear Completed Jobs
@@ -3170,7 +3839,7 @@ const styles = getStyles(theme, isCrtTheme);
               gap: "20px",
             }}
           >
-            {printJobs.map((job) => (
+            {visiblePrintJobs.map((job) => (
               <div
                 key={job.id}
                 style={{
@@ -3402,6 +4071,7 @@ const styles = getStyles(theme, isCrtTheme);
 
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -3811,6 +4481,7 @@ const styles = getStyles(theme, isCrtTheme);
 
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -4036,6 +4707,7 @@ const styles = getStyles(theme, isCrtTheme);
 
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         {/* Theme Overlay */}
@@ -4237,7 +4909,7 @@ const styles = getStyles(theme, isCrtTheme);
 
             <button
               style={styles.staffActionButton}
-              onClick={handlePrintReturningBadge}
+              onClick={() => {handlePrintReturningBadge()}}
               disabled={!checkedInVisitorId || busy}
             >
               {busy ? "Printing..." : "Print Visitor Badge"}
@@ -4258,6 +4930,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "settings") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -4414,6 +5087,7 @@ const styles = getStyles(theme, isCrtTheme);
     if (!isAuthenticated) {
       return (
         <div style={styles.page}>
+          {renderVersionFooter()}
           {renderAccountMenu()}
 
           {/* Theme Overlay */}
@@ -4454,6 +5128,7 @@ const styles = getStyles(theme, isCrtTheme);
     }
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         {/* Theme Overlay */}
@@ -4525,14 +5200,6 @@ const styles = getStyles(theme, isCrtTheme);
           </div>
           {/* End Dashboard Summary Cards */}
 
-          {/*}
-                    <p style={styles.instructions}>
-                      <strong>Logged in as {username}</strong>
-                      <br />
-                      {activeVisitors.length} active visitor(s) currently on campus.
-                    </p>
-          */}
-
           Your Print Station:{" "}
           <select
             style={styles.input}
@@ -4549,14 +5216,24 @@ const styles = getStyles(theme, isCrtTheme);
                   {station.name}
                 </option>
               ))}
-          </select>          
+          </select>
+          <p
+            style={{
+              marginTop: "6px",
+              fontSize: "0.85rem",
+              color: theme.textSecondary,
+            }}
+          >
+            Station automatically selected from URL:
+            <strong> ?station={staffPrintStation}</strong>
+          </p>
 
           {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>
 
             <button
               type="button"
-              style={styles.staffActionButton}
+              style={styles.staffCard}
               onClick={() => setScreen("visitor-search")}
             >
               Visitor Search
@@ -4564,26 +5241,15 @@ const styles = getStyles(theme, isCrtTheme);
 
             <button
               type="button"
-              style={styles.staffActionButton}
+              style={styles.staffCard}
               onClick={() => setScreen("print-queue")}
             >
               Print Queue
             </button>
 
-            {/* This button only for admins */}
-            {role === "Administrator" && (
-              <button
-                type="button"
-                style={styles.staffActionButton}
-                onClick={() => setScreen("administration")}
-              >
-                Administration
-              </button>
-            )}
-
             <button
               type="button"
-              style={styles.staffActionButton}
+              style={styles.staffCard}
               onClick={() => setScreen("settings")}
             >
               Settings
@@ -4591,34 +5257,50 @@ const styles = getStyles(theme, isCrtTheme);
 
             <button
               type="button"
-              style={styles.staffActionButton}
+              style={styles.staffCard}
               onClick={() => setScreen("reporting")}
             >
               Reporting
             </button>
 
-            <button
-              type="button"
-              style={styles.staffActionButton}
-              onClick={() => {
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("username");
-                setIsAuthenticated(false);
-                navigateTo("home");
-              }}
-            >
-              Logout
-            </button>
+            {/* This button only for admins */}
+            {role === "Administrator" && (
+              <div
+                style={{
+                  marginTop: "20px",
+                  width: "100%",
+                  maxWidth: "700px",
+                  marginLeft: "auto",
+                  marginRight: "auto",
+                }}
+              >
+                <button
+                  style={{
+                    ...styles.staffActionButton,
+                    width: "100%",
+                    backgroundColor: theme.neutral,
+                  }}
+                  onClick={() => navigateTo("administration")}
+                >
+                  Administration
+                </button>
+              </div>
+            )}
 
+            <div style={styles.sectionDivider}></div>
+
+            <h3 style={styles.screenSubtitle}>
+              Active Visitors
+              </h3>
+
+            {/* Bulk Checkout Button */}
             <button
               type="button"
-              style={{ ...styles.printButton, marginTop: "48px" }}
+              style={{ ...styles.bulkCheckoutButton, marginTop: "16px" }}
               onClick={handleBulkCheckout}
             >
               Checkout All Active Visitors
             </button>
-
-            <h3 style={styles.screenTitle}>Active Visitors</h3>
 
           </div>
 
@@ -4746,6 +5428,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "staff-login") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -4818,6 +5501,7 @@ const styles = getStyles(theme, isCrtTheme);
     return (
 
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
         <button
           style={styles.backButton}
@@ -5193,6 +5877,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "visitor-detail") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         {/* Theme Overlay */}
@@ -5566,6 +6251,7 @@ const styles = getStyles(theme, isCrtTheme);
   if (screen === "visitor-search") {
     return (
       <div style={styles.page}>
+        {renderVersionFooter()}
         {renderAccountMenu()}
 
         {/* Theme Overlay */}
@@ -5615,6 +6301,11 @@ const styles = getStyles(theme, isCrtTheme);
               onChange={(event) =>
                 setSearchQuery(event.target.value)
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  handleVisitorSearch();
+                }
+              }}
             />
           </div>
 
@@ -5745,8 +6436,6 @@ const styles = getStyles(theme, isCrtTheme);
       </div>
     );
   }
-
-
 
   // App() Return
   return (

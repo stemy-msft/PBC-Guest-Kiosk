@@ -1953,30 +1953,43 @@ def checkin_again(
             detail=(
                 f"{original.first_name} {original.last_name} "
                 f"is already checked in."
+                "Please check them out before creating another visit."
             ),
         )
 
+    print("request.first_name =", request.first_name)
+    print("request.last_name =", request.last_name)
+    print("original.first_name =", original.first_name)
+    print("original.last_name =", original.last_name)
+
     new_visitor = Visitor(
-        first_name=request.first_name if hasattr(request, "first_name") else original.first_name,
-        last_name=request.last_name if hasattr(request, "last_name") else original.last_name,
+        first_name=request.first_name,
+        last_name=request.last_name,
         visitor_type=request.visitor_type,
         church=original.church,
-        phone=original.phone,
-        email=original.email,
+        phone=request.phone,
+        email=request.email,
         purpose=request.purpose,
-        host_type=original.host_type,
+        host_type=request.host_type,
         host_name=request.host_name,
-        vehicle_plate=original.vehicle_plate,
-        notes=original.notes,
-        expected_departure_time=None,
-        photo_path=original.photo_path if request.reuse_existing_photo else None,
+        vehicle_plate=request.vehicle_plate,
+        notes=request.notes,
+        expected_departure_time=request.expected_departure_time,
+        photo_path=(
+            original.photo_path
+            if request.reuse_existing_photo
+            else None
+        ),
         badge_path=None,
         check_in_time=datetime.now(),
         check_out_time=None,
         check_out_method=None,
         badge_printed=False,
         badge_printed_time=None,
-    )
+)
+
+    print("new_visitor.first_name =", new_visitor.first_name)
+    print("new_visitor.last_name =", new_visitor.last_name)
 
     db.add(new_visitor)
     db.commit()

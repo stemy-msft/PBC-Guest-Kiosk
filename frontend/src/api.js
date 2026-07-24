@@ -1,15 +1,16 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-async function handleResponse(response, errorMessage) {
-  if (response.status === 401) {
-    localStorage.removeItem("access_token");
-    window.location.reload();
-  }
-
+async function handleResponse(response, defaultMessage) {
   if (!response.ok) {
+    let errorMessage = defaultMessage;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || defaultMessage;
+    } catch {
+      // Fall back to default message
+    }
     throw new Error(errorMessage);
   }
-
   return await response.json();
 }
 
@@ -67,7 +68,7 @@ export async function generateBadge(visitorId) {
   return await handleResponse(response, "Failed to generate badge");
 }
 
-export async function createPrintJob(visitorId, station = 1) {
+export async function createPrintJob(visitorId, station) {
   const response = await fetch(
     `${API_BASE}/api/visitors/${visitorId}/print`,
     {
@@ -81,13 +82,16 @@ export async function createPrintJob(visitorId, station = 1) {
     }
   );
 
-  return await handleResponse(response, "Failed to queue print job");
+  if (!response.ok) {
+    const error = await response.json();
+    console.error("Print error:", error);
+    throw new Error(error.detail || "Failed to queue print job");
+  }
+
+  return await response.json();
 }
 
 export async function checkInAgain(visitorId, data) {
-console.log("handleCheckInAgain called");
-console.log(visitor);
-
   const token = localStorage.getItem("access_token");
   const response = await fetch(
     `${API_BASE}/api/visitors/${visitorId}/checkin-again`,
@@ -168,7 +172,6 @@ export async function searchVisitors(query) {
 
   return await handleResponse(response, "Failed to search visitors");
 }
-
 
 export async function getVisitor(visitorId) {
   const token = localStorage.getItem("access_token");
