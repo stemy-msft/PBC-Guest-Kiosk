@@ -911,7 +911,7 @@ def create_print_agent_test_label(
 def register_print_agent(
     request: PrintAgentRegister,
     http_request: Request,
-    current_user: str = Depends(get_current_user),    db: Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     agent = None
 
@@ -951,7 +951,7 @@ def register_print_agent(
     db.commit()
     db.refresh(agent)
 
-    audit(current_user,"REGISTER_PRINT_AGENT",f"AgentKey={request.agent_key}, Hostname={request.hostname}",)
+    audit("REGISTER_PRINT_AGENT",f"AgentKey={request.agent_key}, Hostname={request.hostname}",)
 
 
     assigned_station = None
