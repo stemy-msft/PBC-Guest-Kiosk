@@ -814,3 +814,17 @@ export async function reassignPrintJob(jobId, stationId) {
   }
     return await response.json();
   }
+
+
+  function handleUnauthorized() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("role");
+
+    sessionStorage.setItem(
+        "session_expired_message",
+        "Your session expired. Please sign in again."
+    );
+
+    window.location.reload();
+}

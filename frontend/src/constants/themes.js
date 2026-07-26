@@ -197,7 +197,7 @@ export const themes = {
     textSecondary: "#d6a04a",
 
     primary: "#ffb000",
-    primaryText: "#1a1206",
+    primaryText: "#8d611e",
 
     success: "#f59e0b",
     successText: "#1a1206",

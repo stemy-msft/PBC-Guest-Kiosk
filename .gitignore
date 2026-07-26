@@ -29,3 +29,4 @@ __pycache__/
 *.db
 backend/uploads/
 !backend/uploads/badges/28.png
+backend/logs/

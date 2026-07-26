@@ -65,8 +65,10 @@ export default function App() {
 
   // State variables
 
-  const APP_VERSION = "0.7.0 Milestone 7.7";
+  const APP_VERSION = "0.7.8 Alpha";
   const APP_NAME = "PBC Guest Kiosk";
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768); 
 
   const [activeVisitors, setActiveVisitors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -169,6 +171,22 @@ export default function App() {
     const [showCompletedJobs, setShowCompletedJobs] = useState(false);
 
 
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Load session expired message from sessionStorage on mount
+  useEffect(() => {
+      const message = sessionStorage.getItem("session_expired_message");
+
+      if (message) {
+          alert(message);
+          sessionStorage.removeItem("session_expired_message");
+      }
+  }, []);   
 
   // Load system settings on mount
   useEffect(() => {
@@ -334,6 +352,25 @@ const styles = getStyles(theme, isCrtTheme);
 
     
   // Functions in App()
+
+
+  async function handleResponse(response, defaultMessage) {
+      if (response.status === 401) {
+          handleUnauthorized();
+          throw new Error("Session expired");
+      }
+
+      if (!response.ok) {
+          try {
+              const error = await response.json();
+              throw new Error(error.detail || defaultMessage);
+          } catch {
+              throw new Error(defaultMessage);
+          }
+      }
+
+      return await response.json();
+  }
 
   function renderVersionFooter() {
     return (
@@ -1781,6 +1818,7 @@ const styles = getStyles(theme, isCrtTheme);
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -1791,12 +1829,14 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gridTemplateColumns: isMobile
+                ? "repeat(1, 1fr)"
+                : "repeat(4, 1fr)",
               gap: "20px",
             }}
           >
-            <div style={styles.resultCard}>
-              <h2>User Administration</h2>
+            <div style={styles.administrationCard}>
+              <h2 style={{ color: theme.textSecondary }}>User Management</h2>
 
               <p
                 style={{
@@ -1809,15 +1849,15 @@ const styles = getStyles(theme, isCrtTheme);
 
               <button
                 type="button"
-                style={styles.staffActionButton}
+                style={styles.administrationActionButton}
                 onClick={() => setScreen("users")}
               >
                 User Management
               </button>
             </div>
 
-            <div style={styles.resultCard}>
-              <h2>Print Stations</h2>
+            <div style={styles.administrationCard}>
+              <h2 style={{ color: theme.textSecondary }}>Print Stations</h2>
 
               <p
                 style={{
@@ -1830,15 +1870,15 @@ const styles = getStyles(theme, isCrtTheme);
 
               <button
                 type="button"
-                style={styles.staffActionButton}
+                style={styles.administrationActionButton}
                 onClick={() => setScreen("print-stations")}
               >
                 Print Stations
               </button>
             </div>
 
-            <div style={styles.resultCard}>
-              <h2>Print Agents</h2>
+            <div style={styles.administrationCard}>
+              <h2 style={{ color: theme.textSecondary }}>Print Agents</h2>
 
               <p
                 style={{
@@ -1851,7 +1891,7 @@ const styles = getStyles(theme, isCrtTheme);
 
               <button
                 type="button"
-                style={styles.staffActionButton}
+                style={styles.administrationActionButton}
                 onClick={async () => {
                   await loadPrintStations();
                   await loadPrintAgents();
@@ -1862,8 +1902,8 @@ const styles = getStyles(theme, isCrtTheme);
               </button>
             </div>
 
-            <div style={styles.resultCard}>
-              <h2>System Settings</h2>
+            <div style={styles.administrationCard}>
+              <h2 style={{ color: theme.textSecondary }}>System Settings</h2>
 
               <p
                 style={{
@@ -1876,7 +1916,7 @@ const styles = getStyles(theme, isCrtTheme);
 
               <button
                 type="button"
-                style={styles.staffActionButton}
+                style={styles.administrationActionButton}
                 onClick={() => setScreen("settings")}
               >
                 Open Settings
@@ -3518,10 +3558,12 @@ const styles = getStyles(theme, isCrtTheme);
             maxWidth: "1400px",
             margin: "0 auto",
             paddingTop: "80px",
+            boxSizing: "border-box",
           }}
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -3533,7 +3575,7 @@ const styles = getStyles(theme, isCrtTheme);
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(auto-fill, minmax(400px, 1fr))",
+                "repeat(auto-fill, minmax(300px, 1fr))",
               gap: "20px",
             }}
           >
@@ -3578,7 +3620,7 @@ const styles = getStyles(theme, isCrtTheme);
 
                 <div
                   style={{
-                    display: "flex",
+                    display: "grid",
                     gap: "8px",
                     marginTop: "16px",
                   }}
@@ -3748,10 +3790,14 @@ const styles = getStyles(theme, isCrtTheme);
             maxWidth: "1400px",
             margin: "0 auto",
             paddingTop: "80px",
+            paddingLeft: isMobile ? "12px" : "0",
+            paddingRight: isMobile ? "12px" : "0",
+            boxSizing: "border-box"
           }}
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -3762,39 +3808,45 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(4, 1fr)",
               gap: "16px",
               marginBottom: "24px",
             }}
           >
           
             <div style={styles.userStats}>
-              <h2>{pendingJobs}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{pendingJobs}</h2>
               <p>Pending</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{printingJobs}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{printingJobs}</h2>
               <p>Printing</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{completedJobs}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{completedJobs}</h2>
               <p>Completed</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{failedJobs}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{failedJobs}</h2>
               <p>Failed</p>
             </div>
           </div>
 
           <div
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(4, 1fr)",
               justifyContent: "center",
               gap: "12px",
               marginBottom: "24px",
+
             }}
           >
             <button
@@ -3835,7 +3887,7 @@ const styles = getStyles(theme, isCrtTheme);
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(auto-fill, minmax(450px, 1fr))",
+                "repeat(auto-fill, minmax(300px, 1fr))",
               gap: "20px",
             }}
           >
@@ -4086,10 +4138,12 @@ const styles = getStyles(theme, isCrtTheme);
             maxWidth: "1400px",
             margin: "0 auto",
             paddingTop: "80px",
+            boxSizing: "border-box",
           }}
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -4100,23 +4154,25 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: isMobile
+              ? "repeat(1, 1fr)"
+              : "repeat(3, 1fr)",
               gap: "16px",
               marginBottom: "24px",
             }}
           >
             <div style={styles.userStats}>
-              <h2>{printStations.length}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{printStations.length}</h2>
               <p>Total Stations</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{activeStations}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{activeStations}</h2>
               <p>Active</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{maintenanceStations}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{maintenanceStations}</h2>
               <p>Maintenance</p>
             </div>
           </div>
@@ -4157,7 +4213,7 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
               gap: "20px",
             }}
           >
@@ -4496,10 +4552,14 @@ const styles = getStyles(theme, isCrtTheme);
             maxWidth: "1400px",
             margin: "0 auto",
             paddingTop: "80px",
+            paddingLeft: isMobile ? "12px" : "0",
+            paddingRight: isMobile ? "12px" : "0",
+            boxSizing: "border-box",
           }}
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -4525,12 +4585,12 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
               gap: "20px",
             }}
           >
             <div style={styles.resultCard}>
-              <h2>Check-ins by Location</h2>
+              <h2 style={{ color: theme.textSecondary }}>Check-ins by Location</h2>
 
               {report.check_ins_by_location.length === 0 ? (
                 <p>No check-ins by location found.</p>
@@ -4552,7 +4612,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Recent Arrivals</h2>
+              <h2 style={{ color: theme.textSecondary }}>Recent Arrivals</h2>
 
               {report.recent_arrivals.length === 0 ? (
                 <p>No recent arrivals found.</p>
@@ -4585,7 +4645,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Visitor Types</h2>
+              <h2 style={{ color: theme.textSecondary }}>Visitor Types</h2>
 
               {report.visitorTypes.length === 0 ? (
                 <p>No visitor type data found.</p>
@@ -4607,7 +4667,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Hourly Activity</h2>
+              <h2 style={{ color: theme.textSecondary }}>Hourly Activity</h2>
 
               {report.hourly_activity.every((item) => item.count === 0) ? (
                 <p>No hourly activity found for today.</p>
@@ -4631,7 +4691,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Daily Trends</h2>
+              <h2 style={{ color: theme.textSecondary }}>Daily Trends</h2>
 
               {report.daily_trends.map((item) => (
                 <div
@@ -4649,7 +4709,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Print Station Usage</h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Station Usage</h2>
 
               {report.print_station_usage.length === 0 ? (
                 <p>No print station usage found.</p>
@@ -4671,7 +4731,7 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
 
             <div style={styles.resultCard}>
-              <h2>Peak Check-In Times</h2>
+              <h2 style={{ color: theme.textSecondary }}>Peak Check-In Times</h2>
 
               {report.peak_check_in_times.length === 0 ? (
                 <p>No peak check-in times found for today.</p>
@@ -4951,6 +5011,7 @@ const styles = getStyles(theme, isCrtTheme);
               style={{
                 textAlign: "center",
                 marginBottom: "24px",
+                ...styles.screenTitle
               }}
             >
               Settings
@@ -4969,13 +5030,15 @@ const styles = getStyles(theme, isCrtTheme);
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(auto-fit, minmax(450px, 1fr))",
                 gap: "20px",
               }}
             >
 
               <div style={styles.resultCard}>
-                <h2>System</h2>
+                <h2 style={{ color: theme.textSecondary }}>System</h2>
 
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
@@ -4999,7 +5062,7 @@ const styles = getStyles(theme, isCrtTheme);
               </div>
 
               <div style={styles.resultCard}>
-                <h2>Visitor Types</h2>
+                <h2 style={{ color: theme.textSecondary }}>Visitor Types</h2>
 
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
@@ -5015,7 +5078,7 @@ const styles = getStyles(theme, isCrtTheme);
               </div>
 
               <div style={styles.resultCard}>
-                <h2>Visit Purposes</h2>
+                <h2 style={{ color: theme.textSecondary }}>Visit Purposes</h2>
 
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
@@ -5031,7 +5094,7 @@ const styles = getStyles(theme, isCrtTheme);
               </div>
 
               <div style={styles.resultCard}>
-                <h2>Required Check-In Fields</h2>
+                <h2 style={{ color: theme.textSecondary }}>Required Check-In Fields</h2>
 
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
@@ -5047,7 +5110,7 @@ const styles = getStyles(theme, isCrtTheme);
               </div>
 
               <div style={styles.resultCard}>
-                <h2>Required Returning Visitor Fields</h2>
+                <h2 style={{ color: theme.textSecondary }}>Required Returning Visitor Fields</h2>
 
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
@@ -5158,43 +5221,52 @@ const styles = getStyles(theme, isCrtTheme);
         </button>
 
         <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Staff Dashboard</h1>
+          <h1 style={{ color: theme.textPrimary }}>
+            {/* Staff Dashboard */}
+            Staff Dashboard
+            </h1>
 
           {/* Dashboard Summary Cards */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(4, 1fr)",
               gap: "16px",
               marginBottom: "24px",
               marginTop: "48px",
             }}
           >
             <div style={styles.userStats}>
-              <h2>{dashboardStats?.active_visitors ?? 0}</h2>
-              <h2>Visitors</h2>
+              <h2 style={{ color: theme.textSecondary }}>{dashboardStats?.active_visitors ?? 0}</h2>
+              <h2 style={{ color: theme.textSecondary }}>Visitors</h2>
               <p>Active</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{dashboardStats?.checked_in_today ?? 0}</h2>
-              <h2>Visitors</h2>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.checked_in_today ?? 0}
+                </h2>
+              <h2 style={{ color: theme.textSecondary }}>
+                Visitors
+                </h2>
               <p>Checked In Today</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>
+              <h2 style={{ color: theme.textSecondary }}>
                 {dashboardStats?.online_stations ?? 0} / {dashboardStats?.offline_stations ?? 0} / {dashboardStats?.maintenance_stations ?? 0}
               </h2>
-              <h2>Print Stations</h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Stations</h2>
               <p>On / Off / Maint.</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>
+              <h2 style={{ color: theme.textSecondary }}>
                 {dashboardStats?.pending_jobs ?? 0} / {dashboardStats?.failed_jobs ?? 0}
               </h2>
-              <h2>Print Queue</h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Queue</h2>
               <p>Pending / Failed</p>
             </div>
           </div>
@@ -5312,7 +5384,9 @@ const styles = getStyles(theme, isCrtTheme);
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "180px 1fr 140px",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "180px 1fr 140px",
                   alignItems: "start",
                 }}
               >
@@ -5321,7 +5395,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "left",
+                    justifyContent: isMobile ? "center" : "left",
                     alignItems: "center",
                   }}
                 > 
@@ -5366,9 +5440,16 @@ const styles = getStyles(theme, isCrtTheme);
                       marginTop: "10px",
                   }}
                 >
-                    <h2>
-                      {visitor.first_name} {visitor.last_name}
-                    </h2>
+                  <h2
+                    style={{
+                      margin: "0 0 8px 0",
+                      color: theme.textPrimary,
+                      fontSize: isMobile ? "1.25rem" : "1.5rem",
+                      lineHeight: "1.2",
+                    }}
+                  >
+                    {visitor.first_name} {visitor.last_name}
+                  </h2>
 
                     <p>{visitor.visitor_type}</p>
 
@@ -5449,7 +5530,9 @@ const styles = getStyles(theme, isCrtTheme);
         )}
 
         <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Staff Login</h1>
+          <h1 style={{ color: theme.textPrimary }}>
+            Staff Login
+          </h1>
 
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Username</label>
@@ -5507,7 +5590,7 @@ const styles = getStyles(theme, isCrtTheme);
           style={styles.backButton}
           onClick={() => setScreen("administration")}
         >
-          ← Staff Dashboard
+          ← Administration
         </button>
 
         <div
@@ -5516,10 +5599,12 @@ const styles = getStyles(theme, isCrtTheme);
             maxWidth: "1400px",
             margin: "0 auto",
             paddingTop: "80px",
+            boxSizing: "border-box",
           }}
         >
           <h1
             style={{
+              color: theme.textPrimary,
               textAlign: "center",
               marginBottom: "24px",
             }}
@@ -5530,28 +5615,30 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, 1fr)"
+                : "repeat(4, 1fr)",
               gap: "16px",
               marginBottom: "24px",
             }}
           >
             <div style={styles.userStats}>
-              <h2>{totalUsers}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{totalUsers}</h2>
               <p>Total Users</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{enabledUsers}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{enabledUsers}</h2>
               <p>Enabled</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{disabledUsers}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{disabledUsers}</h2>
               <p>Disabled</p>
             </div>
 
             <div style={styles.userStats}>
-              <h2>{adminUsers}</h2>
+              <h2 style={{ color: theme.textSecondary }}>{adminUsers}</h2>
               <p>Administrators</p>
             </div>
           </div>
@@ -5596,7 +5683,7 @@ const styles = getStyles(theme, isCrtTheme);
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
               gap: "20px",
             }}
           >
@@ -5652,8 +5739,10 @@ const styles = getStyles(theme, isCrtTheme);
                   {user.email || "Not Configured"}
                 </div>
 
-                <div style={{ marginBottom: "16px" }}>
+                <div style={{ marginBottom: "0px" }}>
                   <strong>Last Login:</strong>{" "}
+                  </div>
+                <div style={{ marginBottom: "16px" }}>
                   {user.last_login
                     ? new Date(user.last_login).toLocaleString()
                     : "Never"}
@@ -5906,7 +5995,9 @@ const styles = getStyles(theme, isCrtTheme);
         </button>
 
         <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Visitor Details</h1>
+          <h1 style={{ color: theme.textPrimary }}>
+            Visitor Details
+          </h1>
 
           <div style={styles.resultCard}>
             {selectedVisitor.photo_path && (
@@ -6250,7 +6341,8 @@ const styles = getStyles(theme, isCrtTheme);
   // Visitor Search Screen
   if (screen === "visitor-search") {
     return (
-      <div style={styles.page}>
+      <div 
+        style={styles.page}>
         {renderVersionFooter()}
         {renderAccountMenu()}
 
@@ -6281,7 +6373,7 @@ const styles = getStyles(theme, isCrtTheme);
 
         {/* Styles.formContainer */}
         <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>
+          <h1 style={{ color: theme.textPrimary }}>
             Search Visitors
           </h1>
 
@@ -6323,7 +6415,10 @@ const styles = getStyles(theme, isCrtTheme);
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "180px 1fr 140px",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "180px 1fr 140px",
+                  gap: isMobile ? "12px" : "0",  
                   alignItems: "start",
                 }}
               >
@@ -6332,7 +6427,7 @@ const styles = getStyles(theme, isCrtTheme);
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "left",
+                    justifyContent: isMobile ? "center" : "left",
                     alignItems: "center",
                   }}
                 > 
@@ -6341,11 +6436,12 @@ const styles = getStyles(theme, isCrtTheme);
                       src={getPhotoUrl(visitor.photo_path)}
                       alt="Visitor"
                       style={{
-                        width: "164px",
-                        height: "164px",
+                        width: isMobile ? "120px" : "164px",
+                        height: isMobile ? "120px" : "164px",
                         objectFit: "cover",
                         borderRadius: "10px",
                         border: "1px solid #d1d5db",
+                        
                       }}
                     />
                   ) : (
@@ -6375,9 +6471,16 @@ const styles = getStyles(theme, isCrtTheme);
                   style={{
                       textAlign: "center",
                       marginTop: "10px",
+                      width: isMobile ? "100%" : "auto",
+                      overflow: "visible",
                   }}
                 >
-                    <h2>
+                    <h2
+                      style={{
+                        margin: 0,
+                        color: theme.textPrimary,
+                      }}
+                    >
                       {visitor.first_name} {visitor.last_name}
                     </h2>
 

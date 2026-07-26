@@ -27,6 +27,34 @@ export function getStyles(theme, isCrtTheme) {
             color: "#fff",
             },            
             
+        administrationActionButton: {
+            backgroundColor: theme.primary,
+            border: "none",
+            borderRadius: "16px",
+            color: theme.buttonText,
+            cursor: "pointer",
+            fontSize: "1rem",
+            fontWeight: 600,
+            height: "auto",
+            marginTop: "auto",
+            minWidth: "180px",
+            flex: "1 1 220px",
+            padding: "0 24px",
+            maxHeight: "60px",  
+        },
+
+        administrationCard: {
+            backgroundColor: theme.surfaceSecondary,
+            border: `1px solid ${theme.border}`,
+            borderRadius: "16px",
+            display: "flex",
+            flexDirection: "column",
+            height: "225px",
+            marginTop: "36px",
+            marginBottom: "12px",
+            padding: "20px",
+        },
+
         backButton: {
             background: theme.surface,
             border: `1px solid ${theme.border}`,
@@ -52,8 +80,10 @@ export function getStyles(theme, isCrtTheme) {
             cursor: "pointer",
             fontSize: "2rem",
             fontWeight: 700,
-            height: "60px",
-            marginTop: "8px",
+            height: "110%",
+            marginTop: "12px",
+            marginBottom: "12px",
+            padding: "12px 12px",
         },
 
         cardContainer: {
@@ -284,6 +314,7 @@ export function getStyles(theme, isCrtTheme) {
             justifyContent: "center",
             minHeight: "100vh",
             padding: "40px",
+            boxSizing: "border-box",
         },
 
         photoButton: {
@@ -354,8 +385,11 @@ export function getStyles(theme, isCrtTheme) {
             backgroundColor: theme.surfaceSecondary,
             border: `1px solid ${theme.border}`,
             borderRadius: "16px",
+            boxSizing: "border-box",
             marginTop: "16px",
+            overflowwrap: "break-word",
             padding: "20px",
+            width: "100%",
         },
 
         screenTitle: {

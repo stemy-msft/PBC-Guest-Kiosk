@@ -1,3 +1,5 @@
+from urllib3 import request
+
 from .auth import (create_access_token, get_current_user, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine
@@ -9,6 +11,7 @@ from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Req
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 from sqlalchemy import func, or_
@@ -44,6 +47,8 @@ from .schemas import (
     VisitorResponse,
     VisitorUpdateRequest,
 )
+
+import logging
 import json
 import qrcode
 
@@ -70,6 +75,10 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# LOG_DIR = BASE_DIR / "logs"
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 # UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR = BASE_DIR / "uploads"
 PHOTO_DIR = UPLOAD_DIR / "photos"
@@ -82,13 +91,64 @@ QR_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
+# App logging configuration
+app_logger = logging.getLogger("guest-kiosk")
+app_logger.setLevel(logging.WARNING)
+app_handler = RotatingFileHandler(
+    LOG_DIR / "guest-kiosk.log",
+    maxBytes=10 * 1024 * 1024,  # 10 MB
+    backupCount=5,
+    encoding="utf-8",
+)
+app_handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s"
+    )
+)
+app_logger.addHandler(app_handler)
+
+
+# Audit logging configuration
+audit_logger = logging.getLogger("audit")
+audit_logger.setLevel(logging.INFO)
+audit_handler = RotatingFileHandler(
+    LOG_DIR / "audit.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB
+    backupCount=10,
+    encoding="utf-8",
+)
+audit_handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s"
+    )
+)
+audit_logger.addHandler(audit_handler)
+
+
 print("REGISTERING SETTINGS ENDPOINTS")
 # system_settings.json is used to store system-wide settings that are not stored in the database.
 CONFIG_DIR = BASE_DIR / "config"
 SETTINGS_FILE = CONFIG_DIR / "system_settings.json"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
 print(settings_file := SETTINGS_FILE)
+
+audit_logger.info("=" * 60)
+audit_logger.info("PBC Guest Kiosk starting")
+audit_logger.info(f"Base directory: {BASE_DIR}")
+audit_logger.info(f"Config directory: {CONFIG_DIR}")
+audit_logger.info(f"Settings file: {SETTINGS_FILE}")
+audit_logger.info("=" * 60)
+
+audit_logger.info(
+    f"Settings initialized. "
+    f"Directory={CONFIG_DIR} "
+    f"File={SETTINGS_FILE} "
+    f"Exists={SETTINGS_FILE.exists()}"
+)
+
+audit_logger.info(
+    f"Settings initialized. Config directory={CONFIG_DIR} Settings file={SETTINGS_FILE}"
+)
 
 VALID_PRINT_JOB_STATUSES = {
     "Pending",
@@ -96,6 +156,32 @@ VALID_PRINT_JOB_STATUSES = {
     "Completed",
     "Failed",
 }
+
+# Defs
+
+def audit(
+    user: str,
+    action: str,
+    details: str = "",
+):
+    audit_logger.info(
+        f"User='{user}' Action='{action}' Details='{details}'"
+    )
+
+def build_station_checkin_url(station: PrintStation) -> str:
+    settings = load_system_settings()
+
+    base_url = settings.get("base_checkin_url", "").strip()
+
+    if not base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Base check-in URL is not configured.",
+        )
+
+    base_url = base_url.rstrip("/")
+
+    return f"{base_url}?station={station.slug}"
 
 def find_font():
     candidates = [
@@ -119,48 +205,6 @@ def find_font():
             return candidate
 
     raise RuntimeError("No TrueType font found on this system.")
-
-def get_or_create_system_test_visitor(db: Session) -> Visitor:
-    system_visitor = (
-        db.query(Visitor)
-        .filter(
-            Visitor.first_name == "System",
-            Visitor.last_name == "Printer Test",
-            Visitor.visitor_type == "System",
-        )
-        .first()
-    )
-
-    if system_visitor is not None:
-        return system_visitor
-
-    system_visitor = Visitor(
-        first_name="System",
-        last_name="Printer Test",
-        visitor_type="System",
-        phone=None,
-        email=None,
-        church=None,
-        purpose="Print Agent Test",
-        host_type="System",
-        host_name="Print Agent Test",
-        vehicle_plate=None,
-        notes="Internal system visitor used for print agent test labels.",
-        expected_departure_time=None,
-        photo_path=None,
-        badge_path=None,
-        check_in_time=datetime.now(),
-        check_out_time=datetime.now(),
-        check_out_method="System",
-        badge_printed=False,
-        badge_printed_time=None,
-    )
-
-    db.add(system_visitor)
-    db.commit()
-    db.refresh(system_visitor)
-
-    return system_visitor
 
 def generate_print_agent_test_label(
     agent: PrintAgent,
@@ -234,76 +278,6 @@ def generate_print_agent_test_label(
 
     image.save(output_path, format="PNG")
     return output_path
-
-def load_system_settings() -> dict:
-    if not SETTINGS_FILE.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="Settings file not found",
-        )
-
-    with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
-        return json.load(file)
-
-
-def build_station_checkin_url(station: PrintStation) -> str:
-    settings = load_system_settings()
-
-    base_url = settings.get("base_checkin_url", "").strip()
-
-    if not base_url:
-        raise HTTPException(
-            status_code=400,
-            detail="Base check-in URL is not configured.",
-        )
-
-    base_url = base_url.rstrip("/")
-
-    return f"{base_url}?station={station.slug}"
-
-
-def get_or_create_system_qr_visitor(db: Session) -> Visitor:
-    system_visitor = (
-        db.query(Visitor)
-        .filter(
-            Visitor.first_name == "System",
-            Visitor.last_name == "QR Label",
-            Visitor.visitor_type == "System",
-        )
-        .first()
-    )
-
-    if system_visitor is not None:
-        return system_visitor
-
-    system_visitor = Visitor(
-        first_name="System",
-        last_name="QR Label",
-        visitor_type="System",
-        phone=None,
-        email=None,
-        church=None,
-        purpose="Print Station QR",
-        host_type="System",
-        host_name="Print Station QR",
-        vehicle_plate=None,
-        notes="Internal system visitor used for print station QR code labels.",
-        expected_departure_time=None,
-        photo_path=None,
-        badge_path=None,
-        check_in_time=datetime.now(),
-        check_out_time=datetime.now(),
-        check_out_method="System",
-        badge_printed=False,
-        badge_printed_time=None,
-    )
-
-    db.add(system_visitor)
-    db.commit()
-    db.refresh(system_visitor)
-
-    return system_visitor
-
 
 def generate_print_station_qr_label(
     station: PrintStation,
@@ -403,6 +377,102 @@ def generate_print_station_qr_label(
 
     return output_path
 
+def get_or_create_system_qr_visitor(db: Session) -> Visitor:
+    system_visitor = (
+        db.query(Visitor)
+        .filter(
+            Visitor.first_name == "System",
+            Visitor.last_name == "QR Label",
+            Visitor.visitor_type == "System",
+        )
+        .first()
+    )
+    if system_visitor is not None:
+        return system_visitor
+    system_visitor = Visitor(
+        first_name="System",
+        last_name="QR Label",
+        visitor_type="System",
+        phone=None,
+        email=None,
+        church=None,
+        purpose="Print Station QR",
+        host_type="System",
+        host_name="Print Station QR",
+        vehicle_plate=None,
+        notes="Internal system visitor used for print station QR code labels.",
+        expected_departure_time=None,
+        photo_path=None,
+        badge_path=None,
+        check_in_time=datetime.now(),
+        check_out_time=datetime.now(),
+        check_out_method="System",
+        badge_printed=False,
+        badge_printed_time=None,
+    )
+    db.add(system_visitor)
+    db.commit()
+    db.refresh(system_visitor)
+    return system_visitor
+
+def get_or_create_system_test_visitor(db: Session) -> Visitor:
+    system_visitor = (
+        db.query(Visitor)
+        .filter(
+            Visitor.first_name == "System",
+            Visitor.last_name == "Printer Test",
+            Visitor.visitor_type == "System",
+        )
+        .first()
+    )
+
+    if system_visitor is not None:
+        return system_visitor
+
+    system_visitor = Visitor(
+        first_name="System",
+        last_name="Printer Test",
+        visitor_type="System",
+        phone=None,
+        email=None,
+        church=None,
+        purpose="Print Agent Test",
+        host_type="System",
+        host_name="Print Agent Test",
+        vehicle_plate=None,
+        notes="Internal system visitor used for print agent test labels.",
+        expected_departure_time=None,
+        photo_path=None,
+        badge_path=None,
+        check_in_time=datetime.now(),
+        check_out_time=datetime.now(),
+        check_out_method="System",
+        badge_printed=False,
+        badge_printed_time=None,
+    )
+
+    db.add(system_visitor)
+    db.commit()
+    db.refresh(system_visitor)
+
+    return system_visitor
+
+def load_system_settings() -> dict:
+    if not SETTINGS_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Settings file not found",
+        )
+
+    with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+
+
+
+# API Endpoints
+
 @app.get("/")
 def root():
     return {
@@ -501,11 +571,15 @@ def get_settings():
         return json.load(f)
 
 @app.put("/api/settings",response_model=SettingsResponse,)
-def update_settings(
-    request: SettingsUpdate,
-    current_user: str = Depends(get_current_user),
-):
-    settings = request.model_dump()
+def update_settings(request: SettingsUpdate,current_user: str = Depends(get_current_user),):
+    old_settings = json.load(open(SETTINGS_FILE, "r", encoding="utf-8"))
+    new_settings = request.model_dump()
+
+    audit(
+        current_user,
+        "UPDATE_SETTINGS",
+        f"Theme={request.theme}, AutoRefresh={request.auto_refresh_seconds}",
+    )
 
     with open(
         SETTINGS_FILE,
@@ -513,12 +587,12 @@ def update_settings(
         encoding="utf-8",
     ) as f:
         json.dump(
-            settings,
+            new_settings,
             f,
             indent=2,
         )
 
-    return settings
+    return new_settings
 
 @app.get("/health")
 def health():
@@ -530,11 +604,10 @@ def health():
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(
     request: LoginRequest,
+    #current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     submitted_username = request.username.strip()
-
-    print(f"Login attempt: {submitted_username}")
 
     user = (
         db.query(User)
@@ -542,24 +615,20 @@ def login(
         .first()
     )
 
-    print(f"User found: {user is not None}")
-
     if not user:
+        audit(user=submitted_username, action="LOGIN_FAILED", details="Invalid username")
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
-
-    print(f"Stored hash: {user.password_hash}")
 
     password_matches = verify_password(
         request.password,
         user.password_hash,
     )
 
-    print(f"Password match: {password_matches}")
-
     if not user.enabled:
+        audit(user=user.username, action="LOGIN_FAILED", details="Account disabled")
         raise HTTPException(
             status_code=403,
             detail="Account disabled",
@@ -567,12 +636,15 @@ def login(
 
     if not password_matches:
         user.failed_login_count += 1
+        audit(user=user.username, action="LOGIN_FAILED", details=f"Invalid password (attempt #{user.failed_login_count})")
         db.commit()
 
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
+
+    audit(user=user.username,action="LOGIN",details="Successful login")
 
     user.failed_login_count = 0
     user.last_login = datetime.now()
@@ -601,6 +673,7 @@ def change_password(
     )
 
     if not user:
+        audit(user=current_user, action="CHANGE_PASSWORD Failed", details="Username not found")
         raise HTTPException(
             status_code=404,
             detail="User not found",
@@ -838,7 +911,7 @@ def create_print_agent_test_label(
 def register_print_agent(
     request: PrintAgentRegister,
     http_request: Request,
-    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),    db: Session = Depends(get_db),
 ):
     agent = None
 
@@ -877,6 +950,9 @@ def register_print_agent(
 
     db.commit()
     db.refresh(agent)
+
+    audit(current_user,"REGISTER_PRINT_AGENT",f"AgentKey={request.agent_key}, Hostname={request.hostname}",)
+
 
     assigned_station = None
 
@@ -1114,6 +1190,8 @@ def clear_completed_print_jobs(
 
     db.commit()
 
+    audit(current_user,"CLEAR_COMPLETED_PRINT_JOBS", f"Deleted={deleted}")
+
     return {
         "status": "success",
         "deleted": deleted,
@@ -1131,6 +1209,7 @@ def clear_failed_print_jobs(
     )
 
     db.commit()
+    audit(current_user,"CLEAR_FAILED_PRINT_JOBS", f"Deleted={deleted}")
 
     return {
         "status": "success",
@@ -1205,6 +1284,7 @@ def delete_print_job(
 
     db.delete(job)
     db.commit()
+    audit(current_user,"DELETE_PRINT_JOB", f"Deleted={job_id}, Status={job.status}")
 
     return {"status": "deleted"}
 
@@ -1221,6 +1301,7 @@ def get_print_stations(
 @app.post("/api/print-stations",response_model=PrintStationResponse,)
 def create_print_station(
     request: PrintStationCreate,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     existing = (
@@ -1245,6 +1326,8 @@ def create_print_station(
     db.add(station)
     db.commit()
     db.refresh(station)
+
+    audit(current_user,"CREATE_PRINT_STATION", f"Created={station.slug}")
 
     return station
 
@@ -1295,7 +1378,6 @@ def get_print_station_stats(
         "completed_jobs": completed_jobs,
         "failed_jobs": failed_jobs,
     }
-
 
 @app.get("/api/print-stations/{station_id}/qr")
 def download_print_station_qr(
@@ -1388,6 +1470,7 @@ def print_station_qr_label(
 def update_print_station(
     station_id: int,
     request: PrintStationUpdate,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     station = (
@@ -1410,12 +1493,18 @@ def update_print_station(
     db.commit()
     db.refresh(station)
 
-    return station
+    audit(
+        current_user,
+        "UPDATE_PRINT_STATION",
+        f"StationID={station.id}, StationSlug={station.slug}",
+    )
 
+    return station
 
 @app.delete("/api/print-stations/{station_id}/permanent")
 def delete_print_station(
     station_id: int,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     station = (
@@ -1445,8 +1534,13 @@ def delete_print_station(
         )
 
     db.delete(station)
-
     db.commit()
+
+    audit(
+        current_user,
+        "DELETE_PRINT_STATION",
+        f"StationID={station.id}, StationSlug={station.slug}",
+    )
 
     return {
         "message": f"Print station '{station.name}' deleted"
@@ -1746,6 +1840,12 @@ def create_user(
     db.commit()
     db.refresh(user)
 
+    audit(
+        current_user,
+        "CREATE_USER",
+        f"Username={request.username}, Role={request.role}",
+    )
+
     return user
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
@@ -1788,6 +1888,12 @@ def update_user(
     db.commit()
     db.refresh(user)
 
+    audit(
+        current_user,
+        "UPDATE_USER",
+        f"Username={user.username}, Role={user.role}, request",
+    )
+
     return user
 
 @app.post("/api/users/{user_id}/reset-password")
@@ -1820,6 +1926,13 @@ def reset_password(
     user.modified_date = datetime.now()
 
     db.commit()
+    db.refresh(user)
+
+    audit(
+        current_user,
+        "RESET_PASSWORD",
+        f"Username={user.username}, Role={user.role}",
+    )
 
     return {
         "status": "success",
@@ -1861,6 +1974,12 @@ def update_user_status(
 
     db.commit()
     db.refresh(user)
+
+    audit(
+        current_user,
+        "UPDATE_USER",
+        f"Username={user.username}, Role={user.role}",
+    )
 
     return user
 
@@ -2049,6 +2168,12 @@ def bulk_checkout(
 
     db.commit()
 
+    audit(
+        current_user,
+        "CHECKOUT_ALL_VISITORS",
+        f"Count={len(active_visitors)}",
+    )
+
     return {
         "checked_out_count": len(active_visitors),
         "check_out_time": checkout_time,
@@ -2173,6 +2298,12 @@ def update_visitor(
 
     db.commit()
     db.refresh(visitor)
+
+    audit(
+        current_user,
+        "UPDATE_VISITOR",
+        f"VisitorID={visitor.id}",
+    )
 
     return visitor
 
@@ -2328,5 +2459,11 @@ def create_print_job(
 
     return print_job
 
-
+# Logging unhandled exceptions for debugging purposes
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    app_logger.exception(
+        f"Unhandled exception on {request.method} {request.url.path}"
+    )
+    raise exc
 
