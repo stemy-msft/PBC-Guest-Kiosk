@@ -23,10 +23,39 @@ dist-ssr
 *.sln
 *.sw?
 
+# Environment files (never commit real secrets; examples are tracked)
 .env
+.env.*
+!.env.example
+!**/.env.example
+
+# Python virtual environments
 .venv/
+venv/
+env/
+
+# Python bytecode and tool caches
 __pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# SQLite databases and backup/journal variants (operational + visitor data)
 *.db
+*.db-journal
+*.db.old
+*.db.bak
+*.sqlite
+*.sqlite3
+*.db3
+
+# Generated application artifacts / uploaded visitor data
 backend/uploads/
-!backend/uploads/badges/28.png
 backend/logs/
+print-agent/downloaded-badges/
+downloaded-badges/

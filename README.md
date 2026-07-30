@@ -56,7 +56,7 @@ PBC-guest-kiosk/
 ├── print-agent/        Raspberry Pi print service
 ├── docs/               Documentation
 │
-├── .env                Backend configuration
+├── .env                Backend configuration (created locally from .env.example; git-ignored, never committed)
 └── README.md
 ```
 
@@ -154,14 +154,21 @@ The backend loads configuration from:
 /.env
 ```
 
-This file must exist in the root of the repository.
+Create it by copying the tracked example: `cp .env.example .env`. The real
+`.env` is git-ignored and must never be committed.
 
 Example:
 
 ```env
-JWT_SECRET_KEY=change-me
-DATABASE_URL=sqlite:///data/kiosk.db
-PRINT_AGENT_URL=http://visitor-pi-printer:8001
+# REQUIRED — changing this signing key invalidates all existing sessions
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=480
+
+# Initial administrator bootstrap (created only if no admin exists yet)
+PBC_DEFAULT_ADMIN_USERNAME=admin
+PBC_DEFAULT_ADMIN_PASSWORD=replace-with-a-strong-password
+PBC_DEFAULT_ADMIN_DISPLAY_NAME=Administrator
 ```
 
 ---
@@ -174,9 +181,10 @@ Environment variables supported by the print agent:
 |-----------|-------------|
 | PBC_API_BASE | Backend API URL |
 | PBC_PRINTER_NAME | CUPS printer queue name |
-| PBC_POLL_SECONDS | Poll interval |
-| PBC_DOWNLOAD_DIR | Temporary badge download location |
-| PBC_AGENT_TOKEN | Agent authentication token |
+| PBC_PRINT_AGENT_POLL_SECONDS | Poll interval |
+| PBC_PRINT_TIMEOUT_SECONDS | Per-job print timeout |
+| PBC_PRINT_DOWNLOAD_DIR | Temporary badge download location |
+| PBC_PRINT_AGENT_TOKEN | Optional agent authentication token |
 
 Example:
 

@@ -66,7 +66,7 @@ Each finding re-validated against the **current committed code**, then classifie
 | 1 — Low-risk frontend correctness | F-006 (verify), F-015, F-016, F-017 | 0 | **Complete** (`99ac01d`) |
 | 2 — Minimal regression-test foundation | F-030 (+ protects 3, 2) | 1 reviewed | **Complete (this pass)** |
 | 3 — AuthN/AuthZ (DB-backed user, admin role) | F-002, F-003 | 2 | **Complete (this pass)** |
-| 4 — Repository & secret hygiene | F-001, F-007, F-027, STAFF_* removal | 2 | Not started |
+| 4 — Repository & secret hygiene | F-001, F-007, F-027, STAFF_* removal | 2 | **Complete (this pass)** |
 | 5 — Kiosk/print-agent boundary hardening | F-004, F-005 | 2, mapping | Not started |
 | 6 — Backend correctness/stability | F-011, F-012, F-013, F-014, F-010, F-020, F-028, F-029 | 2 | Not started |
 
@@ -344,3 +344,96 @@ Enabled non-administrators receive **403** (and stay authenticated); missing/dis
 
 **Stop here for review. No commit made automatically.**
 Suggested commit message: `Milestone 7.8.5 Batch 3: DB-backed auth + admin authorization`
+
+---
+
+## 12. Batch 4 — Repository & Secret Hygiene (F-001, F-007, F-027, STAFF_* removal)
+
+### Starting state
+- Git HEAD `1ab5445` (merge commit), branch `main`, clean working tree. Batch 3 committed as `52af0fd`.
+- Scope: **forward-looking** repository hygiene only — stop tracking sensitive/generated files (without deleting local copies), sanitize real-looking credentials in tracked example/doc files, remove obsolete `STAFF_*` loading, and document env setup. **No** history rewrite, **no** secret rotation, **no** deletion of local `.env`/operational DB/venv, **no** auto-commit.
+
+### Phase A — Inventory findings (proven, not assumed)
+**Tracked files matching sensitive/generated patterns (from `git ls-files`):**
+- `.env` files tracked: **5** — `.env` (root, real secret), `.env.example`, `frontend/.env.example`, `print-agent/.env` (real secret), `print-agent/.env.example`.
+- `*.db.*` variant tracked: **1** — `backend/visitor_kiosk.db.old` (backup; may contain visitor data).
+- `backend/.venv/` tracked: **3128** files.
+- `__pycache__`/`.pyc` tracked: **1346** (mostly in venv; **10** non-venv `.pyc` in app/tests).
+- logs, `backend/uploads/` (badges/photos/qr-codes), `frontend/dist/`, `.pytest_cache`, `node_modules`: **0 tracked** (visitor data was **not** tracked — good).
+- Operational `backend/visitor_kiosk.db`: **not tracked** (good).
+
+**Environment-variable consumption (proven via `Select-String getenv|environ` in `backend/app`):**
+- `auth.py`: `STAFF_USERNAME`/`STAFF_PASSWORD` (**obsolete — no consumer anywhere**, dead vars), `JWT_SECRET_KEY` (required), `JWT_ALGORITHM` (default `HS256`), `JWT_EXPIRE_MINUTES` (default `480`).
+- `config.py`: `PBC_DEFAULT_ADMIN_USERNAME` (default `admin`), `PBC_DEFAULT_ADMIN_PASSWORD` (default placeholder), `PBC_DEFAULT_ADMIN_DISPLAY_NAME` (default `Administrator`).
+- `DATABASE_URL`: **ignored** — `database.py` hardcodes `sqlite:///visitor_kiosk.db` (never read from env).
+- `PRINT_AGENT_URL`: **ignored** — no backend consumer.
+- `git-filter-repo==2.47.0` in `backend/requirements.txt`: **not imported** by any source — safe to drop from requirements (not uninstalled from the workstation).
+
+**Real-looking secrets in tracked files (sanitized this pass; values never reproduced here):** root `.env.example` and `docs/CHEATSHEET.md` both carried the same real-looking `STAFF_PASSWORD` and `JWT_SECRET_KEY`.
+
+### Backups created & SHA256-verified OUTSIDE the repo (before untracking)
+Location: `c:\Users\stemy\OneDrive\PBC First Week\PBC General Business\PBC Guest Kiosk\_pbc-batch4-backup-20260730-105339\`
+- `root.env` (241 bytes), `print-agent.env` (284 bytes), `visitor_kiosk.db.old` (65536 bytes) — all SHA256 hashes matched the sources.
+
+### Files removed from tracking (`git rm --cached` — local copies preserved)
+- `backend/.venv/` (recursive), root `.env`, `print-agent/.env`, `backend/visitor_kiosk.db.old`, and the 10 remaining non-venv `__pycache__`/`.pyc` files.
+- **Total staged deletions: 3141.** Local working files were **not** deleted (verified present after untracking).
+
+### Files changed (sanitized / corrected / documented)
+| File | Change |
+|---|---|
+| `.gitignore` | Removed dead `!backend/uploads/badges/28.png` negation. Added organized sections: env (`.env`, `**/.env`, with `!.env.example`/`!**/.env.example` re-included), `**/.venv/`, python bytecode + caches (`__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.coverage`, `htmlcov/`, `coverage.xml`), DB variants (`*.db`, `*.db-journal`, `*.db.old`, `*.db.bak`, `*.sqlite`, `*.sqlite3`, `*.db3`), uploads/logs/downloaded-badges. |
+| `.env.example` (root) | Replaced real-looking secret block with placeholders for the **consumed** vars only (JWT_* + PBC_DEFAULT_ADMIN_*), with comments (copy-from-example, git-ignored, JWT rotation invalidates sessions). |
+| `frontend/.env.example` | Added header comment; genericized the sample host (`http://your-backend-host:8000`). |
+| `print-agent/.env.example` | Added header + per-variable comments; genericized the sample host. Variable names unchanged. |
+| `docs/CHEATSHEET.md` | Sanitized backend `.env` block (removed real secrets, `DATABASE_URL`, `PRINT_AGENT_URL`, and `STAFF_*`); now mirrors the corrected variable set. |
+| `docs/INSTALL.md` | Corrected backend `.env` example to actual required vars; added create-from-example steps, required/optional distinction, bootstrap-admin behavior, don't-commit note, and JWT-rotation-invalidates-sessions note. |
+| `README.md` | Corrected backend `.env` example; clarified `.env` is created locally and never committed; fixed the print-agent variable-name table (`PBC_PRINT_AGENT_POLL_SECONDS`, `PBC_PRINT_DOWNLOAD_DIR`, `PBC_PRINT_AGENT_TOKEN`, plus `PBC_PRINT_TIMEOUT_SECONDS`). |
+| `backend/app/auth.py` | Removed obsolete `STAFF_USERNAME`/`STAFF_PASSWORD` `os.getenv` lines (dead vars, no consumer — behavior-neutral). |
+| `backend/requirements.txt` | Removed `git-filter-repo==2.47.0` (not imported at runtime). UTF-16 LE encoding preserved (verified BOM `FF FE`, 32 → 31 lines). |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | This §12; Batch 4 marked Complete in §3. |
+
+### Local files confirmed preserved (verified after untracking)
+`.env`, `print-agent/.env`, `backend/visitor_kiosk.db.old`, `backend/.venv/Scripts/python.exe`, and the operational `backend/visitor_kiosk.db` — all `Test-Path` → **True**. Database contents were not modified.
+
+### Ignore-rule verification
+- Example files (`.env.example`, `frontend/.env.example`, `print-agent/.env.example`) are **not** ignored (stay tracked) — correct.
+- `.env`, `print-agent/.env`, `visitor_kiosk.db`, `visitor_kiosk.db.old` **are** ignored — correct.
+- No prohibited files remain tracked: env (non-example) **0**, venv **0**, pyc/pycache **0**, `*.db*` **0**.
+
+### Validation commands & results (this pass)
+| Command | Result |
+|---|---|
+| `python -m pytest` (backend) | **28 passed** — unchanged |
+| `python -m py_compile` (all 8 backend modules) | exit 0 |
+| `npm run test` (frontend) | **9 passed (2 files)** — unchanged |
+| `npm run build` (frontend) | success (vite 8.1.2) — unchanged |
+| `npm run lint` (frontend) | **16 problems (13 errors, 3 warnings)** — baseline, none introduced |
+| `git diff --check` | clean |
+| secret leak check | real secret values appear **only** as removal (`-`) lines; **0** additions |
+
+### NOT EXECUTED — manual, owner-approved follow-ups (out of band)
+These are **required** but were **deliberately not run** (destructive / security-sensitive; require owner coordination and fresh clones). Commands shown for reference only.
+
+1. **Rotate the exposed secrets** (the real values were committed historically and remain in history until purged):
+   - Generate a new `JWT_SECRET_KEY` and update the local `.env` (rotating it logs out all current sessions — expected).
+   - Reset the initial admin password if it matched the exposed example.
+   - Rotate any `print-agent/.env` token/credential that was committed.
+2. **Purge secrets/DB backup from Git history** (rewrites history — coordinate all clones first). Example, **NOT EXECUTED**:
+   ```
+   git filter-repo --invert-paths \
+     --path .env \
+     --path print-agent/.env \
+     --path backend/visitor_kiosk.db.old
+   ```
+   (Alternatively `git filter-repo --path-glob 'backend/.venv/**' --invert-paths` to shrink history of the tracked virtualenv.) After rewrite: force-push, and every collaborator must re-clone. **Do not run without owner approval.**
+
+### Regression risks / rollback
+- Changes are docs + example sanitization + untracking + one behavior-neutral dead-var removal + a build-only requirements line removal. Runtime auth/authz/kiosk/print-agent behavior is unchanged (28 backend tests + 9 frontend tests still pass).
+- Rollback: `git restore --staged <paths>` re-adds tracking; the tracker/edits can be reverted with `git checkout -- <file>` since nothing is committed. Local sensitive files remain on disk regardless.
+
+### Recommended next batch
+- **Batch 5 — Kiosk/print-agent boundary hardening (F-004, F-005).** Requires the trust-boundary mapping before any auth change to public kiosk / print-agent endpoints.
+
+**Stop here for review. No commit made automatically. History rewrite and secret rotation remain owner-approved manual steps (NOT EXECUTED).**
+Suggested commit message: `Milestone 7.8.6 Batch 4: repository & secret hygiene (untrack secrets/venv/bytecode, sanitize examples)`

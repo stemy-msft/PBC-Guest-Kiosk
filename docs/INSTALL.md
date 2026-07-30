@@ -96,17 +96,35 @@ The backend loads configuration from:
 PBC-guest-kiosk/.env
 ```
 
-Create the file if it does not exist.
+Create it by copying the tracked example and filling in real values. The real
+`.env` is git-ignored and must **never** be committed.
 
-Example:
-
-```env
-JWT_SECRET_KEY=CHANGE_ME
-DATABASE_URL=sqlite:///data/kiosk.db
-PRINT_AGENT_URL=http://kiosk-printer.domain.local:8001
+```bash
+cp .env.example .env         # macOS/Linux
+Copy-Item .env.example .env  # Windows PowerShell
 ```
 
-Adjust values as needed.
+Required and optional variables:
+
+```env
+# REQUIRED — session signing key. Use a long, random secret.
+# Changing this value invalidates all existing login sessions.
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+
+# Optional (defaults shown)
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=480
+
+# Initial administrator bootstrap (optional; defaults shown). The first
+# administrator is created only when no admin exists yet, with
+# "must change password" enabled so it must be changed at first login.
+PBC_DEFAULT_ADMIN_USERNAME=admin
+PBC_DEFAULT_ADMIN_PASSWORD=replace-with-a-strong-password
+PBC_DEFAULT_ADMIN_DISPLAY_NAME=Administrator
+```
+
+Note: `DATABASE_URL` and `STAFF_USERNAME`/`STAFF_PASSWORD` are no longer used by
+the backend and have been removed from the examples.
 
 ---
 

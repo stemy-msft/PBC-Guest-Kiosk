@@ -11,13 +11,16 @@ In some cases, only a portion of the settings are shown below.
 
 ## This controls backend environment
 
-STAFF_USERNAME=staff                                        <-- initial username
-STAFF_PASSWORD=ChangeMeNow123!                              <-- initial password
-JWT_SECRET_KEY=U6Kv4j5sM9zK2vR7wQ8cX3nLpT4fGhY1aBnR9eDz
+# .\.env
+
+## This controls backend environment (copy from .env.example; never commit the real .env)
+
+JWT_SECRET_KEY=replace-with-a-long-random-secret       <-- REQUIRED; changing it logs everyone out
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=480
-DATABASE_URL=sqlite:///data/kiosk.db3                       <-- sqlite database on backend
-PRINT_AGENT_URL=http://kiosk-printer.domain.local:8001      <-- name/ip of RP print server
+PBC_DEFAULT_ADMIN_USERNAME=admin                       <-- initial admin (created only if none exists)
+PBC_DEFAULT_ADMIN_PASSWORD=replace-with-a-strong-password  <-- must be changed at first login
+PBC_DEFAULT_ADMIN_DISPLAY_NAME=Administrator
 
 # .\frontend\.env
 
