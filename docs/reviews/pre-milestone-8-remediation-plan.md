@@ -437,3 +437,114 @@ These are **required** but were **deliberately not run** (destructive / security
 
 **Stop here for review. No commit made automatically. History rewrite and secret rotation remain owner-approved manual steps (NOT EXECUTED).**
 Suggested commit message: `Milestone 7.8.6 Batch 4: repository & secret hygiene (untrack secrets/venv/bytecode, sanitize examples)`
+
+---
+
+## 13. Post-Batch-4 — Visitor Search Result-Count Consistency
+
+### Starting state
+- Batch 4 committed (`197064d`, then `373fb4f` on `origin/main`). Working tree clean at pass start.
+- Scope: **UX feedback consistency only** on the Visitor Search screen. No backend API, search behavior, filters, or sorting changed. No new visual components.
+
+### Problem
+The search-result count (`styles.instructions` paragraph) rendered **only when `searchResults.length > 0`**. A search that returned **zero** matches produced no feedback, leaving the operator unsure whether the search ran. Wording also used the ambiguous `visitor(s)`.
+
+### Change made
+Introduced a `hasSearched` flag (`useState(false)`) that flips to `true` when `handleVisitorSearch()` completes successfully. The count paragraph now renders whenever `hasSearched` is true, reusing the **existing** `styles.instructions` placement/styling, with correct grammar:
+- not executed → **no message** (initial mount);
+- 0 results → **"0 visitors found"**;
+- 1 result → **"1 visitor found"**;
+- N results → **"N visitors found"** (`visitor${count === 1 ? "" : "s"} found`).
+
+### Files changed
+| File | Change |
+|---|---|
+| `frontend/src/App.jsx` | Added `hasSearched` state (near line 96); set `setHasSearched(true)` in `handleVisitorSearch` after `setSearchResults`; replaced the `searchResults.length > 0` render guard with `hasSearched` and singular/plural count text (search-results block ~line 6357). **+4 / −2 lines.** |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | This §13. |
+
+### Behavior demonstration (logic walkthrough — matches the four required states)
+| State | `hasSearched` | `searchResults.length` | Rendered message |
+|---|---|---|---|
+| Screen opened, no search yet | `false` | 0 | *(none)* |
+| Search returns nothing | `true` | 0 | `0 visitors found` |
+| Search returns one | `true` | 1 | `1 visitor found` |
+| Search returns many | `true` | N | `N visitors found` |
+
+Backend APIs, `searchVisitors()`, filters, and sort order are untouched — only the presence and wording of the client-side count changed.
+
+### Validation (this pass)
+| Command | Result |
+|---|---|
+| `python -m pytest` (backend) | **28 passed** — unchanged |
+| `python -m py_compile` (all 8 backend modules) | exit 0 |
+| `npm run test` (frontend) | **9 passed (2 files)** — unchanged |
+| `npm run build` (frontend) | success (vite 8.1.2) — unchanged |
+| `npm run lint` (frontend) | **16 problems (13 errors, 3 warnings)** — baseline, none introduced (`hasSearched` is used) |
+| `git status --short` | only `M frontend/src/App.jsx` |
+| `git diff --stat` | `frontend/src/App.jsx | 6 ++++--` (4 insertions, 2 deletions) |
+
+**No authentication, authorization, kiosk, or print-agent behavior changed** (frontend-only, presentational).
+
+---
+
+## 14. Repository Classification Review (REPORT ONLY — no tracking changes made)
+
+**Method:** inspected `.gitignore`, the tracked file list (`git ls-files`, 72 non-venv entries; the `.venv/` was untracked in Batch 4), and representative file contents. **No files were moved, deleted, or untracked in this pass.** Categories are classified **TRACK**, **DO NOT TRACK**, or **OWNER DECISION REQUIRED**.
+
+### 14.1 Category classification
+| Category | Path(s) | Classification | Rationale |
+|---|---|---|---|
+| Application source (backend) | `backend/app/**` | **TRACK** | Core product code. |
+| Application source (frontend) | `frontend/src/**`, `frontend/index.html`, config (`vite`, `eslint`, `vitest`, `package.json`, `package-lock.json`) | **TRACK** | Core product code + reproducible builds. |
+| Print agent source | `print-agent/print_agent.py`, `requirements.txt` | **TRACK** | Core product code. |
+| Dependency manifests | `backend/requirements.txt`, `requirements-dev.txt` | **TRACK** | Reproducible environments. |
+| Automated tests | `backend/tests/**` | **TRACK** | Regression foundation (Batch 2/3). |
+| Example env files | `.env.example`, `frontend/.env.example`, `print-agent/.env.example` | **TRACK** | Sanitized templates (Batch 4); no secrets. |
+| Project docs | `README.md`, `LICENSE`, `docs/INSTALL.md`, `docs/PRINT-SERVER.md`, `docs/TROUBLESHOOTING.md`, `docs/KNOWN_GOOD_BUILD.md` | **TRACK** | Standard operational/setup documentation. |
+| `.gitignore` | `.gitignore` | **TRACK** | Repo hygiene policy. |
+| Real environment files | `.env`, `print-agent/.env` | **DO NOT TRACK** | Secrets. Untracked in Batch 4; ignored going forward. |
+| Virtualenv | `backend/.venv/**` | **DO NOT TRACK** | Regenerable; untracked in Batch 4. |
+| Python bytecode / caches | `__pycache__/`, `*.pyc`, `.pytest_cache/`, coverage | **DO NOT TRACK** | Generated; untracked in Batch 4. |
+| SQLite databases + backups | `backend/visitor_kiosk.db`, `*.db.old`/`*.db.bak` | **DO NOT TRACK** | Contains visitor PII; ignored. |
+| Uploaded visitor data | `backend/uploads/{photos,badges,qr-codes}/**` | **DO NOT TRACK** | Visitor PII; already ignored, never tracked. |
+| Generated badges (print agent) | `print-agent/downloaded-badges/**`, `downloaded-badges/**` | **DO NOT TRACK** | Regenerated at print time; ignored. |
+| Logs | `backend/logs/**`, `*.log` | **DO NOT TRACK** | Runtime output; may contain PII; ignored. |
+| Build output | `frontend/dist/**` | **DO NOT TRACK** | Generated by `npm run build`; ignored. |
+| Node modules | `frontend/node_modules/**` | **DO NOT TRACK** | Regenerable; ignored. |
+| IDE / OS files | `.vscode/*` (except extensions.json), `.idea`, `.DS_Store` | **DO NOT TRACK** | Personal/machine-specific; ignored. |
+| Generated repo snapshot | `repo_files.txt` | **OWNER DECISION REQUIRED** | A stale `tree` dump that still lists `.env`, `.venv`, `visitor_kiosk.db`. Not sensitive itself, but a regenerated artifact that drifts. Recommend untracking or regenerating on demand. |
+| Seeded runtime config | `backend/config/system_settings.json` | **OWNER DECISION REQUIRED** | Non-secret but **site-specific and runtime-mutable** (settings API overwrites it → noisy diffs, and it hardcodes the site domain `kiosk.palmettobiblecamp.com`). Options: (a) track as a default template and ignore the live copy, or (b) keep tracking and accept churn. |
+| Requirements doc | `visitor-kiosk-requirements-v0.1.md` | **OWNER DECISION REQUIRED** | Planning/requirements artifact — see §14.2. |
+| Internal review docs | `docs/reviews/**` (audit + this plan) | **OWNER DECISION REQUIRED** | Security findings + remediation detail — see §14.2. |
+| Admin/cheat docs | `docs/ADMINISTRATION.md`, `docs/CHEATSHEET.md` | **OWNER DECISION REQUIRED** | Operational guides; sanitized in Batch 4 but describe internal procedures — see §14.2. |
+
+### 14.2 Special review — planning / standards / runbooks (public vs private vs local-only)
+The repository is currently **`stemy-msft/PBC-Guest-Kiosk`**. Classify each document by exposure appetite. **No files were moved.**
+
+| Document | Contains | Public-repo candidate | Private-repo candidate | Local-only operational |
+|---|---|---|---|---|
+| `README.md`, `docs/INSTALL.md`, `docs/PRINT-SERVER.md`, `docs/TROUBLESHOOTING.md`, `docs/KNOWN_GOOD_BUILD.md` | Setup/build/troubleshooting | ✅ Yes | ok | — |
+| `visitor-kiosk-requirements-v0.1.md` | Product/requirements + role model | ⚠️ Acceptable if generic | ✅ Preferred | — |
+| `docs/ADMINISTRATION.md` | Admin procedures, account handling | ❌ | ✅ Preferred | possible |
+| `docs/CHEATSHEET.md` | Env-var quick reference (now sanitized) | ❌ | ✅ Preferred | ✅ Reasonable |
+| `docs/reviews/pre-milestone-8-repository-audit.md` | **Security findings, attack surface, IDOR/authz gaps** | ❌ **No** | ✅ **Yes (restricted)** | ✅ Reasonable |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | Batch history, deferred security work | ❌ **No** | ✅ **Yes (restricted)** | ✅ Reasonable |
+
+**Key recommendation:** the two `docs/reviews/*` files enumerate unfixed security weaknesses (e.g., public IDOR endpoints, CORS `*`, upload hardening gaps). If this repository is or becomes **public**, these should be moved to a **private** repo or internal tracker before publication. This is an **owner decision** and no change was made here.
+
+### 14.3 Future cleanup recommendations (owner-approved, none executed)
+1. **Decide repo visibility** and, if public, relocate `docs/reviews/**` (and likely `ADMINISTRATION.md`) to a private location.
+2. **`repo_files.txt`** — untrack (regenerate on demand) to avoid a stale artifact that references sensitive paths. (Would be a future `git rm --cached repo_files.txt` — **not run**.)
+3. **`backend/config/system_settings.json`** — pick a strategy (template-vs-live) to stop runtime churn from appearing as commits.
+4. **History still contains the previously committed secrets and DB backup** (see §12) — rotation + history purge remain **owner-approved, NOT EXECUTED**.
+
+### 14.4 Files requiring owner decision (summary)
+- `repo_files.txt` (untrack recommended)
+- `backend/config/system_settings.json` (template vs live tracking)
+- `visitor-kiosk-requirements-v0.1.md` (public vs private)
+- `docs/reviews/pre-milestone-8-repository-audit.md` (private/restricted if repo public)
+- `docs/reviews/pre-milestone-8-remediation-plan.md` (private/restricted if repo public)
+- `docs/ADMINISTRATION.md`, `docs/CHEATSHEET.md` (private preferred)
+
+**Stop here for review. Phase B is report-only — no `.gitignore` edits, no untracking, no history changes were made.**
+Suggested commit message (Phase A only): `Milestone 7.8.6b: visitor-search result-count consistency (0/1/N feedback)`

@@ -94,6 +94,7 @@ export default function App() {
   const [screenHistory, setScreenHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedCamera, setSelectedCamera] = useState("");
   const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
@@ -440,6 +441,7 @@ const styles = getStyles(theme, isCrtTheme);
       const results = await searchVisitors(searchQuery);
 
       setSearchResults(results);
+      setHasSearched(true);
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -6355,9 +6357,9 @@ const styles = getStyles(theme, isCrtTheme);
             Search Visitors
           </h1>
 
-          {searchResults.length > 0 && (
+          {hasSearched && (
             <p style={styles.instructions}>
-              {searchResults.length} visitor(s) found
+              {searchResults.length} visitor{searchResults.length === 1 ? "" : "s"} found
             </p>
           )}
           <div style={styles.fieldGroup}>
