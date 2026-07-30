@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  mapReportingSummary,
+  resolveRequiredReturningCheckinFields,
+} from "./lib/viewModel";
+import {
   assignPrintAgent,
   bulkCheckout,
   changePassword,
@@ -336,10 +340,10 @@ const requiredCheckinFields =
     ? systemSettings.required_checkin_fields
     : REQUIRED_CHECKIN_FIELDS;
 
-const requiredReturningCheckinFields =
-  Array.isArray(systemSettings?.required_returning_checkin_fields)
-    ? systemSettings.required_returning_checkin_fields
-    : REQUIRED_RETURNING_CHECKIN_FIELDS;
+const requiredReturningCheckinFields = resolveRequiredReturningCheckinFields(
+  systemSettings,
+  REQUIRED_RETURNING_CHECKIN_FIELDS
+);
 
 // This will add some retro feel to CRT themes.
 const isCrtTheme =
@@ -4507,15 +4511,7 @@ const styles = getStyles(theme, isCrtTheme);
 
   // Reporting Screen
   if (screen === "reporting") {
-    const report = {
-      check_ins_by_location: reportingSummary?.check_ins_by_location ?? [],
-      recent_arrivals: reportingSummary?.recent_arrivals ?? [],
-      visitorTypes: reportingSummary?.visitor_types ?? [],
-      hourly_activity: reportingSummary?.hourly_activity ?? [],
-      daily_trends: reportingSummary?.daily_trends ?? [],
-      print_station_usage: reportingSummary?.print_station_usage ?? [],
-      peak_check_in_times: reportingSummary?.peak_check_in_times ?? [],
-    };
+    const report = mapReportingSummary(reportingSummary);
 
     return (
       <div style={styles.page}>

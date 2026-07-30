@@ -1,0 +1,4 @@
+# Batch 2 test-only dependencies (NOT required to run the application).
+# Kept separate from requirements.txt so the runtime image is unchanged.
+pytest>=8,<9
+httpx>=0.27,<1

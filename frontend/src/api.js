@@ -1,9 +1,22 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 async function handleResponse(response, defaultMessage) {
-  if (response.status === 401 || response.status === 403) {
+  // 401 = the session is no longer valid: clear it and return to the main
+  // screen. 403 = the session IS valid but lacks permission for this action:
+  // keep the session and surface a permission error instead of logging out.
+  if (response.status === 401) {
     handleUnauthorized();
     throw new Error("Session expired");
+  }
+  if (response.status === 403) {
+    let permissionMessage = "You do not have permission to perform this action.";
+    try {
+      const errorData = await response.json();
+      permissionMessage = errorData.detail || permissionMessage;
+    } catch {
+      // Fall back to the default permission message
+    }
+    throw new Error(permissionMessage);
   }
   if (!response.ok) {
     let errorMessage = defaultMessage;

@@ -63,8 +63,8 @@ Each finding re-validated against the **current committed code**, then classifie
 | Batch | Findings | Depends on | Status |
 |---|---|---|---|
 | 0 — Preserve state & tracker | — | — | **Complete** |
-| 1 — Low-risk frontend correctness | F-006 (verify), F-015, F-016, F-017 | 0 | **Complete (this pass)** |
-| 2 — Minimal regression-test foundation | F-030 (+ protects 3, 2) | 1 reviewed | Not started |
+| 1 — Low-risk frontend correctness | F-006 (verify), F-015, F-016, F-017 | 0 | **Complete** (`99ac01d`) |
+| 2 — Minimal regression-test foundation | F-030 (+ protects 3, 2) | 1 reviewed | **Complete (this pass)** |
 | 3 — AuthN/AuthZ (DB-backed user, admin role) | F-002, F-003 | 2 | Not started |
 | 4 — Repository & secret hygiene | F-001, F-007, F-027, STAFF_* removal | 2 | Not started |
 | 5 — Kiosk/print-agent boundary hardening | F-004, F-005 | 2, mapping | Not started |
@@ -187,7 +187,7 @@ No backend files, configuration, database, dependencies, or documentation (other
 
 ## 7. Decisions Requiring Owner Approval
 
-1. **403 semantics after F-002.** The shared `handleResponse` treats **both** 401 and 403 as session-expiry (clears auth + reloads). This matches the committed baseline and is correct **today** because the backend never returns 403. Once Batch 3 introduces real authorization, a legitimate non-admin staff member hitting an admin-only endpoint would receive 403 and be **logged out** rather than shown "forbidden." **Recommendation:** in Batch 3, split handling so 401 = re-login and 403 = a non-destructive "not permitted" message. Flagged now to avoid baking in a latent bug; **not** changed this pass.
+1. **403 semantics after F-002.** ~~The shared `handleResponse` treats **both** 401 and 403 as session-expiry.~~ **Resolved in Batch 2 (this pass).** `handleResponse` now splits handling: `401` → `handleUnauthorized()` (clear auth + reload); `403` → throw a non-destructive "not permitted" error (session preserved, no reload). This is behavior-safe today (backend returns no 403 yet) and pre-positions the correct UX for Batch 3 authorization. A single unit test asserts both branches. See §10.
 2. **Print-agent authentication model (Batch 5).** Must be agent-specific (`PBC_PRINT_AGENT_KEY` / `PBC_PRINT_AGENT_TOKEN`), not staff JWT. Requires an owner decision on the trust boundary before protecting register/heartbeat/pending/claim/status/badge-image.
 3. **Secret rotation & history purge (Batch 4).** Rotating the JWT signing key and purging `.env`/DB from history are **manual, out-of-band** actions (not automated here). Owner must confirm scope and coordinate clones.
 
@@ -213,3 +213,65 @@ No backend files, configuration, database, dependencies, or documentation (other
 - Active-visitor and dashboard access (core staff path).
 
 Batch 2 should be reviewed before starting Batch 3 (authorization), so the auth/authorization changes land against an existing safety net. **Stop here for review.**
+
+---
+
+## 10. Batch 2 — Regression-Test Foundation
+
+### Starting state
+- HEAD `99ac01d` ("Milestone 7.8.3 Batch 1 audit"), branch `main`, working tree clean before this pass.
+- Goal: create the **smallest practical** automated regression-test foundation to protect existing functionality before the Batch 3 authorization work. No architectural refactor to "make testing easier."
+
+### Operational-database & secret safety (proven, not just asserted)
+- **The live SQLite database is never opened.** `backend/tests/conftest.py` creates an in-memory engine `create_engine("sqlite://", poolclass=StaticPool)` and reassigns `app.database.engine` / `app.database.SessionLocal` to it **before** `app.main` is imported. Because `main.py` runs `Base.metadata.create_all` + `create_default_admin` at import time, this repointing guarantees all schema/bootstrap happens against the throwaway in-memory DB. A dedicated test — `test_operational_database_is_not_used` — asserts `str(database.engine.url) == "sqlite://"`, so a future regression that reconnects to the file DB fails loudly.
+- **No secret is read or printed.** `conftest.py` force-sets `JWT_SECRET_KEY`/`JWT_ALGORITHM`/`JWT_EXPIRE_MINUTES` to test-only values at module top. `auth.py`'s `load_dotenv(override=False)` cannot overwrite them, so the real `.env` signing key is never required or exercised.
+- **Production source unchanged for isolation.** Isolation is achieved purely from the test harness (monkeypatching module attributes); no `database.py`/`main.py`/`auth.py` change was needed.
+- **Known benign side effect:** importing the app appends normal startup lines to `backend/logs/*.log` and ensures `uploads/`/`config/` dirs exist. This is neither DB data nor secrets; it is unavoidable without changing production import-time behavior, which was out of scope.
+
+### Files added
+| File | Purpose |
+|---|---|
+| `backend/tests/conftest.py` | In-memory DB isolation, forced test JWT env, `db_session` / `seed_users` / `client` fixtures |
+| `backend/tests/test_auth_and_access.py` | Login + token + access-control behavior (11 passed, 2 forward-looking `xfail`) |
+| `backend/tests/test_schema_contracts.py` | Pydantic field-name contracts guarding F-006 / F-015 (2 passed) |
+| `backend/pytest.ini` | `pythonpath = .`, `testpaths = tests`, quiet mode |
+| `backend/requirements-dev.txt` | Test-only deps (`pytest`, `httpx`); runtime `requirements.txt` untouched |
+| `frontend/src/lib/viewModel.js` | Behavior-preserving pure helpers extracted from `App.jsx` |
+| `frontend/src/lib/viewModel.test.js` | Unit tests for the extracted mappings (F-006 / F-015 guards) |
+| `frontend/src/api.test.js` | Unit tests for the shared 401 vs 403 handler |
+| `frontend/vitest.config.js` | Vitest (jsdom) config, separate from `vite.config.js` |
+| `frontend/src/test/setup.js` | In-memory `localStorage`/`sessionStorage` shim (Node 26 disables its native globals) |
+
+### Files changed (production code)
+- **`frontend/src/api.js` — 401/403 split (resolves §7 decision #1).** `handleResponse` now branches: `401` → `handleUnauthorized()` + throw "Session expired" (unchanged clear-and-reload); `403` → throw a permission error (`errorData.detail` or a default), **without** clearing auth or reloading. This changes runtime behavior for any future 403 (today the backend returns none), pre-positioning correct UX for Batch 3. No second response handler was introduced. The `downloadPrintStationQr` binary path retains its own inline `if (401||403)` guard — intentionally left as-is (documented inconsistency; it will be revisited when 403 semantics are exercised end-to-end).
+- **`frontend/src/App.jsx` — behavior-preserving helper extraction.** Two inline expressions were replaced by calls into `frontend/src/lib/viewModel.js`: the Reporting `report` object literal → `mapReportingSummary(reportingSummary)`, and the returning-check-in fields ternary → `resolveRequiredReturningCheckinFields(systemSettings, REQUIRED_RETURNING_CHECKIN_FIELDS)`. The extracted functions reproduce the original logic exactly; this makes those mappings unit-testable **without** mounting the ~6,600-line `App.jsx`. No behavior change.
+- **`frontend/package.json`** — added `"test": "vitest run"` and devDependencies `vitest ^3.2.4`, `jsdom ^25.0.1`. No runtime dependency added.
+
+### Tests added (what they protect)
+- **Backend `test_auth_and_access.py`:** login success returns bearer token + `role`; wrong password → 401; disabled user → 403 (enabled-check precedes password-check); protected `/api/dashboard` and `/api/visitors/active` require a valid token (401 without, 200 with); expired and malformed tokens → 401; **public** `POST /api/visitors` reachable without auth (kiosk must keep working); print-agent `GET /api/print-jobs/pending` and badge-image endpoints reachable without staff JWT (404 for a missing job = reachable, not 401). Plus `test_operational_database_is_not_used`.
+- **Two `xfail(strict=True)` tests** honestly document **not-yet-enforced** authorization (F-002/F-003): a disabled user's token is still accepted on a protected endpoint, and a non-admin can currently reach `/api/users`. When Batch 3 enforces authorization these flip to passing and the `strict` xfail turns them green — a built-in signal that Batch 3 landed. **They intentionally do not make the suite misleadingly green.**
+- **Backend `test_schema_contracts.py`:** asserts `ReportingSummaryResponse` exposes `visitor_types` (not `visitorTypes`) and `SettingsResponse` exposes `required_returning_checkin_fields` (not camelCase) — locking the backend side of the F-006/F-015 contracts.
+- **Frontend `viewModel.test.js`:** `mapReportingSummary` maps `visitor_types` → `visitorTypes`, defaults every section to `[]` on null, and ignores a stray camelCase `visitorTypes`; `resolveRequiredReturningCheckinFields` honors snake_case, falls back when absent/null, and ignores camelCase.
+- **Frontend `api.test.js`:** exercises the shared handler through the real exported `getUsers()` — `401` clears the session + sets the existing `session_expired_message` + reloads once; `403` preserves the session, surfaces the backend `detail`, and does **not** reload; `500` surfaces `detail` without touching the session.
+
+### Validation commands & results
+| Command | Result |
+|---|---|
+| `python -m pytest -v` (from `backend/`, `.venv`) | **13 passed, 2 xfailed**, 4 pre-existing warnings (1 Starlette/httpx deprecation, 3 Pydantic v2 deprecations). No tracebacks. |
+| `npm install` (frontend) | Succeeded; **no** ERESOLVE peer conflict (Vitest 3 accepted Vite 8; `--legacy-peer-deps` not needed). |
+| `npm run test` (`vitest run`) | **9 passed (2 files)**, 0 failed. |
+| `npm run build` (`vite build`) | **PASS** — vite v8.1.2, 22 modules transformed. |
+| `npm run lint` (`eslint .`) | **16 problems (13 errors, 3 warnings)** — identical to the Batch 1 baseline. New source/test files introduced **zero** new lint problems. |
+
+The pre-existing 16 lint problems (§5) are unchanged and remain out of scope — the batch was **not** expanded to reach a lint-clean tree.
+
+### Environment note
+- Node 26 ships a native `localStorage`/`sessionStorage` global that is disabled (undefined) without `--localstorage-file`, shadowing jsdom's implementation. `frontend/src/test/setup.js` installs a minimal in-memory `Storage` via `Object.defineProperty`, shared by the app code and the tests. This is a test-harness shim only; no production storage code changed.
+
+### Batch 3 entry criteria (met)
+- A green backend + frontend safety net exists and proves the operational DB is untouched.
+- Public kiosk and print-agent reachability are pinned by tests, so authorization changes in Batch 3 cannot silently break them.
+- The 401/403 UX split is already in place, so Batch 3 can return 403 for "authenticated but not permitted" without logging users out.
+- The two `xfail` tests define the exact authorization behavior Batch 3 must deliver.
+
+**Stop here for review. Batch 3 (authorization) not started. No commit made automatically.**
