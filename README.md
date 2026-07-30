@@ -287,7 +287,7 @@ This configuration is currently considered the project's validated end-to-end pr
 
 ## Project Status
 
-Current Status: **Milestone 6 In Progress**
+Current Status: **Milestone 8 In Progress**
 
 Completed:
 
