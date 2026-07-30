@@ -79,13 +79,25 @@ def db_session():
 
 @pytest.fixture
 def seed_users(db_session):
-    """Deterministic enabled + disabled users sharing a known password."""
+    """Deterministic enabled admin, enabled staff, and disabled staff users.
+
+    All share a single known password so tests can exercise both authentication
+    (login) and authorization (role/enabled) without hard-coding hashes.
+    """
     enabled_admin = User(
         username="testadmin",
         password_hash=auth.hash_password(TEST_PASSWORD),
         display_name="Test Admin",
         email=None,
         role="Administrator",
+        enabled=True,
+    )
+    enabled_staff = User(
+        username="teststaff",
+        password_hash=auth.hash_password(TEST_PASSWORD),
+        display_name="Test Staff",
+        email=None,
+        role="Staff",
         enabled=True,
     )
     disabled_staff = User(
@@ -96,10 +108,11 @@ def seed_users(db_session):
         role="Staff",
         enabled=False,
     )
-    db_session.add_all([enabled_admin, disabled_staff])
+    db_session.add_all([enabled_admin, enabled_staff, disabled_staff])
     db_session.commit()
     return {
         "enabled_username": "testadmin",
+        "staff_username": "teststaff",
         "disabled_username": "disableduser",
         "password": TEST_PASSWORD,
     }

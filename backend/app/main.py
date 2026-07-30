@@ -1,5 +1,5 @@
 from urllib3 import request
-from .auth import (create_access_token, get_current_user, verify_password, hash_password)
+from .auth import (create_access_token, get_current_user, require_admin, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine
 from .dependencies import get_db
@@ -557,7 +557,7 @@ def get_settings():
         return json.load(f)
 
 @app.put("/api/settings",response_model=SettingsResponse,)
-def update_settings(request: SettingsUpdate,current_user: str = Depends(get_current_user),):
+def update_settings(request: SettingsUpdate,current_user: str = Depends(get_current_user),_admin: User = Depends(require_admin),):
     old_settings = json.load(open(SETTINGS_FILE, "r", encoding="utf-8"))
     new_settings = request.model_dump()
 
@@ -1269,6 +1269,7 @@ def get_print_stations(
 def create_print_station(
     request: PrintStationCreate,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     existing = (
@@ -1438,6 +1439,7 @@ def update_print_station(
     station_id: int,
     request: PrintStationUpdate,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     station = (
@@ -1472,6 +1474,7 @@ def update_print_station(
 def delete_print_station(
     station_id: int,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     station = (
@@ -1749,6 +1752,7 @@ def get_reporting_summary(
 def get_user(
     user_id: int,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     user = (
@@ -1768,6 +1772,7 @@ def get_user(
 @app.get("/api/users", response_model=list[UserResponse])
 def get_users(
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     return db.query(User).order_by(User.username).all()
@@ -1776,6 +1781,7 @@ def get_users(
 def create_user(
     request: UserCreate,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     submitted_username = request.username.strip().lower()
@@ -1819,6 +1825,7 @@ def update_user(
     user_id: int,
     request: UserUpdate,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     user = (
@@ -1867,6 +1874,7 @@ def reset_password(
     user_id: int,
     request: PasswordResetRequest,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     user = (
@@ -1910,6 +1918,7 @@ def update_user_status(
     user_id: int,
     request: UserStatusUpdate,
     current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     user = (

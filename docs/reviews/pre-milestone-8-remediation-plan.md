@@ -65,7 +65,7 @@ Each finding re-validated against the **current committed code**, then classifie
 | 0 — Preserve state & tracker | — | — | **Complete** |
 | 1 — Low-risk frontend correctness | F-006 (verify), F-015, F-016, F-017 | 0 | **Complete** (`99ac01d`) |
 | 2 — Minimal regression-test foundation | F-030 (+ protects 3, 2) | 1 reviewed | **Complete (this pass)** |
-| 3 — AuthN/AuthZ (DB-backed user, admin role) | F-002, F-003 | 2 | Not started |
+| 3 — AuthN/AuthZ (DB-backed user, admin role) | F-002, F-003 | 2 | **Complete (this pass)** |
 | 4 — Repository & secret hygiene | F-001, F-007, F-027, STAFF_* removal | 2 | Not started |
 | 5 — Kiosk/print-agent boundary hardening | F-004, F-005 | 2, mapping | Not started |
 | 6 — Backend correctness/stability | F-011, F-012, F-013, F-014, F-010, F-020, F-028, F-029 | 2 | Not started |
@@ -275,3 +275,72 @@ The pre-existing 16 lint problems (§5) are unchanged and remain out of scope �
 - The two `xfail` tests define the exact authorization behavior Batch 3 must deliver.
 
 **Stop here for review. Batch 3 (authorization) not started. No commit made automatically.**
+
+---
+
+## 11. Batch 3 — DB-Backed Authentication (F-003) + Administrator Authorization (F-002)
+
+### Starting state
+- Git HEAD `42e43b8` ("Milestone 7.8.4 Batch 2: isolated regression tests and 401/403 handling"), branch `main`, clean working tree.
+- Scope: implement **only** F-003 (database-backed current-user validation) and F-002 (server-side Administrator authorization), plus tests and tracker updates. No M8, no repo/secret hygiene, no kiosk/print-agent auth changes, no schema/migration changes.
+
+### Validated facts (proven from code, not assumed)
+- **Role strings:** Administrator = `"Administrator"` (`bootstrap.py` seeds `role="Administrator"`; login response echoes it). Non-admin = `"Staff"` (seeded `disableduser`).
+- **`get_current_user` is consumed as a username string** by ~30 routes (`audit(current_user, …)`, `current_user.lower()`, `user.modified_by = current_user`). Therefore the DB-backed version **still returns the username string** to avoid breaking every call site.
+- **`/api/me` (main.py:678)** and **`/api/change-password` (main.py:637)** use `get_current_user` only → ordinary staff retain access (unchanged).
+
+### Files changed
+| File | Change |
+|---|---|
+| `backend/app/auth.py` | Added SQLAlchemy/`get_db`/`User` imports. Added private helpers `_decode_username` (JWT → `sub`, 401 on failure) and `_load_enabled_user` (loads user; missing **or** disabled → 401). Rewrote `get_current_user` to be DB-backed, still returning the canonical username **string**. Added `require_admin` dependency returning the `User` after enforcing `role == "Administrator"` (403 otherwise). `create_access_token`, expiration, login-response fields, and password verification are **unchanged**. |
+| `backend/app/main.py` | Imported `require_admin`; added `_admin: User = Depends(require_admin)` to the 10 administrator-only routes (existing `current_user`/`db` params left intact so audit/`modified_by` behavior is unchanged). |
+| `backend/tests/conftest.py` | Added an **enabled** Staff user (`teststaff`) to `seed_users` (new key `staff_username`) so 403 (enabled non-admin) can be distinguished from 401 (missing/disabled). |
+| `backend/tests/test_auth_and_access.py` | Converted the two `xfail(strict=True)` placeholders into real passing tests and added authorization/authentication coverage (see below). |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | This section; Batch 3 marked Complete in §3. |
+
+### Authentication behavior changed (F-003)
+`get_current_user` now: decodes the JWT (invalid/expired/missing `sub` → **401**), then loads the user from the **current** database. If the user no longer exists **or** is disabled → **401** (client runs its existing session-expiry/logout flow). Otherwise returns the stored username string. This closes the gap where a token stayed valid after the account was deleted/disabled.
+
+### Authorization enforced (F-002) — administrator-only routes
+`require_admin` re-reads the role from the DB per request (never from the token). Enforced on:
+`GET /api/users`, `GET /api/users/{id}`, `POST /api/users`, `PUT /api/users/{id}`, `POST /api/users/{id}/reset-password`, `PUT /api/users/{id}/status`, `PUT /api/settings`, `POST /api/print-stations`, `PUT /api/print-stations/{id}`, `DELETE /api/print-stations/{id}/permanent`.
+Enabled non-administrators receive **403** (and stay authenticated); missing/disabled/invalid → **401**.
+
+### Route-access decision — CONFLICT recorded (not enforced)
+- **`GET /api/reporting/summary` — NOT made admin-only.** The frontend Reporting button (`App.jsx` ~5309) sits **outside** the `role === "Administrator"` block and the reporting screen has no role guard, so **Staff have reporting access today**. Enforcing admin-only would break the staff reporting workflow. Per instructions, the conflict is recorded here and the route remains authenticated-staff-accessible.
+
+### Tests converted from xfail → passing
+- `test_disabled_user_token_is_rejected_on_protected_endpoint` — disabled user's valid token → `GET /api/dashboard` → **401**.
+- `test_non_admin_cannot_reach_admin_only_users_endpoint` — now uses the real **enabled** Staff user (`teststaff`) → `GET /api/users` → **403** (previously used a non-existent username, which now correctly returns 401).
+
+### Tests added (Batch 3)
+- Unknown/deleted-user token → 401.
+- Enabled Staff can use `/api/dashboard` and `/api/me` (staff routes retained).
+- Administrator can reach admin routes (positive path).
+- **Current DB role is authoritative:** demoting an admin to Staff in the DB makes the same token receive 403.
+- A 403 does **not** deauthenticate: staff still reaches `/api/dashboard` afterward.
+- Parametrized: Staff forbidden (403) from all user-management + settings routes.
+- The bootstrapped **default admin** can log in and list users.
+
+### Validation commands & results (this pass)
+| Command | Result |
+|---|---|
+| `python -m pytest` (backend) | **28 passed, 0 xfailed** (2 former xfails now pass) |
+| `python -m py_compile` (all 8 backend modules) | exit 0 |
+| `npm run test` (frontend) | **9 passed (2 files)** — unchanged |
+| `npm run build` (frontend) | success (vite 8.1.2) — unchanged |
+| `npm run lint` (frontend) | **16 problems (13 errors, 3 warnings)** — baseline, none introduced |
+| `git diff --check` | clean |
+
+### Preserved workflows (verified)
+- **Public kiosk** check-in (`POST /api/visitors` without auth) still 200 (test 9).
+- **Print-agent** endpoints reachable under the current trust model (test 10); **no** print-agent route gained a staff-JWT requirement.
+- **Operational `visitor_kiosk.db` untouched** — the suite runs entirely on the in-memory StaticPool engine (`test_operational_database_is_not_used` asserts `sqlite://`).
+
+### Known remaining issues / deferred
+- Reporting authorization conflict recorded above (Staff-accessible by design of the current frontend).
+- `require_admin` performs one extra lightweight DB lookup per admin request in addition to `get_current_user` (call sites kept intact for safety); acceptable at this app's scale, can be consolidated later if desired.
+- Batches 4 (repo/secret hygiene), 5 (kiosk/print-agent boundary), 6 (backend correctness) remain unstarted.
+
+**Stop here for review. No commit made automatically.**
+Suggested commit message: `Milestone 7.8.5 Batch 3: DB-backed auth + admin authorization`
