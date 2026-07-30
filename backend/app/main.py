@@ -1,5 +1,4 @@
 from urllib3 import request
-
 from .auth import (create_access_token, get_current_user, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine
@@ -480,22 +479,17 @@ def root():
         "version": "1.0",
     }
 
-@app.get("/api/test123")
-def test123():
-    return {"message": "hello"}
-
 @app.get("/api/dashboard",response_model=DashboardStatsResponse,)
 def get_dashboard_stats(
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     today = datetime.now().date()
-
     active_visitors = (
         db.query(Visitor)
         .filter(Visitor.check_out_time.is_(None))
         .count()
     )
-
     checked_in_today = (
         db.query(Visitor)
         .filter(
@@ -503,22 +497,18 @@ def get_dashboard_stats(
         )
         .count()
     )
-
     maintenance_stations = (
         db.query(PrintStation)
         .filter(PrintStation.enabled == False)
         .count()
     )
-
     enabled_stations = (
         db.query(PrintStation)
         .filter(PrintStation.enabled == True)
         .all()
     )
-
     online_stations = 0
     offline_stations = 0
-
     for station in enabled_stations:
         online_agent = (
             db.query(PrintAgent)
@@ -528,24 +518,20 @@ def get_dashboard_stats(
             )
             .first()
         )
-
         if online_agent:
             online_stations += 1
         else:
             offline_stations += 1
-
     pending_jobs = (
         db.query(PrintJob)
         .filter(PrintJob.status == "Pending")
         .count()
     )
-
     failed_jobs = (
         db.query(PrintJob)
         .filter(PrintJob.status == "Failed")
         .count()
     )
-
     return DashboardStatsResponse(
         active_visitors=active_visitors,
         checked_in_today=checked_in_today,
@@ -604,55 +590,43 @@ def health():
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(
     request: LoginRequest,
-    #current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     submitted_username = request.username.strip()
-
     user = (
         db.query(User)
         .filter(func.lower(User.username) == submitted_username.lower())
         .first()
     )
-
     if not user:
         audit(user=submitted_username, action="LOGIN_FAILED", details="Invalid username")
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
-
     password_matches = verify_password(
         request.password,
         user.password_hash,
     )
-
     if not user.enabled:
         audit(user=user.username, action="LOGIN_FAILED", details="Account disabled")
         raise HTTPException(
             status_code=403,
             detail="Account disabled",
         )
-
     if not password_matches:
         user.failed_login_count += 1
         audit(user=user.username, action="LOGIN_FAILED", details=f"Invalid password (attempt #{user.failed_login_count})")
         db.commit()
-
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
-
     audit(user=user.username,action="LOGIN",details="Successful login")
-
     user.failed_login_count = 0
     user.last_login = datetime.now()
-
     db.commit()
-
     token = create_access_token(user.username)
-
     return LoginResponse(
         access_token=token,
         token_type="bearer",
@@ -732,6 +706,7 @@ def get_me(
 
 @app.get("/api/print-agents",response_model=list[PrintAgentResponse],)
 def get_print_agents(
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     agents = (
@@ -776,6 +751,7 @@ def get_print_agents(
 def assign_print_agent(
     agent_id: int,
     request: PrintAgentAssign,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     agent = (
@@ -789,45 +765,41 @@ def assign_print_agent(
             status_code=404,
             detail="Print agent not found",
         )
-
     #
     # Clear heartbeat data from the currently assigned station
     # before moving the agent elsewhere.
     #
     old_station = None
-
     if agent.print_station_id is not None:
         old_station = (
             db.query(PrintStation)
             .filter(PrintStation.id == agent.print_station_id)
             .first()
         )
-
         if old_station is not None:
             old_station.last_seen = None
             old_station.last_ip = None
             old_station.agent_version = None
-
     station = None
-
     if request.station_id is not None:
         station = (
             db.query(PrintStation)
             .filter(PrintStation.id == request.station_id)
             .first()
         )
-
         if station is None:
             raise HTTPException(
                 status_code=404,
                 detail="Print station not found",
             )
-
     agent.print_station_id = request.station_id
-
     db.commit()
     db.refresh(agent)
-
+    audit(
+        current_user,
+        "ASSIGN_PRINT_AGENT",
+        f"AgentID={agent.id}, StationID={request.station_id}",
+    )
     return {
         "id": agent.id,
         "agent_key": agent.agent_key,
@@ -845,6 +817,7 @@ def assign_print_agent(
 @app.post("/api/print-agents/{agent_id}/test-label")
 def create_print_agent_test_label(
     agent_id: int,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     agent = (
@@ -852,43 +825,35 @@ def create_print_agent_test_label(
         .filter(PrintAgent.id == agent_id)
         .first()
     )
-
     if agent is None:
         raise HTTPException(
             status_code=404,
             detail="Print agent not found",
         )
-
     if agent.print_station_id is None:
         raise HTTPException(
             status_code=400,
             detail="Print agent is not assigned to a print station",
         )
-
     station = (
         db.query(PrintStation)
         .filter(PrintStation.id == agent.print_station_id)
         .first()
     )
-
     if station is None:
         raise HTTPException(
             status_code=404,
             detail="Assigned print station not found",
         )
-
     system_visitor = get_or_create_system_test_visitor(db)
-
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     file_name = f"print-agent-test-{agent.id}-{timestamp}.png"
     badge_path = BADGE_DIR / file_name
-
     generate_print_agent_test_label(
         agent=agent,
         station=station,
         output_path=badge_path,
     )
-
     print_job = PrintJob(
         visitor_id=system_visitor.id,
         print_station_id=station.id,
@@ -896,11 +861,14 @@ def create_print_agent_test_label(
         status="Pending",
         created_time=datetime.now(),
     )
-
     db.add(print_job)
     db.commit()
     db.refresh(print_job)
-
+    audit(
+        current_user,
+        "PRINT_AGENT_TEST_LABEL",
+        f"AgentID={agent.id}, PrintJobID={print_job.id}, StationID={station.id}",
+    )
     return {
         "message": f"Test label queued for {agent.hostname}",
         "print_job_id": print_job.id,
@@ -1133,6 +1101,7 @@ def claim_print_job(
 def reassign_print_job(
     job_id: int,
     request: PrintJobReassign,
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     job = (
@@ -1140,36 +1109,34 @@ def reassign_print_job(
         .filter(PrintJob.id == job_id)
         .first()
     )
-
     if not job:
         raise HTTPException(
             status_code=404,
             detail="Print job not found"
         )
-
     if job.status != "Pending":
         raise HTTPException(
             status_code=400,
             detail="Only pending jobs may be reassigned"
         )
-
     station = (
         db.query(PrintStation)
         .filter(PrintStation.id == request.station_id)
         .first()
     )
-
     if not station:
         raise HTTPException(
             status_code=404,
             detail="Print station not found"
         )
-
     job.print_station_id = request.station_id
-
     db.commit()
     db.refresh(job)
-
+    audit(
+        current_user,
+        "REASSIGN_PRINT_JOB",
+        f"PrintJobID={job.id}, StationID={station.id}, StationName={station.name}",
+    )
     return {
         "status": "success",
         "job_id": job.id,
@@ -1578,6 +1545,7 @@ def print_station_heartbeat(
 @app.get("/api/reporting/summary",response_model=ReportingSummaryResponse,)
 def get_reporting_summary(
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     now = datetime.now()
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1597,7 +1565,6 @@ def get_reporting_summary(
         .order_by(PrintStation.name.asc())
         .all()
     )
-
     check_ins_by_location = [
         {
             "label": station_name,
@@ -1605,7 +1572,6 @@ def get_reporting_summary(
         }
         for station_name, count in check_ins_by_location_rows
     ]
-
     recent_visitors = (
         db.query(Visitor)
         .order_by(Visitor.check_in_time.desc())
@@ -2013,6 +1979,7 @@ def create_visitor(
 
 @app.get("/api/visitors", response_model=list[VisitorResponse])
 def get_visitors(
+    current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return (
@@ -2223,13 +2190,10 @@ def search_visitors(
     db: Session = Depends(get_db),
 ):
     search_value = q.strip()
-
     if not search_value:
         return []
-
     search_term = f"%{search_value.lower()}%"
-
-    return (
+    results = (
         db.query(Visitor)
         .filter(
             or_(
@@ -2246,6 +2210,27 @@ def search_visitors(
         .order_by(Visitor.check_in_time.desc())
         .all()
     )
+
+    # TEMPORARY:
+    # Collapse duplicate visit records and show only the most recent
+    # visitor instance until later Milestone introduces Person/Visit tables.
+    latest_visitors = {}
+    for visitor in results:
+        key = (
+            visitor.first_name.strip().lower(),
+            visitor.last_name.strip().lower(),
+        )
+
+        existing = latest_visitors.get(key)
+
+        if existing is None:
+            latest_visitors[key] = visitor
+            continue
+
+        if existing.check_out_time and not visitor.check_out_time:
+            latest_visitors[key] = visitor
+
+    return list(latest_visitors.values())
 
 @app.get("/api/visitors/{visitor_id}", response_model=VisitorResponse)
 def get_visitor(

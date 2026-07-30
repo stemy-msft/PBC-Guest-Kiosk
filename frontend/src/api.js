@@ -1,6 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 async function handleResponse(response, defaultMessage) {
+  if (response.status === 401 || response.status === 403) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
   if (!response.ok) {
     let errorMessage = defaultMessage;
     try {
@@ -199,7 +203,6 @@ export async function getVisitorHistory(visitorId) {
       },
     }
   );
-
   return await handleResponse(
     response,
     "Failed to load visitor history"
@@ -628,7 +631,6 @@ export async function printAgentTestLabel(agentId) {
 
 export async function getDashboardStats() {
   const token = localStorage.getItem("access_token");
-
   const response = await fetch(
     `${API_BASE}/api/dashboard`,
     {
@@ -637,12 +639,7 @@ export async function getDashboardStats() {
       },
     }
   );
-
-  if (!response.ok) {
-    throw new Error("Failed to load dashboard stats");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load dashboard stats");
 }
 
 export async function getReportingSummary() {
