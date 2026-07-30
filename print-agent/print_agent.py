@@ -60,6 +60,7 @@ def set_env_value(key, value):
 def register_agent():
     global AGENT_KEY
     global PRINT_STATION_SLUG
+    global AGENT_TOKEN
 
     station_slug = PRINT_STATION_SLUG or DEFAULT_PRINT_STATION_SLUG or None
 
@@ -117,6 +118,27 @@ def register_agent():
         )
 
         PRINT_STATION_SLUG = assigned_station_slug
+
+    #
+    # Persist agent credential (Batch 5C).
+    #
+    # The backend returns a plaintext bearer token exactly once, on the
+    # registration that first issues a credential. Store it locally and start
+    # sending it. If no token is returned (already provisioned, or an existing
+    # agent during the grace period) we keep operating with whatever we have.
+    # The token value is never printed or logged.
+    #
+    issued_token = data.get("agent_token")
+
+    if issued_token:
+        set_env_value(
+            "PBC_PRINT_AGENT_TOKEN",
+            issued_token,
+        )
+
+        AGENT_TOKEN = issued_token
+
+        print("Print agent credential stored.")
 
     return data
 

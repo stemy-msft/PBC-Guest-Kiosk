@@ -126,3 +126,38 @@ class PrintAgent(Base):
     enabled = Column(Boolean, nullable=False, default=True)
 
 
+class PrintAgentCredential(Base):
+    """Per-agent bearer credential (Batch 5C).
+
+    Schema-additive: this is a NEW table; the existing ``print_agents`` table is
+    unchanged. Only a one-way hash of the verifier is stored. The plaintext
+    token (``selector.verifier``) is returned to the agent exactly once, at
+    issuance, and never persisted or logged. ``token_selector`` is a public
+    lookup handle (not a secret) so a token can be resolved without hashing
+    every stored row.
+    """
+
+    __tablename__ = "print_agent_credentials"
+
+    id = Column(Integer, primary_key=True)
+    print_agent_id = Column(
+        Integer,
+        ForeignKey("print_agents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    token_selector = Column(String, unique=True, nullable=False, index=True)
+    token_hash = Column(String, nullable=False)
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    last_used_at = Column(DateTime, nullable=True)
+
+    revoked = Column(Boolean, nullable=False, default=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+

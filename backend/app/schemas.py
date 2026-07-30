@@ -64,6 +64,21 @@ class PrintAgentResponse(BaseModel):
     station_name: str | None = None
     station_slug: str | None = None
 
+class PrintAgentRegisterResponse(PrintAgentResponse):
+    # ``agent_token`` carries the freshly issued plaintext credential and is
+    # populated ONLY in the registration response, only when a credential was
+    # actually issued. It is never stored, logged, or returned by any list
+    # endpoint (GET /api/print-agents uses PrintAgentResponse, which omits it).
+    agent_token: str | None = None
+
+class PrintAgentEnabledUpdate(BaseModel):
+    enabled: bool
+
+class PrintAgentCredentialIssueResponse(BaseModel):
+    agent_id: int
+    agent_token: str
+    message: str
+
 class PrintJobCreate(BaseModel):
     station: str
 

@@ -37,6 +37,7 @@ import {
   resetPassword,
   saveSettings,
   searchVisitors,
+  setPrintAgentEnabled,
   updatePrintStation,
   uploadPhoto,
   updateUser,
@@ -1168,6 +1169,26 @@ const styles = getStyles(theme, isCrtTheme);
       alert(result.message);
 
       await loadPrintJobs();
+      await loadPrintAgents();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+
+  async function handleSetAgentEnabled(agent, enabled) {
+    const action = enabled ? "Approve" : "Disable";
+    const confirmed = window.confirm(
+      `${action} print agent '${agent.hostname}'?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await setPrintAgentEnabled(agent.id, enabled);
       await loadPrintAgents();
     } catch (error) {
       console.error(error);
@@ -3600,6 +3621,11 @@ const styles = getStyles(theme, isCrtTheme);
                 </div>
 
                 <div>
+                  <strong>Status:</strong>{" "}
+                  {agent.enabled ? "Approved" : "Pending Approval"}
+                </div>
+
+                <div>
                   <strong>Last Seen:</strong>{" "}
                   {agent.last_seen
                     ? new Date(agent.last_seen).toLocaleString()
@@ -3613,6 +3639,15 @@ const styles = getStyles(theme, isCrtTheme);
                     marginTop: "16px",
                   }}
                 >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() =>
+                      handleSetAgentEnabled(agent, !agent.enabled)
+                    }
+                  >
+                    {agent.enabled ? "Disable Agent" : "Approve Agent"}
+                  </button>
+
                   <button
                     style={styles.staffActionButton}
                     onClick={() => {

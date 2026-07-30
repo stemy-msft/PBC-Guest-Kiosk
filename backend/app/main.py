@@ -1,9 +1,9 @@
 from urllib3 import request
-from .auth import (create_access_token, get_current_user, require_admin, verify_password, hash_password)
+from .auth import (create_access_token, generate_agent_token, get_current_user, hash_agent_verifier, require_admin, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine
 from .dependencies import get_db
-from .models import PrintAgent, PrintJob, PrintStation, Visitor, User
+from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta
 from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Request
@@ -23,7 +23,10 @@ from .schemas import (
     PasswordChangeRequest,
     PasswordResetRequest,
     PrintAgentAssign,
+    PrintAgentCredentialIssueResponse,
+    PrintAgentEnabledUpdate,
     PrintAgentRegister,
+    PrintAgentRegisterResponse,
     PrintAgentResponse,
     PrintJobCreate,
     PrintJobReassign,
@@ -890,7 +893,7 @@ def create_print_agent_test_label(
         "station": station.name,
     }
 
-@app.post("/api/print-agents/register",response_model=PrintAgentResponse,)
+@app.post("/api/print-agents/register",response_model=PrintAgentRegisterResponse,)
 def register_print_agent(
     request: PrintAgentRegister,
     http_request: Request,
@@ -906,24 +909,18 @@ def register_print_agent(
         )
 
     if agent is None:
+        # Batch 5C: newly discovered agents enroll DISABLED and must be approved
+        # by an Administrator before they are treated as authenticated. This does
+        # not block the grace period (print endpoints are not yet token-gated).
         agent = PrintAgent(
             agent_key=request.agent_key or str(uuid4()),
             hostname=request.hostname,
             printer_name=request.printer_name,
             agent_version=request.agent_version,
-            enabled=True,
+            enabled=False,
         )
 
         db.add(agent)
-
-    assigned_station = None
-
-    if agent.print_station_id is not None:
-        assigned_station = (
-            db.query(PrintStation)
-            .filter(PrintStation.id == agent.print_station_id)
-            .first()
-        )
 
     agent.hostname = request.hostname
     agent.printer_name = request.printer_name
@@ -934,8 +931,38 @@ def register_print_agent(
     db.commit()
     db.refresh(agent)
 
-    audit("REGISTER_PRINT_AGENT",f"AgentKey={request.agent_key}, Hostname={request.hostname}",)
+    # Controlled credential issuance: issue a token exactly once, only when the
+    # agent has no active (unrevoked) credential yet. This covers a brand-new
+    # agent's first registration and lets an existing tokenless agent adopt a
+    # credential during the grace period, but never silently rotates an agent's
+    # credential on subsequent registrations.
+    issued_token = None
 
+    existing_credential = (
+        db.query(PrintAgentCredential)
+        .filter(
+            PrintAgentCredential.print_agent_id == agent.id,
+            PrintAgentCredential.revoked.is_(False),
+        )
+        .first()
+    )
+
+    if existing_credential is None:
+        selector, verifier, issued_token = generate_agent_token()
+        credential = PrintAgentCredential(
+            print_agent_id=agent.id,
+            token_selector=selector,
+            token_hash=hash_agent_verifier(verifier),
+        )
+        db.add(credential)
+        db.commit()
+
+    audit(
+        "print-agent",
+        "REGISTER_PRINT_AGENT",
+        f"AgentID={agent.id}, Hostname={request.hostname}, "
+        f"Enabled={agent.enabled}, CredentialIssued={issued_token is not None}",
+    )
 
     assigned_station = None
 
@@ -958,6 +985,169 @@ def register_print_agent(
         "station_id": assigned_station.id if assigned_station else None,
         "station_name": assigned_station.name if assigned_station else None,
         "station_slug": assigned_station.slug if assigned_station else None,
+        "agent_token": issued_token,
+    }
+
+@app.put("/api/print-agents/{agent_id}/enabled",response_model=PrintAgentResponse,)
+def set_print_agent_enabled(
+    agent_id: int,
+    request: PrintAgentEnabledUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Administrator approval/disablement for a print agent (Batch 5C)."""
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    agent.enabled = request.enabled
+    db.commit()
+    db.refresh(agent)
+
+    audit(
+        admin.username,
+        "ENABLE_PRINT_AGENT" if request.enabled else "DISABLE_PRINT_AGENT",
+        f"AgentID={agent.id}, Hostname={agent.hostname}",
+    )
+
+    assigned_station = None
+
+    if agent.print_station_id is not None:
+        assigned_station = (
+            db.query(PrintStation)
+            .filter(PrintStation.id == agent.print_station_id)
+            .first()
+        )
+
+    return {
+        "id": agent.id,
+        "agent_key": agent.agent_key,
+        "hostname": agent.hostname,
+        "printer_name": agent.printer_name,
+        "agent_version": agent.agent_version,
+        "last_seen": agent.last_seen,
+        "last_ip": agent.last_ip,
+        "enabled": agent.enabled,
+        "station_id": assigned_station.id if assigned_station else None,
+        "station_name": assigned_station.name if assigned_station else None,
+        "station_slug": assigned_station.slug if assigned_station else None,
+    }
+
+@app.post(
+    "/api/print-agents/{agent_id}/credentials/rotate",
+    response_model=PrintAgentCredentialIssueResponse,
+)
+def rotate_print_agent_credential(
+    agent_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Revoke the agent's active credentials and issue a fresh one (Batch 5C).
+
+    The new plaintext token is returned exactly once; only its hash is stored.
+    """
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    now = datetime.utcnow()
+
+    active_credentials = (
+        db.query(PrintAgentCredential)
+        .filter(
+            PrintAgentCredential.print_agent_id == agent.id,
+            PrintAgentCredential.revoked.is_(False),
+        )
+        .all()
+    )
+
+    for credential in active_credentials:
+        credential.revoked = True
+        credential.revoked_at = now
+
+    selector, verifier, token = generate_agent_token()
+    db.add(
+        PrintAgentCredential(
+            print_agent_id=agent.id,
+            token_selector=selector,
+            token_hash=hash_agent_verifier(verifier),
+        )
+    )
+    db.commit()
+
+    audit(
+        admin.username,
+        "ROTATE_PRINT_AGENT_CREDENTIAL",
+        f"AgentID={agent.id}, RevokedCount={len(active_credentials)}",
+    )
+
+    return {
+        "agent_id": agent.id,
+        "agent_token": token,
+        "message": "New credential issued. Store it now; it will not be shown again.",
+    }
+
+@app.post("/api/print-agents/{agent_id}/credentials/revoke")
+def revoke_print_agent_credentials(
+    agent_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Revoke all active credentials for an agent without issuing a new one."""
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    now = datetime.utcnow()
+
+    active_credentials = (
+        db.query(PrintAgentCredential)
+        .filter(
+            PrintAgentCredential.print_agent_id == agent.id,
+            PrintAgentCredential.revoked.is_(False),
+        )
+        .all()
+    )
+
+    for credential in active_credentials:
+        credential.revoked = True
+        credential.revoked_at = now
+
+    db.commit()
+
+    audit(
+        admin.username,
+        "REVOKE_PRINT_AGENT_CREDENTIAL",
+        f"AgentID={agent.id}, RevokedCount={len(active_credentials)}",
+    )
+
+    return {
+        "agent_id": agent.id,
+        "revoked": len(active_credentials),
     }
 
 @app.get("/api/print-jobs/{print_job_id}/badge-image")

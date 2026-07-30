@@ -451,6 +451,26 @@ export async function assignPrintAgent(agentId, stationId) {
   return await handleResponse(response, "Failed to assign print agent");
 }
 
+export async function setPrintAgentEnabled(agentId, enabled) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-agents/${agentId}/enabled`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        enabled,
+      }),
+    }
+  );
+
+  return await handleResponse(response, "Failed to update print agent status");
+}
+
 
 // Print Station Management Functions
 

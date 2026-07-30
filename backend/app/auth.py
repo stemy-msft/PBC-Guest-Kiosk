@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pathlib import Path
 import os
+import secrets
 
 from dotenv import load_dotenv
 from jose import jwt
@@ -14,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .dependencies import get_db
-from .models import User
+from .models import PrintAgent, PrintAgentCredential, User
 
 password_hash = PasswordHash.recommended()
 
@@ -126,3 +127,109 @@ def require_admin(
         )
 
     return user
+
+
+# ---------------------------------------------------------------------------
+# Print-agent credentials (Batch 5C foundation)
+#
+# Print agents authenticate with their own per-agent bearer token, never a
+# staff JWT. A token has the form ``selector.verifier``: the selector is a
+# public lookup handle stored in plaintext, and only a one-way hash of the
+# verifier is persisted. During the Batch 5C migration grace period these
+# helpers are AVAILABLE but no print-agent endpoint is required to call them —
+# token enforcement is deferred to Batch 5D.
+# ---------------------------------------------------------------------------
+
+
+def generate_agent_token() -> tuple[str, str, str]:
+    """Return ``(selector, verifier, token)`` for a freshly minted credential.
+
+    Only ``verifier`` is secret (store its hash); ``selector`` is a public
+    lookup handle. ``token`` is the plaintext returned to the agent once.
+    """
+    selector = secrets.token_urlsafe(9)
+    verifier = secrets.token_urlsafe(32)
+    return selector, verifier, f"{selector}.{verifier}"
+
+
+def hash_agent_verifier(verifier: str) -> str:
+    return password_hash.hash(verifier)
+
+
+def _verify_agent_verifier(verifier: str, hashed: str) -> bool:
+    try:
+        return password_hash.verify(verifier, hashed)
+    except Exception:
+        return False
+
+
+def resolve_print_agent_credential(token: str, db: Session):
+    """Resolve a bearer token to its ``(PrintAgent, PrintAgentCredential)``.
+
+    Returns ``None`` (not authenticated) when the token is absent/malformed, no
+    matching unrevoked credential exists, the verifier does not match, or the
+    owning agent is missing or disabled. This function has no side effects.
+    """
+    if not token or "." not in token:
+        return None
+
+    selector, verifier = token.split(".", 1)
+
+    if not selector or not verifier:
+        return None
+
+    credential = (
+        db.query(PrintAgentCredential)
+        .filter(
+            PrintAgentCredential.token_selector == selector,
+            PrintAgentCredential.revoked.is_(False),
+        )
+        .first()
+    )
+
+    if credential is None:
+        return None
+
+    if not _verify_agent_verifier(verifier, credential.token_hash):
+        return None
+
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == credential.print_agent_id)
+        .first()
+    )
+
+    if agent is None or not agent.enabled:
+        return None
+
+    return agent, credential
+
+
+def get_optional_print_agent(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Grace-period print-agent auth dependency.
+
+    Returns the authenticated ``PrintAgent`` when a valid bearer credential is
+    presented, otherwise ``None``. It never raises: tokenless requests (existing
+    deployed agents) and requests with invalid/revoked tokens both resolve to
+    ``None`` so callers remain non-enforcing until Batch 5D wires enforcement.
+    """
+    header = request.headers.get("Authorization", "")
+
+    if not header.lower().startswith("bearer "):
+        return None
+
+    token = header[len("bearer ") :].strip()
+
+    resolved = resolve_print_agent_credential(token, db)
+
+    if resolved is None:
+        return None
+
+    agent, credential = resolved
+    credential.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return agent

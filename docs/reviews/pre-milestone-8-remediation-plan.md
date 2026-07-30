@@ -1199,3 +1199,145 @@ automatically. Batches 5C/5D/5E/6 and Milestone 8 not started.
 
 **Suggested commit message:**
 `Milestone 7.8.10: Batch 5B anonymous check-out (/api/visitors/find) response minimization + tests`
+
+---
+
+## 19. Batch 5C — Print-Agent Authentication Foundation (IMPLEMENTED)
+
+**Scope implemented:** the *foundation* for per-agent authentication — a new
+schema-additive credential table, one-time hashed token issuance, disabled-by-default
+enrollment, Administrator approval/rotation/revocation, and a grace-period auth helper.
+**No enforcement was added:** print-agent endpoints still do not require a token, station
+ownership is not enforced, and existing deployed (tokenless) agents keep working. Token
+enforcement is deferred to Batch 5D.
+
+### 19.1 Starting Git state
+- Branch `main`, HEAD `99d5c33` ("Milestone 7.8.9: minimize anonymous checkout lookup
+  response" = Batch 5B), working tree **clean**.
+- Baseline re-confirmed: backend **36 passed**; `py_compile` **exit 0**; frontend **9 passed**;
+  **build success**; lint **16 problems (13 errors, 3 warnings)**.
+
+### 19.2 Credential model and lifecycle
+New table **`print_agent_credentials`** (model `PrintAgentCredential`) — the existing
+`print_agents` table is unchanged (no `ALTER`, no new columns):
+
+| Column | Purpose |
+|---|---|
+| `id` | PK |
+| `print_agent_id` | FK → `print_agents.id` (`ON DELETE CASCADE`), indexed |
+| `token_selector` | public, unique, indexed lookup handle (not a secret) |
+| `token_hash` | Argon2 hash (via `pwdlib`) of the verifier — never plaintext |
+| `created_at` | issuance timestamp |
+| `last_used_at` | set by the grace-period auth dependency when a token is presented |
+| `revoked` | bool, default `False` |
+| `revoked_at` | revocation timestamp |
+
+**Token format:** `"{selector}.{verifier}"`. The selector allows O(1) lookup; only the
+verifier is hashed. The plaintext token is returned to the agent **exactly once** (at
+issuance) and is never stored or logged.
+
+**Lifecycle:** issue → (optional `last_used_at` update) → rotate (revoke all active + issue
+new) or revoke (mark all active revoked). A credential authenticates only when it is
+unrevoked, the verifier matches, and the owning agent exists and is **enabled**.
+
+### 19.3 Registration behavior (`POST /api/print-agents/register`, anonymous)
+- **Newly discovered agent:** created with `enabled=False` (was `True`). A strong random
+  credential is issued **once**; only its hash is stored; the plaintext is returned in the
+  registration response field `agent_token`.
+- **Existing agent (matched by `agent_key`):** identity and `enabled` state are preserved. A
+  credential is issued **only if the agent has no active credential yet** (lets a legacy
+  tokenless agent adopt one during the grace period). If an active credential already exists,
+  **no rotation occurs** and `agent_token` is `null` — re-registration never silently rotates.
+- Response model changed to `PrintAgentRegisterResponse` (all `PrintAgentResponse` fields plus
+  the one-time `agent_token`). The registration audit line was corrected to the
+  `audit(user, action, details)` signature and records agent id, hostname, enabled state, and
+  whether a credential was issued — **never the token**.
+
+### 19.4 Grace-period behavior (transitional — Batch 5C only)
+- Print-agent endpoints (`/api/print-jobs/pending`, `/claim`, `/status`, `/badge-image`,
+  register, heartbeat) remain **unauthenticated**. Existing tokenless agents are unaffected.
+- A new **optional** helper `auth.get_optional_print_agent` (and pure function
+  `auth.resolve_print_agent_credential`) can detect a Bearer token, validate it against the
+  table, load the agent, and reject revoked/disabled credentials — but **nothing is wired to
+  require it yet**. Requests without a token are accepted; requests with an invalid/revoked
+  token resolve to "not authenticated" (they are not treated as an authenticated agent).
+- Newly registered agents are **disabled pending Administrator approval**; a disabled agent's
+  token never authenticates, even though it is a valid credential.
+
+### 19.5 Administrator operations (existing `require_admin` authorization)
+- `PUT /api/print-agents/{id}/enabled` `{enabled: bool}` — approve/enable or disable an agent.
+- `POST /api/print-agents/{id}/credentials/rotate` — revoke active credentials and issue a new
+  one; returns the new plaintext token **once**.
+- `POST /api/print-agents/{id}/credentials/revoke` — revoke all active credentials, no new token.
+- All four operations are audited (approval, disablement, rotation, revocation) **without
+  logging secrets**. `GET /api/print-agents` continues to use `PrintAgentResponse` and never
+  exposes `agent_token`, `token_hash`, or `token_selector`.
+
+### 19.6 Files changed
+| File | Change |
+|---|---|
+| `backend/app/models.py` | Added `PrintAgentCredential` (new table). |
+| `backend/app/auth.py` | Added `generate_agent_token`, `hash_agent_verifier`, `resolve_print_agent_credential`, and the optional `get_optional_print_agent` dependency. |
+| `backend/app/schemas.py` | Added `PrintAgentRegisterResponse`, `PrintAgentEnabledUpdate`, `PrintAgentCredentialIssueResponse`. |
+| `backend/app/main.py` | Register: disabled-by-default + one-time controlled issuance + corrected audit. New admin endpoints: `/enabled`, `/credentials/rotate`, `/credentials/revoke`. |
+| `print-agent/print_agent.py` | Persist `agent_token` to `.env` (`PBC_PRINT_AGENT_TOKEN`), send via existing Bearer header, never printed. |
+| `frontend/src/api.js` | Added `setPrintAgentEnabled(agentId, enabled)`. |
+| `frontend/src/App.jsx` | Agent card shows Approved/Pending status and an Approve/Disable button. |
+| `backend/tests/test_print_agent_credentials.py` | **New** — 17 tests. |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | This §19. |
+
+### 19.7 Tests added (`backend/tests/test_print_agent_credentials.py`)
+Covers all 14 required proofs (17 tests total): new table created; `print_agents` has no new
+columns; registration creates a disabled agent; token issued once and only a hash stored;
+hash ≠ plaintext; list never exposes token/hash; valid token resolves to the correct agent;
+invalid token not authenticated; revoked credential rejected; disabled agent not authenticated;
+tokenless agent still reaches print endpoints; kiosk/staff workflows unchanged; re-registration
+does not rotate; token never appears in list responses; plus Administrator approve/disable,
+admin-required enforcement, and rotation (revoke-old/issue-new).
+
+### 19.8 Validation results
+- Backend pytest: **53 passed** (36 baseline + 17 new).
+- `py_compile` (8 modules): **exit 0**.
+- Frontend `npm run test`: **9 passed (2 files)**.
+- Frontend `npm run build`: **success**.
+- Frontend `npm run lint`: **16 problems (13 errors, 3 warnings)** — unchanged baseline.
+- `git diff --check`: **clean** (exit 0; only a benign LF→CRLF advisory).
+- Operational SQLite DB **not accessed** (tests use in-memory SQLite; `git status` shows no
+  `.db` change). No existing table column added. No secret appears in the diff or logs.
+
+### 19.9 Deployment steps for existing Raspberry Pi agents
+1. Deploy the updated backend. Existing agents keep printing immediately (grace period; no
+   token required).
+2. Deploy the updated `print-agent/print_agent.py`. On its next registration each existing
+   agent that has no credential yet receives one and stores it in its local `.env` as
+   `PBC_PRINT_AGENT_TOKEN`; it begins sending the Bearer token automatically. No manual key
+   entry, no downtime.
+3. Newly discovered agents appear as **Pending Approval**. An Administrator approves each via
+   the Print Agents screen (Approve button) before Batch 5D enforcement is enabled.
+4. (Optional) Rotate a credential from the same screen/API if a token is suspected compromised;
+   the agent re-registers and adopts the new token.
+
+### 19.10 Remaining Batch 5D enforcement work
+- Require a valid agent credential on `/api/print-jobs/pending|claim|status|badge-image` and
+  heartbeat (wire `get_optional_print_agent` → a required dependency).
+- Enforce `agent.enabled` at those endpoints (disabled/pending agents rejected).
+- Enforce station ownership + atomic job claims.
+- Define grace-window **exit criteria** (e.g., all active agents have `last_used_at` set) before
+  flipping enforcement on.
+
+### 19.11 Rollback procedure
+- Code rollback: `git revert` the Batch 5C commit (or check out `99d5c33`). Because the new
+  table is additive and unused by any enforced path, reverting the code leaves the operational
+  DB fully functional; the now-orphan `print_agent_credentials` table can be ignored or dropped
+  at leisure. No data migration is required to roll back.
+- Agent rollback: remove `PBC_PRINT_AGENT_TOKEN` from an agent's `.env` to return it to
+  tokenless operation during the grace period.
+
+### 19.12 NOT performed in this pass (explicit)
+No token enforcement on any print-agent endpoint. No station-ownership enforcement. No atomic
+claims. Kiosk visitor endpoints unchanged. No columns added to existing tables. No Alembic or
+migrations. No production secrets rotated. No Git history rewritten. No commit made
+automatically. Batches 5D/5E/6 and Milestone 8 not started.
+
+**Suggested commit message:**
+`Milestone 7.8.10: Batch 5C print-agent auth foundation (print_agent_credentials, disabled-by-default enrollment, one-time hashed tokens, admin approval/rotation) + tests`
