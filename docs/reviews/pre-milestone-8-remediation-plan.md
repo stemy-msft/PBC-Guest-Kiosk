@@ -1341,3 +1341,557 @@ automatically. Batches 5D/5E/6 and Milestone 8 not started.
 
 **Suggested commit message:**
 `Milestone 7.8.10: Batch 5C print-agent auth foundation (print_agent_credentials, disabled-by-default enrollment, one-time hashed tokens, admin approval/rotation) + tests`
+
+---
+
+## 20. Batch 5D.1 — Ownership, Enforcement & Job-Recovery Design Review (DESIGN ONLY)
+
+**Nature of this pass:** analysis and decision-gathering only. No application code, schema,
+auth enforcement, migration, or kiosk workflow was changed. HEAD at review time `6fb1535`
+(Batch 5C), working tree clean. Baseline re-confirmed: backend **53 passed**, `py_compile`
+**exit 0**, frontend **9 passed**, **build success**, lint **16 problems (13/3)** — unchanged.
+
+### 20.0 Grounding — current print-job lifecycle (as-built)
+
+| Concern | Current code | Location |
+|---|---|---|
+| Valid statuses | `{Pending, Printing, Completed, Failed}` — no `Claimed`, no `Recovered` | `main.py` `VALID_PRINT_JOB_STATUSES` |
+| Claim | Anonymous. Reads job, `if status != "Pending"` → else set `Printing`, `claimed_time=now()`. **Non-atomic** read-then-write; goes straight to `Printing` | `PUT /api/print-jobs/{id}/claim` |
+| Pending list | Anonymous. Station **slug supplied by client** (`?station=`) filters jobs; unknown/disabled station → `[]` | `GET /api/print-jobs/pending` |
+| Status update | Anonymous. Any caller may set any job `Completed/Failed`; no ownership check | `PUT /api/print-jobs/{id}/status` |
+| Job → station | `PrintJob.print_station_id` (FK, **not null**) | `models.py` |
+| Job → agent | **None.** `PrintJob` stores `printer_name` (free string) + `claimed_time`, but **not which agent claimed it** | `models.py` |
+| Agent → station | `PrintAgent.print_station_id` (FK, **nullable**) — the ownership anchor | `models.py` |
+| Agent liveness | Agent calls `register_agent()` **every poll iteration**, which sets `agent.last_seen = utcnow()`. So `last_seen` is already a de-facto heartbeat | `print_agent.py main()` → `POST /register` |
+| Credential gate | `resolve_print_agent_credential` already rejects revoked credentials and disabled agents (but nothing requires it yet) | `auth.py` (Batch 5C) |
+
+### 20.1 Task 1 — Ownership model validation
+
+**Authoritative value: `PrintAgent.print_station_id`.** The client-supplied `?station=` slug
+must become **advisory only** — the server derives the station from the authenticated agent's
+row, not from the request. (Detail already noted in §19.10.)
+
+1. **Can one authenticated agent represent multiple stations?** No. `PrintAgent.print_station_id`
+   is a single nullable FK — one agent maps to at most one station. An unassigned agent
+   (`NULL`) owns no station and, under 5D, would receive no jobs.
+2. **Can multiple agents be assigned to one station?** **Yes, today nothing prevents it** —
+   several `PrintAgent` rows may share the same `print_station_id`. Pending jobs belong to the
+   *station*, so multiple agents at one station both poll and both attempt to claim → the race
+   in 20.0. This must be governed explicitly (see 20.6A / owner decision 5).
+3. **Assigned station disabled?** `pending` returns `[]` for a disabled station, so no *new*
+   jobs are served. Jobs already `Printing` are unaffected (no recovery exists). Enqueue still
+   references the station; operationally the queue silently stalls.
+4. **Agent disabled?** `resolve_print_agent_credential` returns `None` for a disabled agent, so
+   under 5D it would stop receiving/claiming. **Today (grace period) a disabled agent still
+   prints** because no endpoint requires the credential.
+5. **Credential revoked?** Same as (4): rejected by the resolver, but only once 5D wires
+   enforcement. Any job the agent already set to `Printing` stays `Printing`.
+6. **Station assignment changes while jobs pending?** `Pending` jobs carry their own
+   `print_station_id`, so they stay with the *old* station until an admin `reassign`s them.
+   Reassign only accepts `Pending` jobs — an in-flight `Printing` job cannot be moved.
+
+### 20.2 Task 2 — Offline / failed-agent recovery (as-built)
+
+1. **How jobs strand today:** `claim` sets `Printing` with no lease and no `claimed_by`. Nothing
+   ever transitions `Printing` back. If the agent dies after claiming (power loss, crash,
+   revoked, replaced), the job is **stuck in `Printing` forever**. It is invisible to the
+   dashboard's `pending`/`failed` counters, so it silently disappears from the queue.
+2. **Does ownership enforcement alone solve it?** **No.** Enforcing `print_station_id` fixes
+   *authorization* (who may claim) but does nothing for *liveness*. A stranded `Printing` job
+   stays stranded regardless of ownership rules. Recovery is a separate mechanism.
+3. **Does the current design allow recovery?** Only manually: an admin can `DELETE` the job or,
+   because `reassign` rejects non-`Pending` jobs, there is **no supported path to requeue a
+   stuck `Printing` job** — it must be deleted and the badge re-created from the visitor. This
+   is a real operational gap.
+4. **Live camp impact:** During peak check-in a single Pi reboot can permanently strand every
+   badge it had claimed. Staff see the visitor as "printing" with no badge and no error, and no
+   button to recover. High-severity for the Dining Hall / high-volume stations.
+
+- **Scenario A (power loss):** job pinned `Printing`, never recovers. Confirmed gap.
+- **Scenario B (revoked mid-print):** job pinned `Printing`; revocation does not touch jobs.
+- **Scenario C (Pi replaced, same station):** new agent registers, shares `print_station_id`,
+  and can claim **new** `Pending` jobs — but the old agent's in-flight `Printing` jobs remain
+  stranded (owned by nothing, unrecoverable via supported endpoints).
+
+### 20.3 Task 3 — Recovery policy options
+
+| Option | Pros | Cons | Failure modes | Camp impact |
+|---|---|---|---|---|
+| **A — Manual admin only** | Simplest; zero false positives; human confirms badge really didn't print | Requires staff to notice + act; slow during rush; needs a new "requeue stuck job" admin action (doesn't exist today) | Overnight/unattended stalls; staff forget; queue backs up | Poor at high volume; acceptable only as a floor |
+| **B — Automatic on heartbeat age** | Self-healing; no staff action; uses existing `last_seen` | Risk of **duplicate print** if agent was merely slow (printed, then reclaimed elsewhere); tuning the timeout | Timeout too low → duplicate badges; too high → long stalls; clock skew | Best throughput, but needs anti-duplicate controls (20.6A) |
+| **C — Hybrid (auto-detect → controlled requeue, capped retries, terminal `Failed` for admin)** | Self-heals the common case; caps runaway retries; keeps a human in the loop for repeat failures; auditable | Slightly more states/logic | Mostly mitigated; residual duplicate risk bounded by lease + generation | Strong fit for camp: fast recovery, bounded blast radius |
+
+**Recommendation: Option C (Hybrid).** Auto-recover a stale claim after a heartbeat-age
+timeout, requeue for a **bounded** number of attempts, and route exhausted jobs to a terminal
+`Failed` state for explicit admin action — combined with the anti-duplicate controls in 20.6A.
+
+### 20.4 Task 4 — Authoritative job-state model
+
+Recommended lifecycle (keep `Claimed` and `Printing` **separate** — see 20.6A):
+
+```
+Pending ──claim──▶ Claimed ──start print──▶ Printing ──ok──▶ Completed
+   ▲                  │                          │
+   │            lease/heartbeat            lease/heartbeat
+   │              expiry (auto)              expiry (auto)
+   └──────── requeue (attempt++) ◀───────────────┘
+                        │
+             attempts exhausted / hard error
+                        ▼
+                     Failed  ──admin requeue──▶ Pending
+```
+
+- **Pending → Claimed:** an authenticated, enabled agent whose `print_station_id` matches the
+  job's station, via an **atomic** conditional claim (20.6A). Records claiming agent, claim
+  time, lease expiry, `attempt_count++`.
+- **Claimed → Printing:** the *same* agent (matching claim generation) reports it has handed the
+  job to CUPS.
+- **Printing → Completed:** the same agent, on CUPS success. Sets `completed_time`, marks
+  visitor `badge_printed`.
+- **Claimed/Printing → Pending (Recovered):** the **server** (recovery sweep) when `last_seen`
+  age exceeds the timeout **and** the lease has expired. Increments a claim generation so the
+  stale agent's later updates are rejected. Prefer requeuing directly to `Pending` and record
+  the recovery on the job (`last_recovery_reason`) rather than adding a visible `Recovered`
+  status — fewer states, and staff only care about Pending/Printing/Completed/Failed.
+- **→ Failed:** on hard error or when `attempt_count` exceeds the max retry cap. Terminal until
+  an admin explicitly requeues.
+- **Failed → Pending:** admin action (extend the existing `reassign`/a new requeue endpoint to
+  accept `Failed`).
+- **Audit:** claim, print-start, completion, timeout-detected, auto-requeue (with reason),
+  reassignment, **stale-update rejection**, and retry-exhaustion — none logging secrets.
+
+### 20.5 Task 5 — Heartbeat-based recovery analysis
+
+Because `register_agent()` runs every poll and refreshes `agent.last_seen`, recovery **can be
+derived from existing data without new tables** — the *detector* needs only `last_seen` plus a
+lease/generation on the job (the latter is additive columns, not a new table; see 20.6A).
+
+Detector: a job in `Claimed`/`Printing` whose owning agent's `last_seen` is older than the
+threshold **and** whose claim lease has expired becomes eligible for recovery.
+
+1. **Recommended timeout:** **5 minutes** of `last_seen` staleness (≈ several missed poll
+   cycles at the current `POLL_SECONDS`), gated by an explicit per-job **claim lease** (suggest
+   lease = 2× expected print time, e.g. 90–120 s). 2 min risks duplicates on slow prints; 10
+   min strands badges too long at peak. **Use lease expiry as the primary trigger and
+   `last_seen` age as a corroborating guard.**
+2. **Recovery target state:** **return directly to `Pending`** (auto), recording
+   `last_recovery_reason`; escalate to `Failed` (admin review) only after the retry cap.
+3. **Audit entries:** **Yes** — every automatic recovery writes an audit event
+   (job id, old owner agent id, reason, attempt count).
+4. **Notify staff:** Not required for a single silent auto-recovery, but surface **recovery
+   count / stuck-job count on the dashboard** and alert when a job hits terminal `Failed`.
+
+### 20.6 Task 6 — Agent-replacement workflow (Pi swap, same station)
+
+1. **Ownership transfer:** admin assigns the **new** agent to the same `print_station_id` (or it
+   registers and is approved, then assigned). Station ownership is by `print_station_id`, so the
+   new agent immediately owns the station's `Pending` queue.
+2. **Stranded jobs:** the old agent's in-flight `Claimed`/`Printing` jobs are auto-recovered by
+   the lease/heartbeat sweep (20.5) → requeued to `Pending` → claimable by the new agent.
+3. **Admin intervention:** required only to **approve/assign** the replacement agent (5C already
+   provides approve/assign). Recovery of the stranded jobs is automatic.
+4. **Auto-claimable:** yes, once recovered to `Pending` and the new agent is enabled + assigned.
+
+> Goal satisfied: a failed Dining Hall printer no longer permanently strands badges — the lease
+> sweep requeues them and the replacement Pi reprints them, with a retry cap so a genuinely
+> unprintable job ends in `Failed` for staff rather than looping forever.
+
+### 20.6A Task 6A — Claim ownership, leases, duplicate-print & retry limits
+
+**Does `PrintJob` record the claiming agent today?** **No.** It records `printer_name` (free
+string) and `claimed_time` only. There is no `claimed_by_agent_id`, no lease, no attempt count,
+no generation. This is the core reliability gap.
+
+**Smallest schema-additive design (columns on `print_jobs`, no new table required):**
+
+| Column | Purpose |
+|---|---|
+| `claimed_by_agent_id` (FK → `print_agents.id`, nullable) | which agent holds the claim |
+| `claim_expires_at` (DateTime, nullable) | lease expiry; primary recovery trigger |
+| `claim_generation` (Integer, default 0) | monotonic token; bumped on every (re)claim/recovery |
+| `attempt_count` (Integer, default 0) | retry accounting |
+| `last_recovery_reason` (String, nullable) | audit/telemetry for why it was requeued |
+
+*(Additive columns on an existing table. Because the project uses `create_all` with no
+migration tooling, adding columns to an existing SQLite table **does** require a migration/
+backfill story — flagged below as a prerequisite, consistent with §16–17's "no ad-hoc ALTER"
+rule.)*
+
+**Failure scenario (A claims → A stalls → server requeues → B prints → A resumes):** controls
+that must hold —
+
+- **No duplicate physical print:** atomic claim + `claim_generation`. B's successful claim bumps
+  the generation. A's resumed `start-print`/`complete` carries the *old* generation and is
+  rejected → A never re-sends to CUPS.
+- **No stale completion:** `complete`/`status` updates must match **both** `claimed_by_agent_id`
+  and `claim_generation`; a mismatch → `409`/ignored + audit `STALE_UPDATE_REJECTED`.
+- **No cross-agent completion:** an agent may only transition a job it currently owns.
+- **No infinite retry:** `attempt_count` capped (recommend **3**); on exceed → terminal `Failed`.
+
+**Design comparison:**
+
+| Mechanism | Prevents dup print? | Prevents stale complete? | Handles multi-agent? | Cost |
+|---|---|---|---|---|
+| Status-only (today) | ✗ (race) | ✗ | ✗ | none |
+| `claimed_by_agent_id` | partial | ✓ (owner check) | partial | 1 col |
+| Expiring lease | ✓ (bounded) | partial | ✓ | 1 col |
+| **Claim generation/version** | ✓ (authoritative) | ✓ | ✓ | 1 col |
+
+**Recommended minimum reliable design:** **all three of** `claimed_by_agent_id` +
+`claim_expires_at` (lease) + `claim_generation` (monotonic), with the claim performed as a
+single atomic conditional `UPDATE ... WHERE id=? AND status='Pending' AND print_station_id=?`.
+Lease handles liveness; generation handles stale updates; agent id handles authorization.
+
+- **`Claimed` vs `Printing` separate?** **Yes** — distinguishes "assigned but not yet at the
+  printer" from "handed to CUPS," which lets recovery choose a safer policy for jobs that may
+  have physically printed.
+- **Max automatic retries:** **3**.
+- **Terminal state after retries:** **`Failed`** (admin requeue only).
+- **Admin recovery action:** requeue `Failed`/stuck job → `Pending` (extend `reassign`), or
+  delete.
+- **Audit events:** `CLAIM_PRINT_JOB`, `PRINT_JOB_TIMEOUT`, `PRINT_JOB_RECOVERED`,
+  `PRINT_JOB_REASSIGNED`, `STALE_UPDATE_REJECTED`, `PRINT_JOB_RETRY_EXHAUSTED`.
+
+**Multiple enabled agents per station:** **Allow, but govern.** If permitted:
+- pending jobs belong to the **station**;
+- only **one** agent may hold the active claim lease for a given job at a time;
+- another agent may claim only **after release or lease expiration** (enforced by the atomic
+  conditional claim + generation).
+This makes N-agents-per-station safe (redundancy/failover) without duplicate prints.
+
+**Migration prerequisite:** the additive columns above require a migration/backfill mechanism
+before implementation, because the app currently relies on `create_all` and does not ALTER
+existing tables. This is the one hard blocker for Batch 5D and should be resolved first
+(minimal, reviewed migration — not ad-hoc `ALTER` at runtime).
+
+### 20.7 Task 7 — Owner decisions required
+
+| # | Decision | Options | Recommendation | Operational impact | Security impact | Default if no action |
+|---|---|---|---|---|---|---|
+| 1 | Recovery strategy | A manual / B auto / C hybrid | **C hybrid** | Self-heals rush; bounded | Neutral (server-driven, audited) | **A** (manual) — safe but strands badges |
+| 2 | Recovery timeout | 2 / 5 / 10 min + lease | **5 min + 90–120 s lease** | Fast enough, low dup risk | none | 5 min |
+| 3 | Auto vs manual requeue | auto→Pending / admin-only | **auto→Pending, cap 3, then Failed** | Fewer stuck jobs | none | manual only |
+| 4 | Recovery audit logging | on / off | **on** (all recovery events) | Traceability | +forensics | on |
+| 5 | Multi-agent per station | forbid / allow+govern | **allow + single active lease** — **RATIFIED (§20.10)** | Redundancy/failover | dup-print controlled by lease+generation | forbid (single agent) |
+| 6 | Agent replacement | manual reassign / auto on approve+assign | **auto-recover stranded + admin approve/assign new** | Painless Pi swaps | new agent still needs approval (5C) | manual reassign |
+
+### 20.8 Recommended Batch 5D implementation scope
+
+1. **Migration prerequisite:** introduce a minimal, reviewed migration mechanism and add the
+   five additive `print_jobs` columns (20.6A). *Blocker — do first.*
+2. **Enforce authentication + ownership** on `pending`/`claim`/`status`/`badge-image`: require a
+   valid enabled credential (wire `get_optional_print_agent` → required), derive station from
+   `agent.print_station_id`, treat `?station=` as advisory, reject cross-station claims.
+3. **Atomic claim** with lease + generation + `claimed_by_agent_id`; split `Claimed` vs
+   `Printing`.
+4. **Recovery sweep** (lease/heartbeat) → auto-requeue with `attempt_count` cap 3 → terminal
+   `Failed`; full audit; stuck/recovered counts on the dashboard.
+5. **Stale-update rejection** via owner + generation match.
+6. **Admin requeue** path for `Failed`/stuck jobs; grace-window **exit criteria** (all active
+   agents authenticating) before flipping enforcement on.
+
+### 20.9 Validation (this pass)
+- Backend pytest: **53 passed**; `py_compile`: **exit 0**; frontend test **9 passed**; build
+  **success**; lint **16 (13/3)** unchanged; `git diff --check` **clean**.
+- Confirmed: **no runtime behavior changed, no schema changed, no auth enforcement added, no
+  migrations introduced.** Only this document (§20) was edited.
+
+### 20.10 Ratified architecture decision (OWNER)
+
+The owner has ratified the following authoritative model. It supersedes the "default if no
+action" column for the decisions it touches and is the binding contract for Batch 5D.
+
+> **Station = physical location.** A `PrintStation` **is** a physical badge-printing location
+> (e.g. Dining Hall). It is the durable anchor; agents come and go, the station persists.
+>
+> **Multiple agents per station = supported.** More than one enabled `PrintAgent` may share a
+> station's `print_station_id` (redundancy / failover / Pi swap overlap). *(Ratifies owner
+> decision 5 → allow + govern.)*
+>
+> **Jobs belong to stations.** A `PrintJob` is owned by its `print_station_id`, **never** by an
+> agent. The pending queue is a per-station queue.
+>
+> **Claim leases belong to agents.** Ownership of *work in flight* is a **transient lease** held
+> by a single agent: `claimed_by_agent_id` + `claim_expires_at` + `claim_generation`. At most one
+> agent holds the active lease for a given job at a time.
+>
+> **Recovered jobs return to the station queue.** On lease expiry / heartbeat timeout the server
+> releases the lease and returns the job to its **station's `Pending` queue** — it is *not*
+> reassigned to a specific agent. Any enabled agent at that station may then re-lease it.
+
+**Binding implications for Batch 5D:**
+
+1. **Two-level ownership.** Durable ownership = `PrintJob.print_station_id` (station). Transient
+   ownership = the lease (`claimed_by_agent_id` + `claim_generation`). Authorization to *claim*
+   is derived from the authenticated agent's `print_station_id` matching the job's station;
+   authorization to *advance/complete* a job is derived from holding the current lease
+   (matching agent id **and** generation).
+2. **Atomic claim is station-scoped, lease-exclusive.** A claim succeeds only via the single
+   conditional write `UPDATE ... WHERE id=? AND print_station_id=? AND status='Pending'`
+   (and, for re-lease of an expired claim, `AND (claim_expires_at IS NULL OR claim_expires_at < now)`),
+   which also stamps `claimed_by_agent_id`, `claim_expires_at`, and bumps `claim_generation`.
+   This guarantees exactly one active lease even with N agents polling the same station.
+3. **Recovery target = station Pending queue.** The recovery sweep sets the job back to
+   `Pending`, clears `claimed_by_agent_id`/`claim_expires_at`, bumps `claim_generation`
+   (invalidating the stale agent's later updates), increments `attempt_count`, and records
+   `last_recovery_reason`. It preserves `print_station_id` — the badge stays at its physical
+   location. Terminal `Failed` only after the retry cap (3).
+4. **Stale-update rejection is generation-based.** Because leases move between agents at the same
+   station, an owner-id check alone is insufficient; the `claim_generation` match is what makes
+   "one agent completing another agent's recovered claim" impossible.
+5. **Agent replacement needs no job reassignment.** A replaced Pi's stranded jobs recover to the
+   station queue and any enabled agent at that station (including the replacement) re-leases
+   them — no per-job admin reassignment required.
+
+**No schema change beyond §20.6A.** This decision is fully served by the five additive
+`print_jobs` columns already proposed; no new table is required. The migration prerequisite
+(§20.6A / §20.8 step 1) remains the one hard blocker before implementation.
+
+---
+
+## 21. Batch 5D.2 — Migration Strategy & Guest Print-Status Design Review (DESIGN ONLY)
+
+**Nature of this pass:** analysis and decision-gathering only. No application code, schema,
+auth enforcement, migration, kiosk workflow, or endpoint security was changed. HEAD at review
+time `6fb1535` (Batch 5C); working tree had only this document modified (§20). Baseline
+re-confirmed: backend **53 passed**, `py_compile` **exit 0**, frontend **9 passed**, **build
+success**, lint **16 problems (13/3)** — unchanged. Grounded in the ratified architecture
+(§20.10): station = physical location, multiple agents per station, jobs belong to stations,
+leases belong to agents, recovered jobs return to the station queue.
+
+### 21.0 Grounding re-read (as-built, confirmed this pass)
+
+| Fact | Detail | Location |
+|---|---|---|
+| Schema mechanism | `Base.metadata.create_all(bind=engine)` at import; **no Alembic**, no migration runner | `database.py` / import time |
+| `create_all` limitation | Creates *missing tables* only. It **never** adds a column to an existing table | SQLAlchemy behavior |
+| Print-job creation | `POST /api/visitors/{id}/print` — **anonymous**, returns `PrintJobResponse` incl. `id`, `status`, `station_name`, `station_slug` | `main.py:2605` |
+| Per-job status read | **None anonymous.** `GET /api/print-jobs` is staff-authed and returns **all** jobs incl. `visitor_name` (PII) | `main.py:1184` |
+| Badge image read | `GET /api/print-jobs/{id}/badge-image` — anonymous, returns PNG bytes (wrong shape for status) | `main.py:1153` |
+| Kiosk flow | `createVisitor → uploadPhoto → generateBadge → createPrintJob → success screen → fixed 5 s timeout → home` | `App.jsx:1240-1280` |
+| Response shape | `PrintJobResponse` exposes `station_name`/`station_slug` but **no** hostname/agent identity | `schemas.py` |
+
+### 21.1 Task 1 — Migration strategy review
+
+1. **Which features require schema evolution before Milestone 8?** Only **Batch 5D ownership/
+   recovery** (the 4–5 additive `print_jobs` columns, §20.6A). The **guest status screen**
+   (§21.4–21.5) requires **no schema change** — `status` and `station_name` already exist.
+   No other pre-M8 feature is known to need columns.
+2. **Which tables change before M8?** Only **`print_jobs`** (additive columns). `visitors`,
+   `users`, `print_stations`, `print_agents`, and `print_agent_credentials` are stable.
+3. **Does a migration framework now reduce future risk?** Partially. The immediate need is a
+   single table gaining a few nullable/defaulted columns. SQLite supports `ALTER TABLE … ADD
+   COLUMN` natively (no table rebuild) for nullable/defaulted columns, so the change itself is
+   low-risk — **but** `create_all` will not apply it to already-deployed databases, and §16–17
+   forbid ad-hoc runtime `ALTER`. A *reviewed, versioned* mechanism is therefore required; a
+   *heavy* framework is not.
+4. **Is a lightweight system sufficient?** **Yes.** An idempotent additive-migration step (a
+   `schema_version` marker + guarded `ADD COLUMN` that checks `PRAGMA table_info` first) covers
+   every known pre-M8 change. Full Alembic is only justified once a **non-additive** change
+   (rename/drop/type-change/constraint) is genuinely required.
+5. **Operational deployment impact:**
+   - **Existing kiosks (frontend):** none — no local DB; served static assets.
+   - **Existing print agents:** none — additive columns don't change the register/claim/status
+     contract; agents keep working during the grace period.
+   - **Existing SQLite databases:** each needs the additive columns applied **once**. Safe:
+     `claim_generation`/`attempt_count` default `0`; the rest nullable. No data backfill beyond
+     defaults; no downtime beyond a fast startup step.
+
+**Recommendation — Option C (Hybrid).** Introduce a **minimal, reviewed, idempotent additive-
+migration runner** (schema-version marker + `PRAGMA`-guarded `ADD COLUMN`), invoked once at
+startup, while **keeping `create_all` for greenfield** databases. This unblocks Batch 5D on
+existing deployments, honors the "no ad-hoc `ALTER`" rule by making the change a versioned,
+reviewed step, and avoids the cost/risk of adopting full Alembic mid-project. **Defer Alembic**
+until the first non-additive migration actually arrives. *(Rejected: Option A = premature heavy
+framework for a one-table additive change; Option B = additive-only `create_all` **silently
+fails** to add columns to existing databases and is therefore unsafe for live deployments.)*
+
+### 21.2 Task 2 — Print-job ownership data-model review
+
+| Field | Purpose | Failure it solves | What breaks without it | Complexity |
+|---|---|---|---|---|
+| `claimed_by_agent_id` | Records the agent holding the lease | Cross-agent completion | Any agent can complete/fail another agent's job; no ownership check possible | 1 nullable FK |
+| `claim_expires_at` | Lease/liveness; **primary recovery trigger** | Dead/stalled agent stranding a job | Jobs stuck in `Printing` forever; no auto-recovery (today's core gap) | 1 nullable DateTime + sweep |
+| `claim_generation` | Monotonic token bumped on each (re)claim/recovery | Stale completion after re-lease **by the same agent** | A late update from a previous lease corrupts state / risks duplicate accounting even when owner-id matches | 1 int (default 0) + checks |
+| `attempt_count` | Retry accounting | Runaway ret/-loop on an unprintable job | A genuinely bad job loops forever, never reaching terminal `Failed` | 1 int (default 0) |
+| `last_recovery_reason` | Audit/telemetry only | *(none — observability)* | Weaker forensics; **no functional break** (can be logged to `audit.log` instead) | 1 nullable String |
+
+**Absolute minimum field set:**
+
+| Requirement | Minimum field(s) |
+|---|---|
+| Ownership enforcement | `claimed_by_agent_id` |
+| Stale-agent recovery | `claim_expires_at` (lease) |
+| Duplicate-print prevention | `claim_generation` |
+| Retry exhaustion | `attempt_count` |
+
+**Minimum reliable design = 4 columns** (`claimed_by_agent_id`, `claim_expires_at`,
+`claim_generation`, `attempt_count`). `last_recovery_reason` is **recommended but optional** —
+audit-only, and can instead be written to `audit.log`. **Note on generation vs owner-id:**
+owner-id alone rejects a stale completion *only when the job was re-leased to a different agent*;
+it does **not** catch a stale update from a **previous lease held by the same agent** that then
+re-claimed the requeued job. `claim_generation` is what makes that case safe, so it stays in the
+minimum set. All four are one column each; the operational cost is the recovery sweep + the
+generation/owner checks on advance/complete, not the storage.
+
+### 21.3 Task 3 — Multiple agents per station analysis
+
+Authoritative model (§20.10): a **station is a physical location** (Front Door, Back Door) and
+may host several agents (`FrontDoorPi01/02/03`). Evaluation:
+
+1. **Operational advantages:** hot-swap or add a Pi at a busy door without re-routing jobs;
+   routing targets a *place*, not a device; zero job-config change when hardware rotates.
+2. **Failure-recovery advantages:** if one Pi dies, its siblings keep draining the same station
+   queue; recovered jobs return to the **station** queue (§20.10) and any sibling re-leases them
+   — no admin reassignment, no stranded badges.
+3. **Load-balancing implications:** N agents polling one station queue self-balance via the
+   atomic station-scoped claim (natural work-stealing); no central dispatcher needed.
+4. **Claim-lease behavior:** the single conditional `UPDATE … WHERE id=? AND print_station_id=?
+   AND status='Pending'` guarantees **exactly one active lease** even with N concurrent pollers;
+   losers get `409` and move on.
+5. **Dashboard implications:** show **per-station** aggregates (pending/printing/completed/failed)
+   plus an agent-liveness list (last_seen per agent); do **not** surface per-agent job routing to
+   staff — they think in locations.
+6. **Staffing implications:** matches the staff mental model ("the Front Door printers");
+   training and troubleshooting are location-based, not hostname-based.
+
+**Rejected alternative — station = physical printer** (`front-door-1/2/3`): each printer is its
+own station, so a job is pinned to one device at enqueue time. Consequences: **no automatic
+failover** (a job pinned to `front-door-2` strands if that Pi dies — requires manual reassign);
+operators manage N stations per doorway; visitor messaging leaks device identity; every hardware
+swap is a config event. **Location-stations remain preferred** because jobs route to a *place*
+with transparent redundancy, whereas printer-stations couple every job to a fragile single
+device.
+
+### 21.4 Task 4 — Guest print-status experience review
+
+The proposed temporary status screen (progress steps for record/photo/nametag/printer, then poll
+job status → friendly per-state copy → success + auto-return countdown) is a **UX improvement
+over today's fixed 5-second success timeout**, which currently claims success before the badge
+has actually printed. Reviewed against the constraint that the visitor cares about **one thing —
+where to pick up the badge** — the design is sound *provided* messaging maps internal states to a
+small friendly set (§21.6) and never blocks the kiosk (must have a max-wait fallback). It should
+be treated as its **own batch (5E)**, independent of the 5D schema work, because it needs no
+columns; only the richer `Claimed` state text depends on 5D landing first.
+
+### 21.5 Task 5 — Status-screen feasibility analysis
+
+1. **Existing endpoints that could support polling:** `POST /api/visitors/{id}/print` already
+   returns the job `id`, `status`, and `station_name` on creation (anonymous). That seeds the
+   screen. **No anonymous per-job status read exists.**
+2. **Missing endpoints required:** a **new** anonymous, **minimized** `GET /api/print-jobs/{id}/
+   status` returning **only** `{ status, station_name }` — mirroring the §19.9
+   `VisitorCheckoutLocatorResponse` minimization pattern. The existing `GET /api/print-jobs` is
+   unusable here (staff-authed and returns `visitor_name`/all jobs — PII leak); the badge-image
+   route returns bytes, not status.
+3. **Additional schema requirements:** **none.** `status` is stored; `station_name` is a join on
+   `print_station_id`. The status screen is fully decoupled from the 5D column work.
+4. **Impact on anonymous kiosk workflow:** replaces the fixed 5 s success timeout with
+   poll-until-terminal + countdown. Must cap polling (e.g. stop after a max wait) and fall back
+   to a neutral "see a staff member" message so a stalled queue never freezes the kiosk. **No
+   auth added**; endpoint stays anonymous but minimized and should be lightly rate-limited.
+5. **Can the station name be safely shown?** **Yes** — it's a physical location, already exposed
+   by `PrintJobResponse`, and is exactly what the visitor needs.
+6. **Should the print-agent name be shown?** **No** — hostname/agent identity is internal, leaks
+   device topology, and is meaningless to visitors.
+
+**Option A ("Ready for pickup at Front Door") vs Option B ("Printed at FrontDoorPi03") —
+recommend Option A.** A uses the durable **station name** the visitor can act on; B leaks a
+transient hostname, confuses guests, and couples the message to a device that may be swapped mid-
+event. The minimized status endpoint should therefore **not** carry `printer_name`/hostname.
+
+### 21.6 Task 6 — Failure scenarios & visitor messaging
+
+Principle: collapse many internal states into a few friendly buckets; **never** surface device,
+agent, or security internals; always provide a max-wait fallback.
+
+| Scenario | Internal reality | Visitor message |
+|---|---|---|
+| A. Printer offline | Job pinned `Pending`/`Printing`, no agent draining | "Your nametag is waiting to print." → after max-wait: **"This is taking longer than expected — please see a staff member."** |
+| B. Agent disabled | Siblings may still print; if none, queue stalls `Pending` | Same "waiting" → escalation copy. Never reveal agent state. |
+| C. Agent revoked | Same visitor-visible effect as disabled | Same "waiting" → escalation copy. |
+| D. Job recovered | Transient: status returns to `Pending`/`Printing`, generation bumped | Show "waiting"/"printing" again — recovery is **invisible**; no alarming message. |
+| E. Job reassigned | `station_name` changes (admin moved it) | "Ready for pickup at **{new station}**" — poll reflects it naturally. |
+| F. Multiple agents active | One wins the lease; others `409` | Single status; pickup location = **station**; never name the agent. |
+
+**Recommendation:** implement the 5-bucket mapping (Pending / Claimed / Printing / Completed /
+Failed) plus a **max-wait escalation** to the staff-member message; recovery and multi-agent
+churn stay hidden behind the "waiting"/"printing" copy.
+
+### 21.7 Task 7 — Owner decisions required
+
+| # | Decision | Options | Recommendation | Operational impact | Security impact | Default if no action |
+|---|---|---|---|---|---|---|
+| 1 | Migration strategy | A heavy framework now / B additive-only `create_all` / C lightweight hybrid | **C — minimal reviewed additive runner; defer Alembic** | Unblocks 5D on existing DBs; small startup step | Reviewed/versioned; no ad-hoc `ALTER` | B — **unsafe** (columns never reach existing DBs) |
+| 2 | Minimum ownership fields | 4 (owner+lease+gen+attempts) / 5 (+reason) | **5 (recommended)**; 4 is the hard minimum | Adds recovery + generation checks | Ownership + stale-reject enforceable | *(none — 5D blocked)* |
+| 3 | Claim-lease timeout | 60 / 90–120 / 180 s | **90–120 s (2× print time)** + 5 min `last_seen` guard | Fast recovery, low dup risk | none | 90–120 s |
+| 4 | Retry limit | 2 / 3 / 5 | **3, then terminal `Failed`** | Bounds runaway retries | none | 3 |
+| 5 | Multi-agent per station | forbid / **allow + single active lease** | **allow + single active lease** (ratified §20.10) | Redundancy/failover | dup-print bounded by lease+generation | allow (ratified) |
+| 6 | Guest print-status screen | keep 5 s timeout / poll-until-terminal screen | **poll-until-terminal screen (Batch 5E)** | Accurate pickup UX; needs 1 new minimized endpoint | New endpoint stays anonymous + minimized | keep 5 s timeout |
+| 7 | Auto return-to-home delay | 5 / 8 / 10 s after terminal | **8 s after a terminal state** (or immediate on Completed + short hold) | Readable without blocking the kiosk | none | 5 s (current) |
+| 8 | Visitor messaging strategy | station-name (A) / device-name (B) | **A — station name only; hide agent/hostname** — **RATIFIED (§21.10)** | Actionable pickup message | No device/topology leak | A (safe default) |
+
+### 21.8 Recommended next implementation order
+
+1. **Batch 5D Step 0 (blocker):** minimal reviewed additive-migration runner (Option C) +
+   apply the **4–5** `print_jobs` columns (§21.2). Idempotent, `PRAGMA`-guarded, greenfield via
+   `create_all`.
+2. **Batch 5D:** enforce auth + station ownership on `pending`/`claim`/`status`/`badge-image`
+   (grace-exit gated); atomic station-scoped lease-exclusive claim; split `Claimed` vs
+   `Printing`; recovery sweep (lease + `last_seen`) → requeue to station queue, cap 3 → terminal
+   `Failed`; generation-based stale-update rejection; admin requeue path; audit events per
+   §20.6A.
+3. **Batch 5E (independent of schema, can precede or follow 5D):** add anonymous **minimized**
+   `GET /api/print-jobs/{id}/status` (`{status, station_name}` only); kiosk poll-until-terminal
+   status screen with the 5-bucket messaging (§21.6), Option-A location copy, max-wait
+   escalation, and configurable auto-return countdown. The `Claimed` state text only appears
+   once 5D lands.
+
+### 21.9 Validation (this pass)
+- Backend pytest: **53 passed**; `py_compile`: **exit 0**; frontend test **9 passed**; build
+  **success**; lint **16 (13/3)** unchanged; `git diff --check` **clean**; `git status --short`
+  shows only this document modified.
+- Confirmed: **no runtime behavior changed, no schema changed, no migrations introduced, no auth
+  enforcement added, no endpoint security modified, no kiosk workflow changed.** Only this
+  document (§21) was edited.
+
+### 21.10 Ratified architecture decision (OWNER) — station model & visitor-facing identity
+
+The owner has ratified the following. It is binding for Batch 5D (enforcement/recovery) and
+Batch 5E (guest print-status screen), and supersedes the "default if no action" column for the
+decisions it touches. It extends §20.10 with an explicit **visitor-facing identity boundary**.
+
+> **Station = physical location.** A `PrintStation` is a physical place — Front Door, Back Door,
+> Dining Hall. It is the durable anchor.
+>
+> **Agents = printing devices assigned to a station.** `PrintAgent` rows are devices
+> (`FrontDoorPi01`, `FrontDoorPi02`, `FrontDoorPi03`) that attach to a station via
+> `print_station_id`. **Multiple agents per station is supported.**
+>
+> **Jobs belong to stations. Claim leases belong to agents. Recovered jobs return to the
+> station queue.** *(Reaffirms §20.10.)*
+>
+> **Visitors see station names only.** Visitors **never** see agent names, hostnames, printer
+> names, IP addresses, or any internal identifier. Visitor-facing print-status messages are
+> **location-based** — e.g. *"Ready for pickup at Front Door."*, never *"Printed by
+> FrontDoorPi03."*
+
+**Binding implications:**
+
+1. **Visitor identity boundary (ratifies decision 8 → Option A).** Any anonymous/kiosk-facing
+   surface may expose **`station_name` only**. `printer_name`, agent `hostname`, `agent_key`,
+   `last_ip`, and every other device/agent identifier are **prohibited** from visitor-facing
+   responses and copy.
+2. **Batch 5E status endpoint shape is fixed.** The new anonymous `GET /api/print-jobs/{id}/
+   status` returns **only** `{ status, station_name }` (§21.5). It must **not** carry
+   `printer_name`/hostname/IP. This mirrors the §19.9 minimization pattern and is now a hard
+   constraint, not a preference.
+3. **Messaging is location-based.** All five visitor buckets (§21.6) reference the **station**;
+   recovery, re-lease, and multi-agent churn stay invisible to the visitor.
+4. **Staff surfaces are unaffected.** Authenticated staff/admin views may still show agent
+   hostnames, `last_seen`, and device diagnostics — the boundary applies to **visitor-facing**
+   surfaces only.
+
+**No schema or runtime change in this pass.** This decision is a documentation ratification; it
+constrains how Batch 5D/5E responses are shaped but introduces no columns, endpoints, or
+behavior here.
