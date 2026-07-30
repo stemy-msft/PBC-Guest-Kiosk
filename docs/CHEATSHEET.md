@@ -9,10 +9,6 @@ In some cases, only a portion of the settings are shown below.
 
 # .\.env
 
-## This controls backend environment
-
-# .\.env
-
 ## This controls backend environment (copy from .env.example; never commit the real .env)
 
 JWT_SECRET_KEY=replace-with-a-long-random-secret       <-- REQUIRED; changing it logs everyone out

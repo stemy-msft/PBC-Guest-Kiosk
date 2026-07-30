@@ -128,6 +128,33 @@ the backend and have been removed from the examples.
 
 ---
 
+# System Settings File
+
+The backend also loads site-specific runtime settings (theme, check-in URL,
+visitor types, purposes, required fields) from:
+
+```text
+PBC-guest-kiosk/backend/config/system_settings.json
+```
+
+This live file is **git-ignored** and site-specific. On startup the backend
+automatically seeds it from the tracked template
+(`system_settings.template.json`) when it is missing, so a fresh install works
+out of the box. To customize before first launch, you can also copy it manually:
+
+```bash
+cd backend/config
+cp system_settings.template.json system_settings.json          # macOS/Linux
+Copy-Item system_settings.template.json system_settings.json    # Windows PowerShell
+```
+
+Then edit `system_settings.json` and set `base_checkin_url` to your kiosk's
+address (the template ships a placeholder, `http://your-kiosk-host.example.com`).
+Runtime changes made through the admin Settings screen are written back to this
+local file and are intentionally **not** committed to Git.
+
+---
+
 # Start Backend
 
 From the backend directory:

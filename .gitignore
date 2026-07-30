@@ -59,3 +59,10 @@ backend/uploads/
 backend/logs/
 print-agent/downloaded-badges/
 downloaded-badges/
+
+# Live runtime system settings — copy from system_settings.template.json per install.
+# The template is tracked; the live file is site-specific and runtime-mutable.
+backend/config/system_settings.json
+
+# Generated repository inventory snapshot (regenerate on demand; do not track)
+repo_files.txt

@@ -49,6 +49,7 @@ from .schemas import (
 
 import logging
 import json
+import shutil
 import qrcode
 
 
@@ -128,7 +129,15 @@ print("REGISTERING SETTINGS ENDPOINTS")
 # system_settings.json is used to store system-wide settings that are not stored in the database.
 CONFIG_DIR = BASE_DIR / "config"
 SETTINGS_FILE = CONFIG_DIR / "system_settings.json"
+SETTINGS_TEMPLATE_FILE = CONFIG_DIR / "system_settings.template.json"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Seed the git-ignored live settings file from the tracked template on first run.
+_settings_seeded = False
+if not SETTINGS_FILE.exists() and SETTINGS_TEMPLATE_FILE.exists():
+    shutil.copyfile(SETTINGS_TEMPLATE_FILE, SETTINGS_FILE)
+    _settings_seeded = True
+
 print(settings_file := SETTINGS_FILE)
 
 audit_logger.info("=" * 60)
@@ -137,6 +146,11 @@ audit_logger.info(f"Base directory: {BASE_DIR}")
 audit_logger.info(f"Config directory: {CONFIG_DIR}")
 audit_logger.info(f"Settings file: {SETTINGS_FILE}")
 audit_logger.info("=" * 60)
+
+if _settings_seeded:
+    audit_logger.info(
+        f"Settings file seeded from template {SETTINGS_TEMPLATE_FILE.name}"
+    )
 
 audit_logger.info(
     f"Settings initialized. "

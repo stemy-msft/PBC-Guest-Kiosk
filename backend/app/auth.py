@@ -33,6 +33,12 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
 
+if not JWT_SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY is not set. Copy .env.example to .env in the repo root "
+        "and set JWT_SECRET_KEY to a long, random secret before starting the backend."
+    )
+
 
 def create_access_token(username: str):
     expire = datetime.now(timezone.utc) + timedelta(

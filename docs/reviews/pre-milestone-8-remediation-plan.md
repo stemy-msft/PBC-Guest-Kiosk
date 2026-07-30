@@ -548,3 +548,80 @@ The repository is currently **`stemy-msft/PBC-Guest-Kiosk`**. Classify each docu
 
 **Stop here for review. Phase B is report-only — no `.gitignore` edits, no untracking, no history changes were made.**
 Suggested commit message (Phase A only): `Milestone 7.8.6b: visitor-search result-count consistency (0/1/N feedback)`
+
+---
+
+## 15. Owner Decisions — Repository Classification Execution (Milestone 7.8.7)
+
+The owner reviewed §14 and issued explicit decisions. This section records what was
+executed. **All actions are non-destructive: files were untracked with `git rm --cached`
+(local working copies preserved); no history was rewritten; no secrets were rotated;
+nothing was committed automatically.**
+
+### 15.1 DECISION 1 — `repo_files.txt` → Remove from source control
+- **Rationale (owner):** generated artifact, high drift, duplicates Git-derived info, no build/deploy/ops/test/dev value.
+- **Executed:**
+  - `git rm --cached repo_files.txt` — untracked; local copy preserved on disk.
+  - Added `repo_files.txt` to `.gitignore` (Generated repository inventory snapshot section).
+- **Verification:** `git check-ignore -v repo_files.txt` → `.gitignore:68`. `git status --short` → `D repo_files.txt` (staged deletion from index only).
+
+### 15.2 DECISION 2 — `backend/config/system_settings.json` → Template + ignored live file
+- **Model (owner):** track a template; ignore the live, site-specific, runtime-mutable file.
+- **Loading behavior confirmed:** `backend/app/main.py` `load_system_settings()` (line ~459) raises HTTP 404 when the file is missing — the app does **not** auto-seed it. Therefore fresh installs **must** copy the template before first use; this is now documented.
+- **Executed:**
+  - Created tracked `backend/config/system_settings.template.json` — same structure and starter data; site-specific `base_checkin_url` genericized to the placeholder `http://your-kiosk-host.example.com` (was `http://kiosk.palmettobiblecamp.com`). Removed the ad-hoc `Land Shark` sample entries from the template's lists (kept in the live local file).
+  - `git rm --cached backend/config/system_settings.json` — untracked; local file preserved (the running app depends on it).
+  - Added `backend/config/system_settings.json` to `.gitignore` (literal path, so the template is **not** matched/ignored).
+  - Documented the copy-template install step in `docs/INSTALL.md` (new "System Settings File" section).
+- **Verification:**
+  - `git check-ignore -v backend/config/system_settings.json` → `.gitignore:65` (ignored).
+  - `git check-ignore -v backend/config/system_settings.template.json` → **no output** (tracked, not ignored).
+  - Local `system_settings.json` still present on disk (`Test-Path` → True).
+
+### 15.3 DECISION 3 — Repository is public → Migration PLAN for sensitive docs (report only)
+The repo is public. Security-sensitive planning/audit docs (which enumerate IDOR
+endpoints, CORS `*`, and authz gaps) should not live in a public repo. Owner note:
+`ADMINISTRATION.md` and `CHEATSHEET.md` are **intended** to be public and must remain
+secret-free (sample/starter data acceptable). Both were re-reviewed this pass and
+contain **no secrets** (CHEATSHEET's accidental duplicate `.env` header — an artifact of
+Batch 4 — was removed; no secret values were exposed).
+
+**Documents recommended to move to a private/internal location (PLAN — not executed):**
+| Document | Reason | Public-safe? |
+|---|---|---|
+| `docs/reviews/pre-milestone-8-repository-audit.md` | Enumerates concrete vulnerabilities & endpoints | No — move to private |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` (this file) | Batch tracker referencing the audit findings | No — move to private |
+
+**Documents kept public (owner intent; verified secret-free):**
+`docs/ADMINISTRATION.md`, `docs/CHEATSHEET.md`, `docs/INSTALL.md`, `docs/KNOWN_GOOD_BUILD.md`,
+`docs/PRINT-SERVER.md`, `docs/TROUBLESHOOTING.md`, `README.md`, `visitor-kiosk-requirements-v0.1.md`.
+
+**Migration plan (to be executed later, with owner approval — NOT executed now):**
+1. **Create the private destination** — a private repo (e.g., `PBC-Guest-Kiosk-internal`) or a private `security/` submodule/wiki. No destination exists yet, so no move was performed.
+2. **Move the files** — copy `docs/reviews/*` into the private location, preserving history where possible (`git log --follow` / `git format-patch`, or a fresh commit if history fidelity is not required).
+3. **Untrack from the public HEAD** — `git rm docs/reviews/pre-milestone-8-repository-audit.md docs/reviews/pre-milestone-8-remediation-plan.md` in the public repo, then commit. This stops **future** exposure of new edits.
+4. **History caveat (unavoidable without a rewrite):** these files are already in public history and remain retrievable from prior commits until a history purge is performed. A `git filter-repo --path docs/reviews/... --invert-paths` rewrite + force-push + re-clone by all collaborators would be required to fully remove them. **This remains an owner-approved, NOT-EXECUTED manual step** (same class as the secret-rotation / secret-history-purge items in §12).
+5. **Treat the enumerated vulnerabilities as already disclosed** — because the audit has been public, prioritize the remediation batches (F-004/F-005 kiosk & print-agent boundary, IDOR, CORS) rather than relying on obscurity.
+
+### 15.4 Incidental cleanup this pass
+- `docs/CHEATSHEET.md` — removed a duplicated `# .\.env` / `## This controls backend environment` header block (Batch 4 artifact). No secrets involved; cosmetic.
+
+### 15.5 Validation (this pass)
+| Command | Result |
+|---|---|
+| `python -m pytest` (backend) | **28 passed** — unchanged |
+| `python -m py_compile` (all 8 backend modules) | exit 0 |
+| `npm run test` (frontend) | **9 passed (2 files)** — unchanged |
+| `npm run build` (frontend) | success — unchanged |
+| `npm run lint` (frontend) | **16 problems (13/3)** — baseline, none introduced |
+| `git check-ignore` (live settings + repo_files) | both ignored; template NOT ignored |
+| local file preservation | `system_settings.json`, `repo_files.txt` still on disk |
+
+### 15.6 NOT EXECUTED (unchanged reminders)
+- Secret rotation (JWT key, admin password, print-agent token) — still required (§12).
+- Git history purge of secrets/DB backup — still required (§12).
+- Move of `docs/reviews/*` to a private location and its optional history purge (§15.3) — planned, **not executed**.
+
+**Stop here for review. No commit made automatically.**
+Suggested commit message (Decisions 1 & 2): `Milestone 7.8.7: apply repo classification decisions (untrack repo_files.txt, templatize system_settings.json)`
+Note: the Phase A visitor-search change from §13 remains a separate uncommitted edit (`Milestone 7.8.6b: visitor-search result-count consistency`).
