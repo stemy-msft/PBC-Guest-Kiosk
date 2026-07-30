@@ -42,6 +42,7 @@ from .schemas import (
     UserResponse,
     UserStatusUpdate,
     UserUpdate,
+    VisitorCheckoutLocatorResponse,
     VisitorCreate,
     VisitorResponse,
     VisitorUpdateRequest,
@@ -2170,7 +2171,10 @@ def bulk_checkout(
         "method": "Bulk Checkout",
     }
 
-@app.get("/api/visitors/find", response_model=list[VisitorResponse])
+@app.get(
+    "/api/visitors/find",
+    response_model=list[VisitorCheckoutLocatorResponse],
+)
 def find_visitors(
     first_name: str = "",
     last_name: str = "",

@@ -1098,3 +1098,104 @@ started. Validation baseline (**28 backend / 9 frontend / 16 lint**) preserved.
 
 **Suggested commit message (documentation-only):**
 `Milestone 7.8.9: Batch 5A.1 trust-boundary decision resolution & migration prerequisite review (docs only)`
+
+---
+
+## 18. Batch 5B — Anonymous Check-Out Response Minimization (IMPLEMENTED)
+
+**Scope actually implemented:** response-data minimization for **`GET /api/visitors/find`**
+only. This is the anonymous Visitor Check-Out locator (confirmed in §17.2). No search behavior,
+active-visitor filtering, matching, ordering, empty-search behavior, or checkout behavior was
+changed. Visitor IDs are unchanged (no capability handles). No kiosk/station tokens, no
+print-agent auth change, no database columns or tables added.
+
+### 18.1 Starting state
+- Git: branch `main`, HEAD `57bd861` (== `origin/main`); working tree **clean** at start
+  (Batch 5A/5A.1 docs committed).
+- Baseline re-confirmed before changes: backend **28 passed**; `py_compile` **exit 0**; frontend
+  **9 passed**; **build success**; lint **16 problems (13 errors, 3 warnings)**.
+
+### 18.2 Files changed
+| File | Change |
+|---|---|
+| `backend/app/schemas.py` | Added `VisitorCheckoutLocatorResponse` (4 fields). No existing schema modified. |
+| `backend/app/main.py` | Imported the new schema; changed **only** `find_visitors`' `response_model` from `list[VisitorResponse]` → `list[VisitorCheckoutLocatorResponse]`. Handler query/filter/order/return logic unchanged. |
+| `backend/tests/test_visitor_find_minimization.py` | **New** — 8 tests (see §18.5). |
+| `docs/reviews/pre-milestone-8-remediation-plan.md` | This §18. |
+
+### 18.3 Exact schema introduced
+```python
+class VisitorCheckoutLocatorResponse(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    visitor_type: str
+
+    class Config:
+        from_attributes = True
+```
+Applied via:
+```python
+@app.get(
+    "/api/visitors/find",
+    response_model=list[VisitorCheckoutLocatorResponse],
+)
+```
+
+### 18.4 Public response — before vs. after
+- **Before:** full `VisitorResponse` per active name match to an anonymous caller (all PII +
+  file paths + timestamps).
+- **After:** exactly `id`, `first_name`, `last_name`, `visitor_type`.
+- **Fields removed from the anonymous response:** `phone`, `email`, `church`, `purpose`,
+  `host_type`, `host_name`, `vehicle_plate`, `notes`, `expected_departure_time`, `photo_path`,
+  `badge_path`, `check_in_time`, `check_out_time`, `check_out_method`, `badge_printed`,
+  `badge_printed_time`.
+- **Frontend impact:** none. The check-out screen's `checkoutResults.map(...)` reads only
+  `id`, `first_name`, `last_name`, `visitor_type` (and `check_out_time` solely for an
+  ACTIVE/CHECKED-OUT badge). Because `find` returns active visitors only, the now-absent
+  `check_out_time` is `undefined` → falsy → the badge renders **ACTIVE**, which is correct.
+  No other consumer reads the removed fields from `find`.
+
+### 18.5 Tests added (`backend/tests/test_visitor_find_minimization.py`)
+1. `find` remains anonymously accessible (no `Authorization` header) → 200.
+2. Returns active matching visitors.
+3. Excludes checked-out visitors (anonymous checkout → no longer found).
+4. Response contains **exactly** `{id, first_name, last_name, visitor_type}`.
+5. Response exposes **none** of the 16 removed PII/file-path fields.
+6. The returned `id` still works with the anonymous `PUT /api/visitors/{id}/checkout`.
+7. Authenticated staff `GET /api/visitors/{id}` still returns the full `VisitorResponse`.
+8. Schema guard: `VisitorCheckoutLocatorResponse` is exactly the four fields **and**
+   `VisitorResponse` still contains the PII fields (staff shape unchanged).
+
+### 18.6 Validation results (post-change)
+- Backend pytest: **36 passed** (28 baseline + 8 new), 5 warnings.
+- `py_compile` (8 modules): **exit 0**.
+- Frontend `npm run test`: **9 passed (2 files)**.
+- Frontend `npm run build`: **success**.
+- Frontend `npm run lint`: **16 problems (13 errors, 3 warnings)** — unchanged baseline.
+- `git diff --check`: **clean**.
+
+### 18.7 Behavior confirmation
+Lookup and checkout behavior are **unchanged**: partial first/last-name matching
+(`func.lower(...).contains(...)`), `or_`-combined filters, active-only filtering
+(`check_out_time IS NULL`), `check_in_time DESC` ordering, and empty-search `[]` are all
+untouched — only the serialized response shape is narrowed. The anonymous checkout endpoint
+still accepts the same integer `id` returned by `find`.
+
+### 18.8 Remaining Batch 5C–5E decisions (unchanged from §17.7)
+- **5C — Print-agent authentication:** enrollment model (recommend Option D); grace-window
+  **exit criteria** (state-based); **must be schema-additive via a new `print_agent_credentials`
+  table**, not a column `ALTER` (§17.6).
+- **5D — Station ownership + atomic claims + enforce `agent.enabled`** (depends on 5C tokens).
+- **5E — Kiosk containment** (opaque per-record handle for the check-in chain + `?station=`
+  scoping for find/checkout). `GET /api/print-stations` → staff auth; confirm no station-display
+  consumer before moving `.../{id}/stats`.
+
+### 18.9 NOT performed in this pass (explicit)
+No search/matching/filtering/ordering/checkout behavior changed. `VisitorResponse` untouched. No
+capability handles, kiosk/station tokens, or print-agent auth. No database columns or tables
+added. No migration tooling. No secrets rotated. No Git history rewritten. No commit made
+automatically. Batches 5C/5D/5E/6 and Milestone 8 not started.
+
+**Suggested commit message:**
+`Milestone 7.8.10: Batch 5B anonymous check-out (/api/visitors/find) response minimization + tests`

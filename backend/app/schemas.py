@@ -236,6 +236,20 @@ class VisitorResponse(BaseModel):
         from_attributes = True
 
 
+class VisitorCheckoutLocatorResponse(BaseModel):
+    """Minimized public shape for the anonymous Visitor Check-Out locator
+    (``GET /api/visitors/find``). Exposes only the fields the kiosk check-out
+    screen reads; no PII or file paths reach anonymous callers."""
+
+    id: int
+    first_name: str
+    last_name: str
+    visitor_type: str
+
+    class Config:
+        from_attributes = True
+
+
 class VisitorUpdateRequest(BaseModel):
     first_name: str
     last_name: str
