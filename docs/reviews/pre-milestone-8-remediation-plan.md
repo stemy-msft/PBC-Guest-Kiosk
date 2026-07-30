@@ -625,3 +625,476 @@ Batch 4 — was removed; no secret values were exposed).
 **Stop here for review. No commit made automatically.**
 Suggested commit message (Decisions 1 & 2): `Milestone 7.8.7: apply repo classification decisions (untrack repo_files.txt, templatize system_settings.json)`
 Note: the Phase A visitor-search change from §13 remains a separate uncommitted edit (`Milestone 7.8.6b: visitor-search result-count consistency`).
+
+---
+
+## 16. Batch 5A — Kiosk & Print-Agent Trust-Boundary Validation (PLANNING ONLY)
+
+**Scope discipline:** This section is a **validation and planning pass only**. No application
+code, authentication, frontend behavior, database, or schema was changed. No endpoint was
+secured. No secrets were rotated. No Git history was rewritten. No commit was made
+automatically. The explicit worst-case this pass exists to prevent is *adding authentication
+first and discovering afterward that deployed kiosks or Raspberry Pi print agents can no
+longer operate*. **Functionality and stability are paramount.**
+
+### 16.1 Starting Git state & validation baseline
+- **HEAD:** `8aa3d19` — *"Milestone 7.8.7a Fail fast on missing JWT_SECRET_KEY at startup and auto-seed-from-template if system_settings.json is missing on startup"*. Branch `main`, pushed to `origin/main`.
+- **Working tree:** clean (no uncommitted remediation work) at the start of this pass.
+- **Validation (unchanged baseline — must remain green):**
+
+| Command | Result |
+|---|---|
+| `python -m pytest` (backend, from `backend/`) | **28 passed** |
+| `python -m py_compile` (main, auth, bootstrap, config, database, dependencies, models, schemas) | exit 0 |
+| `npm run test` (frontend) | **9 passed (2 files)** |
+| `npm run build` (frontend) | success (vite 8.1.2) |
+| `npm run lint` (frontend) | **16 problems (13 errors, 3 warnings)** — pre-existing baseline, none introduced |
+
+### 16.2 Tracker drift reconciliation
+Statements below were re-verified against HEAD `8aa3d19` and are now current:
+
+| Tracker claim | Status at `8aa3d19` |
+|---|---|
+| `system_settings.json` auto-seeded from `system_settings.template.json` | **TRUE now.** `main.py` (settings region ~127–153) copies the template at startup when the live file is missing and audit-logs it. **This supersedes §15.2's earlier statement that the app does _not_ auto-seed** (that was accurate at the time §15.2 was written; it is now stale — see correction note below). |
+| Startup produces a clear error when `JWT_SECRET_KEY` is missing | **TRUE.** `auth.py` raises `RuntimeError` at import if unset. |
+| `repo_files.txt` and live `system_settings.json` remain untracked & git-ignored | **TRUE.** Both ignored; local copies preserved. |
+| Visitor-search 0/1/N result-count change committed | **TRUE** (`8430df0`, Milestone 7.8.6b). |
+| Batch 4 + Milestone 7.8.7 repo decisions committed | **TRUE** (`373fb4f`/`197064d` Batch 4; `c474e4b` 7.8.7). |
+| `docs/reviews/**` still tracked in the public repo | **TRUE.** §15.3 migration plan remains **NOT executed**. |
+| Any current uncommitted remediation work | **NONE** at pass start (working tree clean). |
+
+**Correction to §15.2:** the sentence *"the app does **not** auto-seed it. Therefore fresh
+installs **must** copy the template before first use"* is **no longer accurate** as of
+`8aa3d19`. Auto-seed from template is now implemented at startup; the manual copy is
+**optional** (already reflected in `docs/INSTALL.md`). §15.2 is retained as-is for historical
+accuracy; this note is the authoritative correction.
+
+### 16.3 Complete public-endpoint inventory (18 unauthenticated routes)
+All 50 routes live in `backend/app/main.py` (the `routes/` package is empty). An endpoint is
+"public" when its signature has **no** `Depends(get_current_user)` / `Depends(require_admin)`.
+**An endpoint is not classified as dead merely because React does not call it** — print-agent
+and non-browser consumers are accounted for below.
+
+| # | Method / Route (line) | Function | Confirmed consumer(s) | Request | Response fields exposed | State change | Seq-int ID accepted? | Recommended audience |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `GET /` (489) | root | health/bootstrap | — | status blob | none | n/a | Health-bootstrap (stays public) |
+| 2 | `GET /health` (597) | health | ops/liveness | — | status blob | none | n/a | Health-bootstrap (stays public) |
+| 3 | `POST /api/auth/login` (604) | login | `api.js login()`; staff UI | username/password | JWT, username, role | none | n/a | Public by design |
+| 4 | `GET /api/settings` (559) | get_settings | `api.js getSettings()` **no token** (anon kiosk) | — | theme, auto_refresh, **base_checkin_url**, visitor_types, visit_purposes, required fields | none | n/a | Anonymous kiosk (public config subset) |
+| 5 | `POST /api/print-agents/register` (892) | register_print_agent | `print_agent.py register_agent()` | agent_key?, hostname, printer_name, agent_version, station_slug? | **agent_key**, hostname, printer_name, **last_ip**, enabled, station_{id,name,slug} | upsert agent row; sets last_ip/last_seen | n/a (keyed by agent_key) | Authenticated print agent (enrollment) |
+| 6 | `GET /api/print-jobs/{id}/badge-image` (962) | badge-image | `print_agent.py download_badge()` | path int | **badge PNG file** (visitor name/photo) | none | **YES — IDOR** | Authenticated print agent (job-scoped) |
+| 7 | `GET /api/print-jobs/pending` (1049) | pending | `print_agent.py get_pending_jobs()` (`?station=slug`) | station slug? | list PrintJobResponse (visitor_id, badge_path, station) | none | filters by slug, no identity | Authenticated print agent (own station only) |
+| 8 | `PUT /api/print-jobs/{id}/claim` (1081) | claim | `print_agent.py claim_job()` | path int, `printer_name` query | PrintJobResponse | Pending→Printing (**non-atomic check-then-set**) | **YES** | Authenticated print agent (own station) |
+| 9 | `PUT /api/print-jobs/{id}/status` (1200) | update_status | `print_agent.py mark_job_status()` | path int, status/printer/error | PrintJobResponse | sets job status | **YES** | Authenticated print agent (claimed job) |
+| 10 | `GET /api/print-stations` (1272) | list_stations | `api.js getPrintStations()` **sends token** (staff UI) | — | list incl. **print_server_host, last_ip** | none | n/a | Authenticated staff (verify no anon station-picker) |
+| 11 | `GET /api/print-stations/{id}/stats` (1316) | station_stats | consumer not found in `api.js` (do **not** treat as dead) | path int | job counts | none | **YES** | Authenticated staff / station display (confirm) |
+| 12 | `POST /api/print-stations/heartbeat` (1533) | heartbeat | `print_agent.py send_heartbeat()` | station_slug, agent_version | ok + slug | sets last_seen/version/**last_ip** | keyed by slug, no identity | Authenticated print agent (own station) |
+| 13 | `POST /api/visitors` (1975) | create_visitor | `api.js createVisitor()` **no token** (anon kiosk) | full visitor payload | **full VisitorResponse** (id, phone, email, notes, vehicle_plate, host, photo/badge paths) | inserts visitor | n/a | Anonymous kiosk (needs slim response) |
+| 14 | `GET /api/visitors/find` (2173) | find_visitors | `api.js findVisitors()` **no token** (anon returning-visitor lookup) | first_name, last_name | **list full VisitorResponse** for name match (all PII) | none | n/a | Anonymous kiosk (**PII over-exposure — highest priority**) |
+| 15 | `PUT /api/visitors/{id}/checkout` (2318) | checkout | `api.js checkoutVisitor()` **no token** (anon self-checkout) | path int | full VisitorResponse | sets check_out_time/method | **YES — IDOR** | Anonymous kiosk (needs containment) |
+| 16 | `POST /api/visitors/{id}/photo` (2341) | upload_photo | `api.js uploadPhoto()` **no token** (anon kiosk) | path int, image file | full VisitorResponse | **overwrites `{id}.jpg`** | **YES — IDOR / arbitrary overwrite** | Anonymous kiosk (needs containment) |
+| 17 | `POST /api/visitors/{id}/badge` (2374) | generate_badge | `api.js generateBadge()` **no token** (anon kiosk) | path int | full VisitorResponse | writes `{id}.png` badge | **YES — IDOR** | Anonymous kiosk (needs containment) |
+| 18 | `POST /api/visitors/{id}/print` (2411) | create_print_job | `api.js createPrintJob()` **no token** (anon kiosk) | path int, station slug | PrintJobResponse | inserts print job | **YES — IDOR** | Anonymous kiosk (needs containment) |
+
+**Cross-cutting finding — CORS:** `main.py` mounts `CORSMiddleware(allow_origins=["*"],
+allow_credentials=True, allow_methods=["*"], allow_headers=["*"])`. Wildcard origin combined
+with credentialed requests is the boundary weakness recorded as F-003 in the audit; it makes
+every public and authenticated endpoint reachable from any origin. Tightening this is in-scope
+for a later batch, not this pass.
+
+### 16.4 Print-agent identity mechanisms — validated behavior
+Evidence: `print-agent/print_agent.py`, `print-agent/.env.example`, and the register/pending/
+claim/status/heartbeat/badge-image handlers in `main.py`.
+
+1. **Is `agent_key` a secret, an identifier, or both?** — **Identifier only.** The backend uses
+   `PBC_PRINT_AGENT_KEY` purely to look up / upsert the `PrintAgent` row and echoes it back in
+   the register response in plaintext. It is never treated as a secret and never validated as a
+   credential.
+2. **Is a token sent?** — Yes, *conditionally*. `auth_headers()` sends
+   `Authorization: Bearer {PBC_PRINT_AGENT_TOKEN}` **only if that env var is set** (blank by
+   default in `.env.example`).
+3. **Does the backend validate it?** — **No.** No print endpoint reads the `Authorization`
+   header or validates `agent_key`. The token is currently sent-but-ignored.
+4. **Cross-station access possible?** — **Yes.** `pending?station=slug`, `claim`, `status`, and
+   `badge-image` enforce no station ownership; any caller can poll/claim/complete another
+   station's jobs and fetch any badge by integer job ID.
+5. **Unregistered impersonation possible?** — **Yes.** All print endpoints are public and
+   `register` accepts any client-supplied `agent_key`.
+6. **Does a disabled agent still work?** — **Yes.** `pending` filters on
+   `PrintStation.enabled == True` (station, not agent). `claim`/`status`/`badge-image` never
+   check `PrintAgent.enabled`, so a disabled agent can still claim and complete jobs.
+7. **Which endpoint provisions credentials?** — `POST /api/print-agents/register` (issues/echoes
+   `agent_key`; the agent persists it to its own `.env` via `set_env_value`). No secret token is
+   currently issued.
+8. **Rotation / revocation?** — None today. `agent.enabled` exists but is unenforced on the hot
+   path; there is no token to rotate because none is validated.
+9. **Migration without downtime?** — Feasible: the `PBC_PRINT_AGENT_TOKEN` plumbing already
+   exists on the agent side and is currently ignored server-side. A backend can begin *issuing*
+   a token at register time and *accept-but-not-require* it during a grace window, then enforce
+   it after all agents have re-registered. **Staff JWT is explicitly NOT recommended for the
+   print agent** — it needs its own agent-scoped credential.
+
+### 16.5 Data-minimization findings (anonymous kiosk)
+No schema changes were made this pass. Findings only:
+- **`GET /api/visitors/find` (returning-visitor lookup) is the top exposure.** It returns the
+  **full `VisitorResponse`** for every active name match to an anonymous caller: `phone`,
+  `email`, `notes`, `vehicle_plate`, `host_type`, `host_name`, `photo_path`, `badge_path`,
+  `check_*` timestamps, and internal `id`. A returning-visitor picker needs only enough to
+  disambiguate a person (e.g., display name + a non-identifying token/opaque handle).
+- **`POST /api/visitors`** echoes the same full record back anonymously (less severe — the
+  caller just supplied it — but still returns internal IDs/paths).
+- **`GET /api/print-stations`** exposes `print_server_host` and `last_ip` (internal network
+  detail). Currently called by staff UI with a token, so protecting it is low-risk.
+- **`register` / `heartbeat`** responses include `last_ip`.
+- **Recommendation (future batch, not now):** introduce slim public response schemas
+  (`VisitorPublicResponse`, `VisitorLookupResult`) that omit PII/paths/IDs for anonymous
+  endpoints, leaving the full schema for authenticated staff routes. **Do not change schemas in
+  this pass.**
+
+### 16.6 Recommended target trust model (proposal — not implemented)
+- **Anonymous kiosk** — keep check-in/checkout/photo/badge/print reachable without staff login,
+  but *contain* them: (a) bind kiosk actions to a station/kiosk token issued at provisioning so
+  arbitrary integer-ID mutation is not possible from anywhere on the network; (b) return only
+  minimized fields from `find`/`create`; (c) scope checkout/photo/badge/print to the record the
+  kiosk just created within the current session rather than any global integer ID.
+- **Print agent** — introduce an **agent-scoped credential** (server-issued token stored hashed),
+  issued at `register`, sent as `Authorization: Bearer` (plumbing already exists), validated on
+  `pending`/`claim`/`status`/`badge-image`/`heartbeat`. Enforce **station ownership** (agent may
+  only see/claim its assigned station's jobs), make **claim atomic** (single-winner conditional
+  UPDATE), scope **status** to the claiming agent's job, scope **badge-image** to the claiming
+  agent, and honor **`agent.enabled`** on the hot path. Support disable/revoke and a
+  non-disruptive rollout. **Not staff JWT.**
+- **Staff / admin** — unchanged. Endpoints already carry `get_current_user` / `require_admin`.
+  Candidates to move from public→staff with low regression risk: `GET /api/print-stations`,
+  `GET /api/print-stations/{id}/stats` (verify no anonymous kiosk station-picker first).
+
+### 16.7 Proposed bounded implementation batches (5B–5F — DO NOT IMPLEMENT YET)
+Each is deliberately small, reversible, and independently testable.
+
+- **Batch 5B — Public response-data minimization.** Files: `schemas.py`, `main.py` (find/create
+  handlers), frontend consumers of the shape. Endpoints: `#13`, `#14`. Tests first: returning-
+  visitor lookup returns only minimized fields; no PII enumeration; kiosk check-in still works.
+  Deployment impact: none (additive schemas). Backward-compat: frontend must tolerate slimmer
+  objects. Rollback: revert schema/handler. Regression risk: **medium** (frontend field usage).
+  Owner decisions: exact minimal field set for the returning-visitor picker.
+- **Batch 5C — Print-agent authentication foundation (accept-but-not-require).** Files:
+  `models.py` (token hash column), `main.py` (issue token at register; optional validation),
+  `print_agent.py` (already sends token). Endpoints: `#5`–`#9`, `#12`. Tests first: register
+  issues token; requests with valid token accepted; requests without token still accepted during
+  grace window. Deployment impact: agents re-register to obtain tokens. Backward-compat: grace
+  window mandatory. Rollback: ignore token again. Regression risk: **low** while non-enforcing.
+  Owner decisions: grace-window length; enrollment gating (open vs. admin-approved).
+- **Batch 5D — Station ownership + atomic claims (enforce).** Files: `main.py`
+  (pending/claim/status/badge-image). Endpoints: `#6`–`#9`, `#12`. Tests first: agents poll only
+  their station; cross-station claim rejected; concurrent claims → single winner; status limited
+  to claimed job; disabled agent rejected. Deployment impact: requires 5C tokens deployed to all
+  agents. Rollback: relax ownership checks. Regression risk: **medium** (multi-agent timing).
+- **Batch 5E — Kiosk workflow containment.** Files: `main.py` (checkout/photo/badge/print),
+  possibly a kiosk/station token. Endpoints: `#15`–`#18`. Tests first: kiosk can only act on the
+  record it created this session; arbitrary integer-ID mutation rejected; badge/print still
+  usable. Deployment impact: kiosk provisioning token. Rollback: revert to open IDs. Regression
+  risk: **high** (touches live public kiosk flow) — stage carefully.
+- **Batch 5F — Tests, docs, deployment migration.** Files: `backend/tests/`, `docs/INSTALL.md`,
+  `docs/PRINT-SERVER.md`, `print-agent/.env.example` (add `PBC_PRINT_AGENT_KEY` note),
+  `deployment` docs. No endpoint changes. Tests: full regression + the negative-security tests
+  from 5B–5E. Deployment impact: documents the agent re-enrollment procedure. Regression risk:
+  **low**.
+
+### 16.8 Required tests (to be written before the corresponding batch ships)
+- Anonymous check-in (`POST /api/visitors`) still succeeds.
+- Returning-visitor lookup (`find`) returns only required fields; no sensitive PII enumeration.
+- No arbitrary badge retrieval (`badge-image` requires agent + job scope).
+- Agents poll only their assigned station; unassigned/disabled agents rejected.
+- Cross-station claim rejected; concurrent claims yield exactly one winner.
+- Status updates limited to the claiming agent's job.
+- Staff/admin workflows unaffected; existing 401/403 semantics unchanged.
+- Kiosk photo/badge/print remain usable within a session; cross-record integer-ID mutation
+  rejected.
+
+### 16.9 Owner decisions required before implementation
+1. Minimal field set for the anonymous returning-visitor picker (Batch 5B).
+2. Print-agent enrollment model: open register vs. admin-approved (Batch 5C).
+3. Grace-window length before token enforcement (5C→5D).
+4. Whether the kiosk gets a per-station provisioning token (Batch 5E) and how it is distributed
+   to deployed kiosks.
+5. Confirmation that no anonymous flow depends on `GET /api/print-stations` /
+   `.../{id}/stats` before those move to staff auth.
+
+### 16.10 NOT performed in this pass (explicit)
+No application code, authentication, frontend behavior, database, or schema changed. No endpoint
+secured. No secrets rotated. No Git history rewritten. No documentation removed or moved. No
+commit made automatically. Milestone 8 not started. Validation baseline (28 backend / 9 frontend
+/ 16 lint) preserved.
+
+**Suggested commit message (documentation-only):**
+`Milestone 7.8.8: Batch 5A kiosk & print-agent trust-boundary validation and implementation plan (docs only)`
+
+---
+
+## 17. Batch 5A.1 — Trust-Boundary Decision Resolution & Migration Prerequisite Review (PLANNING / VALIDATION ONLY)
+
+**Nature of this pass:** validation and owner-decision only. No application code, authentication,
+frontend behavior, database, schema, or migration tooling was changed. This section **adds
+authoritative corrections** to §16 rather than rewriting it — where §16 and §17 disagree, **§17
+supersedes** because it is grounded in an end-to-end consumer trace performed this pass.
+
+### 17.1 Starting state & validation baseline (unchanged)
+- Git: branch `main`, HEAD `8aa3d19` (== `origin/main`). Working tree carried one uncommitted,
+  documentation-only change from Batch 5A (`docs/reviews/pre-milestone-8-remediation-plan.md`,
+  the §16 addition). No runtime files were modified going into this pass.
+- Baseline re-confirmed and preserved: **backend pytest 28 passed / 4 warnings**;
+  `py_compile` of the 8 app modules **exit 0**; **frontend `npm run test` 9 passed (2 files)**;
+  **`npm run build` success**; **`npm run lint` 16 problems (13 errors, 3 warnings)** —
+  pre-existing; not touched.
+
+### 17.2 CORRECTION — `/api/visitors/find` is the anonymous **CHECK-OUT locator**, not a returning-visitor picker (Task 1)
+§16.3 (row 14), §16.5, §16.7 (Batch 5B), §16.8, and §16.9 describe `GET /api/visitors/find` as
+the "returning-visitor lookup / picker." **An end-to-end trace this pass proves that is
+incorrect.** The name `find` misled the earlier pass; purpose must be read from consumers, not
+the name.
+
+**End-to-end trace (`frontend/src/App.jsx`, `frontend/src/api.js`):**
+
+| Function | api.js call | Auth header | Consumer / screen | Purpose |
+|---|---|---|---|---|
+| `findVisitors(first, last)` | `GET /api/visitors/find` | **none (anon)** | `handleFindVisitor()` → `setCheckoutResults()` → **Visitor Check-Out screen** | **Anonymous check-out candidate locator** |
+| `searchVisitors(q)` | `GET /api/visitors/search` | **Bearer (staff)** | `handleVisitorSearch()` → `setSearchResults()` | Staff visitor search |
+| `getVisitor(id)` / `getVisitorHistory(id)` | `GET /api/visitors/{id}` / `.../history` | **Bearer (staff)** | `handleVisitorSelect()` → `visitor-detail` | Staff detail + history |
+| `checkInAgain(id, data)` | `POST /api/visitors/{id}/checkin-again` | **Bearer (staff)** | `handleCheckInReturningVisitor()` / `handleSubmitReturningVisitor()` using `selectedVisitor.id` | **Staff** returning check-in |
+| `checkoutVisitor(id)` | `PUT /api/visitors/{id}/checkout` | **none (anon)** | `handleGuestCheckout(visitor.id)` (from `checkoutResults`) **and** staff `handleVisitorCheckout(id)` | Check-out |
+
+**Findings:**
+- `find` feeds **`checkoutResults`** (state vars `checkoutFirstName`/`checkoutLastName`/
+  `checkoutResults`) rendered on the **Visitor Check-Out** screen (`App.jsx` ~2385). Each result
+  card renders and the button `onClick={() => handleGuestCheckout(visitor.id)}` calls
+  `checkoutVisitor(visitor.id)`.
+- The **returning check-in** flow does **not** use `find`. It uses `selectedVisitor`, obtained
+  through the **authenticated staff** path (`searchVisitors` → `handleVisitorSelect` →
+  `getVisitor`). So `find` is unrelated to returning check-in.
+- `find` supports **check-out only**, and only for **active visitors** — the backend
+  `find_visitors` (`main.py:2173`) filters `Visitor.check_out_time.is_(None)`.
+- The internal **integer `id` is currently required** by the anonymous consumer, because the
+  check-out call is `PUT /api/visitors/{id}/checkout`.
+
+**Exact fields the anonymous consumer reads from a `find` result** (`App.jsx` check-out card):
+`visitor.id` (React key + passed to `checkoutVisitor`), `visitor.first_name`,
+`visitor.last_name`, `visitor.visitor_type`, and `visitor.check_out_time` (used only for an
+ACTIVE/CHECKED-OUT badge — always `null` here because `find` returns active visitors only).
+
+**Minimum field set required by the existing anonymous check-out workflow:**
+`id`, `first_name`, `last_name`, `visitor_type` (plus `check_out_time`, which is always `null`
+in this response and can be omitted or hard-set). **All other `VisitorResponse` fields**
+(`phone`, `email`, `notes`, `vehicle_plate`, `host_type`, `host_name`, `phone`, `photo_path`,
+`badge_path`, `check_in_time`, `expected_departure_time`, `church`, `badge_printed*`,
+`check_out_method`) **are never read by the anonymous consumer** and constitute the PII
+over-exposure. Removing them does **not** break the check-out workflow. Removing `id` **would**
+break it unless the check-out call is simultaneously changed to accept an opaque handle (a
+Batch 5E concern — do not do it in the minimization batch).
+
+> **Consequence for the plan:** the "Batch 5B minimal returning-visitor field set" owner
+> decision (§16.9 #1) is re-scoped to **"minimal anonymous check-out locator field set,"** and
+> the target is the four fields above. The returning-visitor picker is a **staff** feature and
+> is **out of the anonymous-minimization scope entirely.**
+
+### 17.3 CORRECTION — CORS finding is **F-008**, not F-003 (Task 6)
+§16.3 states the wildcard-origin + credentials CORS weakness is "recorded as **F-003** in the
+audit." That citation is wrong. Per `pre-milestone-8-repository-audit.md`:
+- **F-008** = *Permissive CORS* — `main.py:66` `allow_origins=["*"]` + `allow_credentials=True`
+  (Medium). **This is the correct reference for the CORS finding.**
+- **F-003** = *`get_current_user` never checks the database* (AuthZ/Session, High) — a different
+  finding, addressed under Batch 3.
+
+**Authoritative correction:** every reference to the CORS boundary weakness should read **F-008**.
+§16.3's "F-003" for CORS is superseded by this note.
+
+### 17.4 Anonymous kiosk transaction map & smallest containment (Task 2)
+**Check-in** (`handleCheckIn`, `App.jsx` ~1183): `createVisitor(payload)` **[anon]** → reads
+**only** `visitor.id` from the response → `uploadPhoto(visitor.id, file)` **[anon]** →
+`generateBadge(visitor.id)` **[anon]** → `createPrintJob(visitor.id, PRINT_STATION)` **[anon]**.
+**Check-out** (§17.2): `findVisitors(first, last)` **[anon]** → `checkoutResults` →
+`handleGuestCheckout(visitor.id)` → `checkoutVisitor(visitor.id)` **[anon]**.
+
+| Question | Answer (evidence) |
+|---|---|
+| Identifier passed between calls | Integer **`visitor.id`**. In check-in it is a **local `const`** inside the handler (function-scoped, transient) — not React state. In check-out it is the `id` from `find` results. |
+| State stored in React | Check-in id is **not** persisted to React state; `checkedInVisitorId` is set only in the **staff/returning** flow. Check-out uses `checkoutResults` state. |
+| Does browser refresh lose state? | **Yes.** All state is in-memory `useState`/local vars. A mid-flow refresh orphans the already-created DB visitor (client loses the id → cannot resume photo/badge/print). No `sessionStorage`/`localStorage` holds a kiosk visitor id. |
+| Kiosk/session token? | **None.** `localStorage access_token` is **staff-login only**. There is no anonymous kiosk session token. |
+| URL station slug available? | **Yes.** `getPrintStationSlug()` (`App.jsx:1150`) reads `?station=<slug>` from `window.location.search`, default `"dining-hall"`. The Settings screen even advertises the kiosk URL as `?station={slug}` (~line 5280). **This is the existing per-kiosk primitive.** |
+| Can multiple kiosks share one backend? | **Yes.** All kiosks share one backend/DB; a kiosk is differentiated only by its `?station=` slug. No per-kiosk isolation exists. |
+| Fields required in each response | `createVisitor` → only `id` read. `uploadPhoto`/`generateBadge`/`createPrintJob` → responses **awaited but not read**. `find` → the four fields in §17.2. |
+
+**Smallest containment design that preserves these exact workflows (proposal — not implemented):**
+1. **Check-in chain** — because `createVisitor` → photo → badge → print run inside **one
+   synchronous handler** with a freshly-created id held as a local variable, the backend can
+   return an **opaque, single-record capability handle** from `createVisitor` that the
+   subsequent photo/badge/print calls present instead of a global integer id. This removes
+   arbitrary integer-ID mutation with **zero new persistent client state** (the handle lives
+   exactly as long as `visitor.id` does today).
+2. **Check-out** is the only **cross-session** anonymous action (name → check-out by id).
+   Contain it by scoping `find`/`checkout` to the kiosk's **existing `?station=` slug** (and/or
+   a short-lived check-out capability), so an anonymous caller cannot check out arbitrary global
+   IDs from anywhere on the network.
+This is **Batch 5E** scope; it is documented here only to fix the containment model, not to
+implement it.
+
+### 17.5 Print-agent enrollment options — comparison & recommendation (Task 3)
+No enrollment code was changed. The four candidate models:
+
+| Model | Code / schema change | Deployment for existing Pi agents | Credential-theft risk | Revocation | Recovery after lost `.env` | Unattended re-registration | Operational burden |
+|---|---|---|---|---|---|---|---|
+| **A. Shared bootstrap token** | Server validates one shared `BOOTSTRAP_TOKEN` at `register`, issues per-agent token (needs a credential store — §17.6) | Put the same secret in every Pi `.env` once | **High** — one leak lets anyone enroll a **usable** agent | Rotate bootstrap token = touch **every** Pi | Re-run `register` with bootstrap token | **Yes** | Low ongoing, weak security |
+| **B. Admin pre-creates / approves** | Admin endpoint/UI creates the `PrintAgent` + issues token out-of-band; `register` matches it | Admin provisions each Pi credential manually | **Medium** — per-agent; leak affects one agent | Delete/disable the agent row | Admin re-issues (manual) | **No** (needs admin each time) | Medium; strong control |
+| **C. One-time enrollment code** | `enrollment_code` store (code, expiry, used); `register` exchanges code → persistent token | Admin hands each Pi a one-time, expiring code | **Low** — code single-use + expiring | Disable agent; codes burn/expire | Admin issues a new one-time code (manual) | **No** | Medium; good security + auditability |
+| **D. Open register + admin approval + disabled-by-default** | `register` creates agent `enabled=False` + issues token; admin **approve** flips `enabled=True`; **hot path enforces `enabled`** | Pi registers unattended; admin approves once | **Low** at issue time — token is **inert until approved** | Set `enabled=False` (already modeled) | Pi re-registers unattended → admin re-approves (one click) | **Partial** — registration yes, activation needs approval | Low–Medium; strong (no usable cred without human approval) |
+
+**Explicit rejection (per the constraint):** any design where an **unauthenticated caller obtains
+an immediately-usable agent credential is rejected.** This disqualifies today's behavior
+(register returns a working `agent_key` and no credential is enforced) and any "open register
+that returns a live token." Option A is acceptable **only** if the bootstrap token is treated as
+a true secret; a single shared secret across the fleet is fragile.
+
+**Recommendation: Option D** (open registration + **disabled-by-default** + admin approval),
+optionally seeded with **C**'s one-time codes for the initial fleet. Rationale:
+- Satisfies the hard constraint: the issued token is **inert until an admin approves**, so an
+  unauthenticated caller can never obtain an immediately-usable credential.
+- Preserves **unattended re-registration** for deployed Pis (they re-register automatically after
+  a lost `.env`; the admin only re-approves).
+- Revocation is the **existing `PrintAgent.enabled`** flag (a single boolean), which §16.4 already
+  flags as **unenforced on the hot path** — so adopting D naturally closes that gap and aligns
+  with Batch 5D (enforce `agent.enabled`).
+- **Not staff JWT** — the agent keeps its own agent-scoped credential.
+
+> **Migration dependency:** Option D still needs somewhere to store the issued token **hash**.
+> See §17.6 — this must be a **new table**, not a new column on `PrintAgent`.
+
+### 17.6 Database migration prerequisite — conclusion (Task 4)
+**Validated facts:**
+1. `Base.metadata.create_all()` (`backend/app/main.py:56`) **creates only missing tables**; it
+   **never `ALTER`s an existing table** to add a column. Confirmed by SQLAlchemy's own docs
+   (`sqlalchemy/sql/schema.py:2715`: adding a column to an existing model requires migrating
+   existing tables via `ALTER TABLE` or similar).
+2. **What happens when `models.py` gains a column on an existing deployment:** the app **boots
+   normally** (the table already exists, so `create_all` no-ops), but the **first query that
+   references the new column raises `sqlite3.OperationalError: no such column`** — i.e., the
+   print-agent auth path would crash at runtime, not at startup.
+3. **Migration tooling in PBC-guest-kiosk: none.** The only schema mechanism is the single
+   `create_all` at `main.py:56`. `alembic.ini` exists **only in the separate `pbc-systems-app`
+   repo**, not here. Audit finding **F-019** already records "create_all at import; no Alembic;
+   no migration path."
+4. **Could token state reuse an existing column?** `PrintAgent` already has `agent_key`,
+   `hostname`, `printer_name`, `agent_version`, `last_seen`, `last_ip`, `enabled`,
+   `print_station_id`. **Rejected** — overloading `agent_key` (an identifier echoed in plaintext)
+   to also hold a secret conflates identity with credential and corrupts the field's meaning. No
+   existing column can carry a hashed token without overloading.
+5. **Key enabling fact:** `create_all` **does** auto-create a brand-**new** table on existing
+   deployments. A **new** `print_agent_credentials` table is therefore **additive** and needs
+   **no `ALTER` and no migration framework**.
+
+**Conclusion:** Batch 5C **cannot** safely add a column to the existing `PrintAgent` table on
+deployed SQLite databases without migration support. **Recommended path (of the three offered):
+redesign 5C to be schema-additive via a separate credential store implemented as a NEW table**
+(`print_agent_credentials`, auto-created by `create_all`; columns: agent FK, token **hash**,
+issued/rotated timestamps, `enabled`/revoked). This is the "separate credential store with a
+documented lifecycle" option and unblocks 5C with the least risk **without** introducing Alembic
+in this pass. A dedicated **bounded migration-foundation batch remains the correct long-term
+investment** for future `ALTER`s, but is **not a prerequisite** for 5C **provided 5C only adds
+new tables**. **Do not** implement an ad-hoc `ALTER-TABLE-on-startup` hack merely to avoid
+migrations.
+
+### 17.7 Owner decision request (Task 5)
+Each decision lists **Options · Recommendation · Operational impact · Security consequence ·
+Default if the owner takes no action.**
+
+**Decision 1 — Purpose & minimum response fields for `GET /api/visitors/find`.**
+- **Options:** (a) leave as full `VisitorResponse` (status quo, full PII to anonymous callers);
+  (b) slim to the anonymous check-out locator set: `id`, `first_name`, `last_name`,
+  `visitor_type`.
+- **Recommendation:** (b). Confirmed purpose is the **anonymous check-out candidate locator**
+  (§17.2), not a returning-visitor picker.
+- **Operational impact:** check-out screen behavior unchanged; frontend must tolerate a slimmer
+  object (it already reads only those fields).
+- **Security consequence:** eliminates anonymous PII enumeration (phone/email/notes/plate/host/
+  photo & badge paths) — the highest-priority exposure.
+- **Default if no action:** status quo — full PII remains exposed anonymously.
+
+**Decision 2 — Print-agent enrollment model.**
+- **Options:** A shared bootstrap token · B admin pre-create/approve · C one-time enrollment code
+  · D open register + admin approval + disabled-by-default (§17.5).
+- **Recommendation:** **D** (optionally seeded with C for the first fleet).
+- **Operational impact:** Pis re-register unattended; admin performs a one-time approval per
+  agent; revocation via the existing `enabled` flag.
+- **Security consequence:** no unauthenticated caller can obtain an **immediately-usable**
+  credential; satisfies the explicit rejection criterion.
+- **Default if no action:** status quo — `register` issues an unenforced `agent_key`; any caller
+  can enroll and act. **Insecure; not recommended as a resting state.**
+
+**Decision 3 — Grace-window EXIT CRITERIA (not merely a duration).**
+- **Options:** (a) time-boxed only ("N days"); (b) **state-based exit**: enforcement begins only
+  when **all currently-registered agents have re-registered with a valid token AND an admin has
+  confirmed the fleet is fully migrated** (with a time cap as a backstop).
+- **Recommendation:** (b) — a measurable exit condition, e.g. *"every `PrintAgent` row that was
+  active in the last 30 days has presented a valid token at least once, and the admin has clicked
+  'Enforce'; a 14-day cap forces a review if not met."*
+- **Operational impact:** prevents locking out a Pi that has not yet re-registered; enforcement
+  is a deliberate, verified switch.
+- **Security consequence:** closes the accept-but-not-require window on evidence, not a guess.
+- **Default if no action:** the accept-but-not-require window never closes → tokens are issued
+  but never enforced (no security gain). **Avoid.**
+
+**Decision 4 — Kiosk containment model.**
+- **Options:** (a) status quo (global integer IDs, anonymous mutation from anywhere); (b)
+  per-record **opaque capability handle** for the check-in chain + **`?station=` scoping** for
+  find/check-out (§17.4); (c) full per-station kiosk provisioning token.
+- **Recommendation:** (b) — smallest change that preserves the exact workflows and needs **no new
+  persistent client state**; escalate to (c) only if network-level isolation is required.
+- **Operational impact:** kiosks keep working via the existing `?station=` URL; no new device
+  setup for (b).
+- **Security consequence:** removes arbitrary integer-ID checkout/photo/badge/print (the IDOR
+  cluster) while keeping anonymous kiosk UX.
+- **Default if no action:** IDOR cluster remains on live public endpoints.
+
+**Decision 5 — Must migration support precede print-agent auth?**
+- **Options:** (a) build a migration foundation (Alembic or equivalent) before 5C; (b) **make 5C
+  schema-additive via a new `print_agent_credentials` table** (no `ALTER`, no migration framework)
+  and defer the migration foundation.
+- **Recommendation:** (b) — unblocks 5C safely now; schedule the migration foundation as its own
+  bounded batch for future `ALTER`s.
+- **Operational impact:** existing SQLite DBs gain the new table automatically via `create_all`;
+  no manual DB step.
+- **Security consequence:** none negative; avoids the "no such column" runtime crash on deployed
+  DBs (§17.6).
+- **Default if no action:** if 5C is attempted as a **column add**, deployed kiosks crash on the
+  first auth query. **Must be decided before 5C.**
+
+**Decision 6 — Do `GET /api/print-stations` and `GET /api/print-stations/{id}/stats` have any
+confirmed anonymous consumer?**
+- **Finding this pass:** `getPrintStations()` is called **with a staff Bearer token**
+  (`api.js:494`); no anonymous consumer was found. `.../{id}/stats` has **no located consumer**
+  in `api.js` (do **not** treat as dead — a station display may call it).
+- **Options:** (a) move both to staff auth; (b) keep public pending a deployment check for a
+  kiosk station-picker / display.
+- **Recommendation:** (a) for `GET /api/print-stations`; **confirm no station-display consumer
+  before** moving `.../{id}/stats`.
+- **Operational impact:** none for staff UI (already tokened); verify any wall-display usage.
+- **Security consequence:** stops anonymous exposure of `print_server_host` / `last_ip`.
+- **Default if no action:** internal network detail remains anonymously readable.
+
+### 17.8 Corrections applied to the tracker (Task 6 summary)
+- **§17.2** supersedes the "returning-visitor lookup/picker" label for `/api/visitors/find` in
+  §16.3 (row 14), §16.5, §16.7 (Batch 5B), §16.8, §16.9 → **anonymous check-out locator**.
+- **§17.3** corrects the CORS finding reference from **F-003 → F-008**.
+- **§17.6** adds the migration prerequisite: **Batch 5C must be schema-additive (new table), not a
+  column `ALTER`**, on deployed SQLite DBs.
+- **Owner decisions still required:** the six in §17.7 (which refine and re-scope §16.9's list).
+- Historical §16 text is left intact per instruction; these notes are authoritative where they
+  conflict.
+
+### 17.9 NOT performed in this pass (explicit)
+No application runtime behavior, endpoint authentication, response schema, or database/schema was
+changed. No column added. No migration system (Alembic or other) introduced. No secret rotated.
+No Git history rewritten. No commit made automatically. Batches 5B/5C/5D/5E/6 and Milestone 8 not
+started. Validation baseline (**28 backend / 9 frontend / 16 lint**) preserved.
+
+**Suggested commit message (documentation-only):**
+`Milestone 7.8.9: Batch 5A.1 trust-boundary decision resolution & migration prerequisite review (docs only)`
