@@ -337,8 +337,8 @@ const requiredCheckinFields =
     : REQUIRED_CHECKIN_FIELDS;
 
 const requiredReturningCheckinFields =
-  Array.isArray(systemSettings?.requiredReturningCheckinFields)
-    ? systemSettings.requiredReturningCheckinFields
+  Array.isArray(systemSettings?.required_returning_checkin_fields)
+    ? systemSettings.required_returning_checkin_fields
     : REQUIRED_RETURNING_CHECKIN_FIELDS;
 
 // This will add some retro feel to CRT themes.
@@ -353,24 +353,6 @@ const styles = getStyles(theme, isCrtTheme);
     
   // Functions in App()
 
-
-  async function handleResponse(response, defaultMessage) {
-      if (response.status === 401) {
-          handleUnauthorized();
-          throw new Error("Session expired");
-      }
-
-      if (!response.ok) {
-          try {
-              const error = await response.json();
-              throw new Error(error.detail || defaultMessage);
-          } catch {
-              throw new Error(defaultMessage);
-          }
-      }
-
-      return await response.json();
-  }
 
   function renderVersionFooter() {
     return (

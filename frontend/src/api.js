@@ -220,11 +220,7 @@ export async function updateVisitor(id, data) {
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to update visitor");
-  }
-
-  return response.json();
+  return await handleResponse(response, "Failed to update visitor");
 }
 
 export async function getUsers() {
@@ -236,11 +232,7 @@ export async function getUsers() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to load users");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load users");
 }
 
 // Deprecated?
@@ -253,11 +245,7 @@ export async function getUser(id) {
     },
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to load user");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load user");
 }
 
 export async function createUser(data) {
@@ -272,11 +260,7 @@ export async function createUser(data) {
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to create user");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to create user");
 }
 
 export async function updateUser(id, data) {
@@ -291,11 +275,7 @@ export async function updateUser(id, data) {
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to update user");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to update user");
 }
 
 export async function resetPassword(id, newPassword) {
@@ -315,11 +295,7 @@ export async function resetPassword(id, newPassword) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to reset password");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to reset password");
 }
 
 
@@ -340,11 +316,7 @@ export async function updateUserStatus(id, enabled) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to update user status");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to update user status");
 }
 
 // Print Job Management Functions
@@ -361,11 +333,7 @@ export async function getPrintJobs() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to load print jobs");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load print jobs");
 }
 
 // Deprecated?
@@ -381,11 +349,7 @@ export async function getPendingPrintJobs() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to load pending print jobs");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load pending print jobs");
 }
 
 export async function deletePrintJob(jobId) {
@@ -401,11 +365,7 @@ export async function deletePrintJob(jobId) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to delete print job");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to delete print job");
 }
 
 export async function clearCompletedPrintJobs() {
@@ -421,11 +381,7 @@ export async function clearCompletedPrintJobs() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to clear completed print jobs");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to clear completed print jobs");
 }
 
 export async function clearFailedPrintJobs() {
@@ -441,11 +397,7 @@ export async function clearFailedPrintJobs() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to clear failed print jobs");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to clear failed print jobs");
 }
 
 
@@ -463,11 +415,7 @@ export async function getPrintAgents() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to load print agents");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load print agents");
 }
 
 export async function assignPrintAgent(agentId, stationId) {
@@ -487,11 +435,7 @@ export async function assignPrintAgent(agentId, stationId) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to assign print agent");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to assign print agent");
 }
 
 
@@ -510,15 +454,7 @@ export async function deletePrintStation(stationId) {
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.detail || "Failed to delete print station"
-    );
-  }
-
-  return data;
+  return await handleResponse(response, "Failed to delete print station");
 }
 
 // Deprecated?
@@ -554,11 +490,7 @@ export async function getPrintStations() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to load print stations");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load print stations");
 }
 
 export async function updatePrintStation(id, data) {
@@ -576,11 +508,7 @@ export async function updatePrintStation(id, data) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to update print station");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to update print station");
 }
 
 
@@ -599,11 +527,7 @@ export async function createPrintStation(data) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to create print station");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to create print station");
 }
 
 
@@ -620,13 +544,7 @@ export async function printAgentTestLabel(agentId) {
     }
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.detail || "Failed to queue print agent test label");
-  }
-
-  return data;
+  return await handleResponse(response, "Failed to queue print agent test label");
 }
 
 export async function getDashboardStats() {
@@ -654,11 +572,7 @@ export async function getReportingSummary() {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to load reporting summary");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to load reporting summary");
 }
 
 export async function getSettings() {
@@ -686,11 +600,7 @@ export async function saveSettings(data) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Failed to save settings");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to save settings");
 }
 
 export async function reassignPrintJob(jobId, stationId) {
@@ -710,12 +620,7 @@ export async function reassignPrintJob(jobId, stationId) {
     }
   );
 
-  if (!response.ok) {
-    const data = await response.json();
-    throw new Error(data.detail || "Failed to reassign print job");
-  }
-
-  return await response.json();
+  return await handleResponse(response, "Failed to reassign print job");
 }
 
   export async function printStationQrLabel(stationId) {
@@ -731,13 +636,7 @@ export async function reassignPrintJob(jobId, stationId) {
       }
     );
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.detail || "Failed to queue print station QR label");
-    }
-
-    return data;
+    return await handleResponse(response, "Failed to queue print station QR label");
   }
 
   export async function downloadPrintStationQr(stationId) {
@@ -751,6 +650,11 @@ export async function reassignPrintJob(jobId, stationId) {
         },
       }
     );
+
+    if (response.status === 401 || response.status === 403) {
+      handleUnauthorized();
+      throw new Error("Session expired");
+    }
 
     if (!response.ok) {
       throw new Error("Failed to download QR code");
@@ -803,13 +707,7 @@ export async function reassignPrintJob(jobId, stationId) {
     }
   );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      error.detail || "Failed to change password"
-    );
-  }
-    return await response.json();
+  return await handleResponse(response, "Failed to change password");
   }
 
 
