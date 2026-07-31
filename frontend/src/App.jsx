@@ -380,6 +380,27 @@ const isCrtTheme =
 
 const styles = getStyles(theme, isCrtTheme);
 
+  // Enforce the CRT monospace font across the entire UI while a CRT theme is
+  // active. Form controls (button, input, select, textarea) do not inherit
+  // font-family, so the theme font otherwise only reaches plain text. A scoped
+  // stylesheet with !important covers those controls too, and is removed when
+  // switching to a non-CRT theme so other themes are unaffected.
+  useEffect(() => {
+    const styleId = "crt-font-enforcement";
+    let styleEl = document.getElementById(styleId);
+
+    if (isCrtTheme) {
+      if (!styleEl) {
+        styleEl = document.createElement("style");
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent =
+        `body, body * { font-family: ${theme.fontFamily} !important; }`;
+    } else if (styleEl) {
+      styleEl.remove();
+    }
+  }, [isCrtTheme, theme.fontFamily]);
 
 
     
