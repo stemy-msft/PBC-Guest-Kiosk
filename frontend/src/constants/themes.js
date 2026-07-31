@@ -185,6 +185,8 @@ export const themes = {
 
     danger: "#ff4d4d",
     dangerText: "#ffffff",
+
+    crt: true,
   },
   amberTerminal: {
     background: "#120d05",
@@ -216,6 +218,8 @@ export const themes = {
 
     danger: "#ff6b35",
     dangerText: "#ffffff",
+
+    crt: true,
   },
   clemsonTigers: {
     background: "#fefaf5",

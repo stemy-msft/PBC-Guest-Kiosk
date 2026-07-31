@@ -41,6 +41,8 @@ from .schemas import (
     ReprintBadgeRequest,
     SettingsResponse,
     SettingsUpdate,
+    ThemeCreate,
+    ThemeUpdate,
     UserCreate,
     UserResponse,
     UserStatusUpdate,
@@ -53,6 +55,7 @@ from .schemas import (
 
 import logging
 import json
+import re
 import shutil
 import qrcode
 
@@ -815,6 +818,159 @@ def update_settings(request: SettingsUpdate,current_user: str = Depends(get_curr
         )
 
     return new_settings
+
+# Admin-authored themes live alongside the shipped themes in the frontend. The
+# eight built-in themes are defined in the frontend bundle and are read-only;
+# only user-created themes are persisted here and merged in at runtime.
+USER_THEMES_FILE = CONFIG_DIR / "user_themes.json"
+
+BUILTIN_THEME_NAMES = {
+    "defaultLight",
+    "defaultDark",
+    "campGreen",
+    "lakeBlue",
+    "darkCampfire",
+    "retroTerminal",
+    "amberTerminal",
+    "clemsonTigers",
+}
+
+REQUIRED_THEME_KEYS = {
+    "background",
+    "placeholderBackground",
+    "surface",
+    "surfaceSecondary",
+    "textPrimary",
+    "textSecondary",
+    "primary",
+    "primaryText",
+    "success",
+    "successText",
+    "label",
+    "neutral",
+    "neutralText",
+    "buttonColor",
+    "buttonText",
+    "border",
+    "fontFamily",
+    "danger",
+    "dangerText",
+}
+ALLOWED_THEME_KEYS = REQUIRED_THEME_KEYS | {"logoOverlay", "crt"}
+
+
+def load_user_themes() -> dict:
+    if not USER_THEMES_FILE.exists():
+        return {}
+    with open(USER_THEMES_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_user_themes(themes: dict) -> None:
+    with open(USER_THEMES_FILE, "w", encoding="utf-8") as f:
+        json.dump(themes, f, indent=2)
+
+
+def _validate_theme_id(theme_id: str) -> str:
+    cleaned = theme_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9 _-]{1,40}", cleaned):
+        raise HTTPException(
+            status_code=400,
+            detail="Theme name must be 1-40 characters using letters, numbers, spaces, hyphens, or underscores.",
+        )
+    return cleaned
+
+
+def _validate_theme_tokens(tokens: dict) -> dict:
+    missing = REQUIRED_THEME_KEYS - tokens.keys()
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Theme is missing required values: {', '.join(sorted(missing))}.",
+        )
+    extra = tokens.keys() - ALLOWED_THEME_KEYS
+    if extra:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Theme has unsupported values: {', '.join(sorted(extra))}.",
+        )
+    cleaned = {}
+    for key, value in tokens.items():
+        if key == "crt":
+            cleaned[key] = value is True or str(value).lower() == "true"
+        else:
+            cleaned[key] = str(value)
+    return cleaned
+
+
+@app.get("/api/themes")
+def get_themes():
+    return load_user_themes()
+
+
+@app.post("/api/themes")
+def create_theme(
+    request: ThemeCreate,
+    current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
+):
+    theme_id = _validate_theme_id(request.id)
+    if theme_id in BUILTIN_THEME_NAMES:
+        raise HTTPException(
+            status_code=409,
+            detail="That name matches a built-in theme. Please choose a different name.",
+        )
+    themes = load_user_themes()
+    if theme_id in themes:
+        raise HTTPException(
+            status_code=409,
+            detail="A theme with that name already exists.",
+        )
+    themes[theme_id] = _validate_theme_tokens(request.tokens)
+    save_user_themes(themes)
+    audit(current_user, "CREATE_THEME", f"Theme={theme_id}")
+    return {theme_id: themes[theme_id]}
+
+
+@app.put("/api/themes/{theme_id}")
+def update_theme(
+    theme_id: str,
+    request: ThemeUpdate,
+    current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
+):
+    if theme_id in BUILTIN_THEME_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in themes cannot be modified. Create a copy to customize it.",
+        )
+    themes = load_user_themes()
+    if theme_id not in themes:
+        raise HTTPException(status_code=404, detail="Theme not found.")
+    themes[theme_id] = _validate_theme_tokens(request.tokens)
+    save_user_themes(themes)
+    audit(current_user, "UPDATE_THEME", f"Theme={theme_id}")
+    return {theme_id: themes[theme_id]}
+
+
+@app.delete("/api/themes/{theme_id}")
+def delete_theme(
+    theme_id: str,
+    current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
+):
+    if theme_id in BUILTIN_THEME_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in themes cannot be deleted.",
+        )
+    themes = load_user_themes()
+    if theme_id not in themes:
+        raise HTTPException(status_code=404, detail="Theme not found.")
+    del themes[theme_id]
+    save_user_themes(themes)
+    audit(current_user, "DELETE_THEME", f"Theme={theme_id}")
+    return {"status": "deleted", "id": theme_id}
 
 @app.get("/health")
 def health():

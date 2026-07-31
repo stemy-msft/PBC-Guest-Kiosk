@@ -195,6 +195,15 @@ class SettingsUpdate(BaseModel):
     required_returning_checkin_fields: list[str]
 
 
+class ThemeCreate(BaseModel):
+    id: str
+    tokens: dict[str, str]
+
+
+class ThemeUpdate(BaseModel):
+    tokens: dict[str, str]
+
+
 class UserCreate(BaseModel):
     username: str
     password: str

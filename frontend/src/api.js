@@ -671,6 +671,63 @@ export async function saveSettings(data) {
   return await handleResponse(response, "Failed to save settings");
 }
 
+export async function getThemes() {
+  const response = await fetch(`${API_BASE}/api/themes`);
+  if (!response.ok) {
+    throw new Error("Failed to load themes");
+  }
+  return await response.json();
+}
+
+export async function createTheme(id, tokens) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE}/api/themes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ id, tokens }),
+  });
+
+  return await handleResponse(response, "Failed to create theme");
+}
+
+export async function updateTheme(id, tokens) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/themes/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ tokens }),
+    }
+  );
+
+  return await handleResponse(response, "Failed to update theme");
+}
+
+export async function deleteTheme(id) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/themes/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return await handleResponse(response, "Failed to delete theme");
+}
+
   export async function printStationQrLabel(stationId) {
     const token = localStorage.getItem("access_token");
 

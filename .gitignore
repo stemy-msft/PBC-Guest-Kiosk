@@ -64,5 +64,8 @@ downloaded-badges/
 # The template is tracked; the live file is site-specific and runtime-mutable.
 backend/config/system_settings.json
 
+# User-created themes — runtime-mutable, created by the Theme Editor.
+backend/config/user_themes.json
+
 # Generated repository inventory snapshot (regenerate on demand; do not track)
 repo_files.txt

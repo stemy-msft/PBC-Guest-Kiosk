@@ -29,6 +29,7 @@ import {
   getPrintStations,
   getReportingSummary,
   getSettings,
+  getThemes,
   getUsers,
   getVisitor,
   getVisitorHistory,
@@ -39,6 +40,9 @@ import {
   saveSettings,
   searchVisitors,
   setPrintAgentEnabled,
+  createTheme,
+  updateTheme,
+  deleteTheme,
   updatePrintStation,
   uploadPhoto,
   updateUser,
@@ -64,6 +68,9 @@ import { getStyles } from "./constants/styles";
 
 // Import the themese from themes.js
 import { themes } from "./constants/themes";
+
+// Theme Editor configuration (font options + editable color fields)
+import { FONT_OPTIONS, THEME_COLOR_FIELDS, CUSTOM_FONT_VALUE } from "./constants/themeEditor";
 
 
 
@@ -113,6 +120,8 @@ export default function App() {
 
   const [systemSettings, setSystemSettings] = useState(null);
   const [editingSettings, setEditingSettings] = useState(null);
+  const [userThemes, setUserThemes] = useState({});
+  const [editingTheme, setEditingTheme] = useState(null);
 
 
     // User State variables
@@ -337,6 +346,7 @@ export default function App() {
   // Load station configuration for kiosk users
   useEffect(() => {
     loadPrintStations();
+    loadUserThemes();
   }, []);
 
 
@@ -344,12 +354,16 @@ export default function App() {
 // Constants are only used as safe fallbacks if settings fail to load.
 const defaultThemeName = "campGreen";
 
+// Shipped (built-in) themes are read-only; user-created themes are merged on
+// top so a selected custom theme resolves the same way as a built-in one.
+const allThemes = { ...themes, ...userThemes };
+
 const themeName = systemSettings?.theme || defaultThemeName;
 
 const theme =
-  themes[themeName] ||
-  themes[defaultThemeName] ||
-  Object.values(themes)[0];
+  allThemes[themeName] ||
+  allThemes[defaultThemeName] ||
+  Object.values(allThemes)[0];
 
 const visitorTypes =
   Array.isArray(systemSettings?.visitor_types) &&
@@ -374,9 +388,7 @@ const requiredReturningCheckinFields = resolveRequiredReturningCheckinFields(
 );
 
 // This will add some retro feel to CRT themes.
-const isCrtTheme =
-  theme === themes.retroTerminal ||
-  theme === themes.amberTerminal;
+const isCrtTheme = theme.crt === true || theme.crt === "true";
 
 const styles = getStyles(theme, isCrtTheme);
 
@@ -548,6 +560,96 @@ const styles = getStyles(theme, isCrtTheme);
       alert("Settings saved successfully.");
 
       setScreen("settings");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function loadUserThemes() {
+    try {
+      const data = await getThemes();
+      setUserThemes(data || {});
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  // A theme name is "built-in" when it ships in themes.js; those are read-only.
+  function isBuiltinTheme(id) {
+    return Object.prototype.hasOwnProperty.call(themes, id);
+  }
+
+  function startNewTheme() {
+    setEditingTheme({
+      id: "",
+      originalId: null,
+      isNew: true,
+      tokens: { ...themes[defaultThemeName] },
+    });
+  }
+
+  function startEditTheme(id) {
+    setEditingTheme({
+      id,
+      originalId: id,
+      isNew: false,
+      tokens: { ...allThemes[id] },
+    });
+  }
+
+  function startCopyTheme(sourceId) {
+    setEditingTheme({
+      id: "",
+      originalId: null,
+      isNew: true,
+      tokens: { ...allThemes[sourceId] },
+    });
+  }
+
+  function updateThemeToken(key, value) {
+    setEditingTheme((current) =>
+      current
+        ? { ...current, tokens: { ...current.tokens, [key]: value } }
+        : current
+    );
+  }
+
+  async function handleSaveTheme() {
+    if (!editingTheme) {
+      return;
+    }
+    try {
+      if (editingTheme.isNew) {
+        await createTheme(editingTheme.id, editingTheme.tokens);
+      } else {
+        await updateTheme(editingTheme.originalId, editingTheme.tokens);
+      }
+      await loadUserThemes();
+      setEditingTheme(null);
+      alert("Theme saved successfully.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleDeleteTheme(id) {
+    if (!window.confirm(`Delete the theme "${id}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteTheme(id);
+      await loadUserThemes();
+      // If the deleted theme was the active one, fall back to the default.
+      if (systemSettings?.theme === id) {
+        const refreshed = await saveSettings({
+          ...systemSettings,
+          theme: defaultThemeName,
+        });
+        setSystemSettings(refreshed);
+        setEditingSettings(refreshed);
+      }
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -2069,6 +2171,655 @@ const styles = getStyles(theme, isCrtTheme);
                 Open Settings
               </button>
             </div>
+
+            <div style={styles.administrationCard}>
+              <h2 style={{ color: theme.textSecondary }}>Theme Editor</h2>
+
+              <p
+                style={{
+                  marginBottom: "16px",
+                  color: theme.textSecondary,
+                }}
+              >
+                Create and customize color themes and fonts.
+              </p>
+
+              <button
+                type="button"
+                style={styles.administrationActionButton}
+                onClick={() => {
+                  setEditingTheme(null);
+                  setScreen("theme-editor");
+                }}
+              >
+                Open Theme Editor
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Theme Editor Screen
+  if (screen === "theme-editor") {
+    if (role !== "Administrator") {
+      return (
+        <div style={styles.page}>
+          {renderVersionFooter()}
+          <div style={styles.formContainer}>
+            <h1 style={styles.formTitle}>Access Denied</h1>
+            <p style={styles.instructions}>
+              Administrator privileges are required to access this screen.
+            </p>
+            <button
+              type="button"
+              style={styles.staffActionButton}
+              onClick={() => setScreen("staff")}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ----- Editor mode: creating or editing a single theme -----
+    if (editingTheme) {
+      const t = editingTheme.tokens;
+      const fontInList = FONT_OPTIONS.some(
+        (option) => option.value === t.fontFamily
+      );
+      const previewCaption = {
+        fontSize: "11px",
+        color: t.textSecondary,
+        fontFamily: t.fontFamily,
+        margin: "2px 0 0",
+        opacity: 0.85,
+      };
+
+      return (
+        <div style={styles.page}>
+          {renderVersionFooter()}
+          {renderAccountMenu()}
+
+          <button
+            type="button"
+            style={styles.backButton}
+            onClick={() => setEditingTheme(null)}
+          >
+            ← Theme List
+          </button>
+
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "1200px",
+              margin: "0 auto",
+              paddingTop: "80px",
+            }}
+          >
+            <h1
+              style={{
+                color: theme.textPrimary,
+                textAlign: "center",
+                marginBottom: "24px",
+              }}
+            >
+              {editingTheme.isNew
+                ? "New Theme"
+                : `Edit Theme: ${editingTheme.originalId}`}
+            </h1>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
+                gap: "24px",
+                alignItems: "start",
+              }}
+            >
+              {/* Editor form */}
+              <div style={styles.resultCard}>
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>Theme Name</label>
+                  <input
+                    style={styles.input}
+                    value={editingTheme.id}
+                    disabled={!editingTheme.isNew}
+                    placeholder="e.g. Sunset Camp"
+                    onChange={(e) =>
+                      setEditingTheme((current) => ({
+                        ...current,
+                        id: e.target.value,
+                      }))
+                    }
+                  />
+                  {!editingTheme.isNew && (
+                    <p
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "13px",
+                        color: theme.textSecondary,
+                      }}
+                    >
+                      To rename, create a copy under a new name.
+                    </p>
+                  )}
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>Font</label>
+                  <select
+                    style={styles.input}
+                    value={fontInList ? t.fontFamily : CUSTOM_FONT_VALUE}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateThemeToken(
+                        "fontFamily",
+                        value === CUSTOM_FONT_VALUE
+                          ? fontInList
+                            ? ""
+                            : t.fontFamily
+                          : value
+                      );
+                    }}
+                  >
+                    {FONT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_FONT_VALUE}>Custom…</option>
+                  </select>
+                  {!fontInList && (
+                    <>
+                      <input
+                        style={{ ...styles.input, marginTop: "8px" }}
+                        value={t.fontFamily}
+                        placeholder="e.g. 'Roboto', Arial, sans-serif"
+                        onChange={(e) =>
+                          updateThemeToken("fontFamily", e.target.value)
+                        }
+                      />
+                      <p
+                        style={{
+                          marginTop: "6px",
+                          fontSize: "13px",
+                          color: theme.textSecondary,
+                        }}
+                      >
+                        Type any CSS font-family. To use a custom font offline,
+                        drop its .woff2 in frontend/public/fonts/ and add a
+                        matching @font-face rule in frontend/src/index.css.
+                        Otherwise the font must already be installed on the
+                        kiosk to render.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      cursor: "pointer",
+                      color: theme.label,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!t.crt}
+                      onChange={(e) =>
+                        updateThemeToken("crt", e.target.checked)
+                      }
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        cursor: "pointer",
+                      }}
+                    />
+                    CRT / terminal effect
+                  </label>
+                  <p
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "13px",
+                      color: theme.textSecondary,
+                    }}
+                  >
+                    Enforces the theme font across every control and enables the
+                    retro monospace terminal styling.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: "12px 20px",
+                    marginTop: "12px",
+                  }}
+                >
+                  {THEME_COLOR_FIELDS.map((field) => (
+                    <div key={field.key}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          color: theme.label,
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {field.label}
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <input
+                          type="color"
+                          value={t[field.key] || "#000000"}
+                          onChange={(e) =>
+                            updateThemeToken(field.key, e.target.value)
+                          }
+                          style={{
+                            width: "44px",
+                            height: "36px",
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: "8px",
+                            background: "none",
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        />
+                        <input
+                          value={t[field.key] || ""}
+                          onChange={(e) =>
+                            updateThemeToken(field.key, e.target.value)
+                          }
+                          style={{
+                            flex: 1,
+                            height: "36px",
+                            padding: "0 10px",
+                            borderRadius: "8px",
+                            border: `1px solid ${theme.border}`,
+                            backgroundColor: theme.surfaceSecondary,
+                            color: theme.textPrimary,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    marginTop: "24px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={styles.staffActionButton}
+                    onClick={handleSaveTheme}
+                  >
+                    Save Theme
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      backgroundColor: theme.surface,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: "16px",
+                      color: theme.textPrimary,
+                      cursor: "pointer",
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                      height: "56px",
+                      minWidth: "140px",
+                      flex: "1 1 160px",
+                      padding: "0 24px",
+                      marginTop: "12px",
+                    }}
+                    onClick={() => setEditingTheme(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* Live preview */}
+              <div
+                style={{
+                  position: "sticky",
+                  top: "20px",
+                }}
+              >
+                <label style={styles.label}>Preview</label>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    borderRadius: "16px",
+                    border: `1px solid ${t.border}`,
+                    background: t.background,
+                    color: t.textPrimary,
+                    fontFamily: t.fontFamily,
+                    padding: "24px",
+                  }}
+                >
+                  <h2
+                    style={{
+                      color: t.textPrimary,
+                      fontFamily: t.fontFamily,
+                      fontSize: "1.85rem",
+                      marginTop: 0,
+                      marginBottom: 0,
+                    }}
+                  >
+                    {editingTheme.id || "Theme Preview"}
+                  </h2>
+                  <p style={previewCaption}>Heading — Text (Primary) on Background</p>
+
+                  <div
+                    style={{
+                      background: t.surface,
+                      border: `1px solid ${t.border}`,
+                      borderRadius: "12px",
+                      padding: "16px",
+                      marginTop: "14px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <p style={previewCaption}>Card — Surface + Border</p>
+
+                    <p
+                      style={{
+                        color: t.textPrimary,
+                        fontSize: "1.05rem",
+                        margin: "10px 0 0",
+                        fontFamily: t.fontFamily,
+                      }}
+                    >
+                      Primary body text.
+                    </p>
+                    <p style={previewCaption}>Text (Primary)</p>
+
+                    <p
+                      style={{
+                        color: t.textSecondary,
+                        fontSize: "1.05rem",
+                        margin: "12px 0 0",
+                        fontFamily: t.fontFamily,
+                      }}
+                    >
+                      Secondary / helper text.
+                    </p>
+                    <p style={previewCaption}>Text (Secondary)</p>
+
+                    <label
+                      style={{
+                        display: "block",
+                        color: t.label,
+                        fontSize: "1rem",
+                        fontWeight: 600,
+                        margin: "14px 0 0",
+                        fontFamily: t.fontFamily,
+                      }}
+                    >
+                      Field label
+                    </label>
+                    <p style={previewCaption}>Label</p>
+                    <input
+                      readOnly
+                      value="Sample input"
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        height: "48px",
+                        padding: "0 14px",
+                        marginTop: "6px",
+                        fontSize: "1rem",
+                        borderRadius: "10px",
+                        border: `1px solid ${t.border}`,
+                        backgroundColor: t.surfaceSecondary,
+                        color: t.textPrimary,
+                        fontFamily: t.fontFamily,
+                      }}
+                    />
+                    <p style={previewCaption}>
+                      Input — Surface (Secondary) + Text (Primary)
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "14px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Primary",
+                        bg: t.primary,
+                        fg: t.primaryText,
+                        caption: "Primary + Primary Text",
+                      },
+                      {
+                        label: "Button",
+                        bg: t.buttonColor,
+                        fg: t.buttonText,
+                        caption: "Button + Button Text",
+                      },
+                      {
+                        label: "Success",
+                        bg: t.success,
+                        fg: t.successText,
+                        caption: "Success + Success Text",
+                      },
+                      {
+                        label: "Neutral",
+                        bg: t.neutral,
+                        fg: t.neutralText,
+                        caption: "Neutral + Neutral Text",
+                      },
+                      {
+                        label: "Danger",
+                        bg: t.danger,
+                        fg: t.dangerText,
+                        caption: "Danger + Danger Text",
+                      },
+                    ].map((b) => (
+                      <div
+                        key={b.label}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "2px",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          style={{
+                            border: "none",
+                            borderRadius: "14px",
+                            padding: "14px 26px",
+                            fontSize: "1.05rem",
+                            cursor: "default",
+                            backgroundColor: b.bg,
+                            color: b.fg,
+                            fontFamily: t.fontFamily,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {b.label}
+                        </button>
+                        <p
+                          style={{ ...previewCaption, textAlign: "center" }}
+                        >
+                          {b.caption}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ----- List mode: choose a theme to edit, copy, or delete -----
+    return (
+      <div style={styles.page}>
+        {renderVersionFooter()}
+        {renderAccountMenu()}
+
+        <button
+          type="button"
+          style={styles.backButton}
+          onClick={() => setScreen("administration")}
+        >
+          ← Administration
+        </button>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "900px",
+            margin: "0 auto",
+            paddingTop: "80px",
+          }}
+        >
+          <h1
+            style={{
+              color: theme.textPrimary,
+              textAlign: "center",
+              marginBottom: "12px",
+            }}
+          >
+            Theme Editor
+          </h1>
+
+          <p
+            style={{
+              textAlign: "center",
+              color: theme.textSecondary,
+              marginBottom: "24px",
+            }}
+          >
+            Built-in themes are read-only. Copy one to create a customizable
+            version, or start a new theme from scratch.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "28px",
+            }}
+          >
+            <button
+              type="button"
+              style={styles.staffActionButton}
+              onClick={startNewTheme}
+            >
+              + Create New Theme
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: "12px" }}>
+            {Object.keys(allThemes).map((id) => {
+              const builtin = isBuiltinTheme(id);
+              return (
+                <div
+                  key={id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    padding: "14px 18px",
+                    borderRadius: "12px",
+                    border: `1px solid ${theme.border}`,
+                    backgroundColor: theme.surfaceSecondary,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        border: `1px solid ${theme.border}`,
+                        backgroundColor: allThemes[id].primary,
+                        display: "inline-block",
+                      }}
+                    />
+                    <strong style={{ color: theme.textPrimary }}>{id}</strong>
+                    {builtin && (
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: theme.neutralText,
+                          backgroundColor: theme.neutral,
+                          borderRadius: "999px",
+                          padding: "2px 10px",
+                        }}
+                      >
+                        Built-in
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    {!builtin && (
+                      <button
+                        type="button"
+                        style={styles.administrationActionButton}
+                        onClick={() => startEditTheme(id)}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      style={styles.administrationActionButton}
+                      onClick={() => startCopyTheme(id)}
+                    >
+                      Copy
+                    </button>
+                    {!builtin && (
+                      <button
+                        type="button"
+                        style={styles.accountMenuDangerButton}
+                        onClick={() => handleDeleteTheme(id)}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2653,7 +3404,7 @@ const styles = getStyles(theme, isCrtTheme);
                     })
                   }
                 >
-                  {Object.keys(themes).map((themeName) => (
+                  {Object.keys(allThemes).map((themeName) => (
                     <option key={themeName} value={themeName}>
                       {themeName}
                     </option>
