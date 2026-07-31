@@ -128,6 +128,43 @@ if _migrated_columns:
     )
 
 
+# ---------------------------------------------------------------------------
+# Station-routing: capture the check-in station on the visitor so the print
+# station is derived server-side from the visitor record (resilient routing),
+# instead of being re-supplied by the client on every print. Same tiny,
+# idempotent, Alembic-free ALTER pattern as above.
+#
+#   ALTER TABLE visitors ADD COLUMN print_station_id INTEGER;
+# ---------------------------------------------------------------------------
+
+def _apply_visitors_station_migration(bind) -> list[str]:
+    """Add the missing visitors.print_station_id column. Returns applied names."""
+    applied: list[str] = []
+    with bind.begin() as conn:
+        existing = {
+            row[1]
+            for row in conn.exec_driver_sql(
+                "PRAGMA table_info(visitors)"
+            ).fetchall()
+        }
+        if not existing:
+            return applied
+        if "print_station_id" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE visitors ADD COLUMN print_station_id INTEGER"
+            )
+            applied.append("print_station_id")
+    return applied
+
+
+_migrated_visitor_columns = _apply_visitors_station_migration(engine)
+if _migrated_visitor_columns:
+    logging.getLogger("guest-kiosk").warning(
+        "Station-routing migration added visitors columns: %s",
+        ", ".join(_migrated_visitor_columns),
+    )
+
+
 with Session(engine) as db:
     create_default_admin(db)
 
@@ -2479,6 +2516,21 @@ def create_visitor(
     visitor: VisitorCreate,
     db: Session = Depends(get_db),
 ):
+    # Capture the check-in station (from the kiosk/QR URL) when it resolves to
+    # an enabled station, so downstream printing is server-authoritative.
+    resolved_station_id = None
+    if visitor.station:
+        station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.slug == visitor.station,
+                PrintStation.enabled == True,
+            )
+            .first()
+        )
+        if station is not None:
+            resolved_station_id = station.id
+
     db_visitor = Visitor(
         first_name=visitor.first_name,
         last_name=visitor.last_name,
@@ -2494,6 +2546,7 @@ def create_visitor(
         expected_departure_time=visitor.expected_departure_time,
         check_in_time=datetime.now(),
         badge_printed=False,
+        print_station_id=resolved_station_id,
     )
 
     db.add(db_visitor)
@@ -2937,25 +2990,34 @@ def create_print_job(
             detail="Badge generated first",
         )
 
-    if request is None or not request.station:
-        raise HTTPException(
-            status_code=400,
-            detail="Print station is required.",
+    # Server-authoritative station resolution: the station captured on the
+    # visitor at check-in wins. A caller-supplied slug is only a fallback for
+    # visitors with no persisted station (e.g. staff-initiated prints).
+    print_station = None
+    if visitor.print_station_id is not None:
+        print_station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.id == visitor.print_station_id,
+                PrintStation.enabled == True,
+            )
+            .first()
         )
 
-    print_station = (
-        db.query(PrintStation)
-        .filter(
-            PrintStation.slug == request.station,
-            PrintStation.enabled == True,
+    if print_station is None and request is not None and request.station:
+        print_station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.slug == request.station,
+                PrintStation.enabled == True,
+            )
+            .first()
         )
-        .first()
-    )
 
     if print_station is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Print station {request.station} was not found or is in maintenance mode.",
+            detail="Print station is required or is in maintenance mode.",
         )
 
     print_job = PrintJob(

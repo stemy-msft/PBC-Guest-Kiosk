@@ -35,6 +35,12 @@ class Visitor(Base):
     badge_printed = Column(Boolean, nullable=False, default=False)
     badge_printed_time = Column(DateTime, nullable=True)
 
+    # Station where the visitor checked in (from the kiosk/QR URL). Source of
+    # truth for where this visitor's badge prints.
+    print_station_id = Column(
+        Integer, ForeignKey("print_stations.id"), nullable=True
+    )
+
     print_jobs = relationship(
         "PrintJob",
         back_populates="visitor",

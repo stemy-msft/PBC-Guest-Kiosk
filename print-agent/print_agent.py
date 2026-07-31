@@ -147,8 +147,10 @@ def get_pending_jobs():
         print("Print agent is not assigned to a print station yet.")
         return []
 
+    # Station is derived server-side from the authenticated agent; no station
+    # query parameter is sent.
     response = requests.get(
-        f"{API_BASE}/api/print-jobs/pending?station={PRINT_STATION_SLUG}",
+        f"{API_BASE}/api/print-jobs/pending",
         headers=auth_headers(),
         timeout=10,
     )

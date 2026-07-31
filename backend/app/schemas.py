@@ -240,6 +240,9 @@ class VisitorCreate(BaseModel):
     notes: Optional[str] = None
     expected_departure_time: Optional[datetime] = None
     email: Optional[str] = None
+    # Slug of the check-in station from the kiosk/QR URL. Resolved and persisted
+    # server-side; printing derives the station from the stored value.
+    station: Optional[str] = None
 
 
 class VisitorResponse(BaseModel):
@@ -263,6 +266,7 @@ class VisitorResponse(BaseModel):
     check_out_method: Optional[str] = None
     badge_printed: bool
     badge_printed_time: Optional[datetime] = None
+    print_station_id: Optional[int] = None
 
     class Config:
         from_attributes = True

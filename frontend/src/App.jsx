@@ -1151,7 +1151,9 @@ const styles = getStyles(theme, isCrtTheme);
   function getPrintStationSlug() {
     const params = new URLSearchParams(window.location.search);
 
-    return params.get("station") || "dining-hall";
+    // No silent default: an unresolved station must fail closed rather than
+    // route a badge to an arbitrary station.
+    return params.get("station") || "";
   }
 
   async function handlePrintAgentTest(agent) {
@@ -1243,6 +1245,7 @@ const styles = getStyles(theme, isCrtTheme);
       vehicle_plate: vehiclePlate,
       notes: null,
       expected_departure_time: null,
+      station: PRINT_STATION,
     });
 
       if (photoFile) {
