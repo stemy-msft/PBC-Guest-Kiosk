@@ -1895,3 +1895,79 @@ decisions it touches. It extends §20.10 with an explicit **visitor-facing ident
 **No schema or runtime change in this pass.** This decision is a documentation ratification; it
 constrains how Batch 5D/5E responses are shaped but introduces no columns, endpoints, or
 behavior here.
+
+---
+
+## 22. Station Routing Architecture Lock — Milestone 5.9 (COMMITTED, LOCKED)
+
+**Nature of this checkpoint:** the station-routing implementation is complete and has been
+**locked to a single deterministic path** with a regression-prevention audit. This section
+records the milestone; the work itself shipped across three commits and the working tree is
+clean at HEAD `ec37f33` (`Milestone 5.8.14`). This documentation update is the **Milestone 5.9**
+commit.
+
+> **Batch-naming note.** "Station routing" is distinct from the *planned* Batch 5E guest print-
+> status screen in §21.4 (still not started). The milestone numbering moved to the `5.8.x` line
+> during this work (`git log`: `5.8.12` → `5.8.13` → `5.8.14`); `Milestone 5.9` rolls that line
+> up to mark the routing architecture as locked.
+
+### 22.1 The one deterministic chain
+
+Station assignment has exactly one path, captured from the kiosk/QR **URL path** at check-in and
+persisted on the visitor as the single source of truth:
+
+```
+URL path → visitor.print_station_id → print_job.print_station_id → agent (station-matched lease)
+```
+
+No query params, no request-body station override, no default value, no fallback, no client-
+driven selection. An unresolved/unknown/disabled station **fails closed** (HTTP 400) and no
+visitor or print job is created.
+
+### 22.2 Delivering commits
+
+| Commit | Milestone | What it delivered |
+|---|---|---|
+| `bbe5d05` | 5.8.12 | Capture check-in station on the visitor; derive the print station server-side. |
+| `0ebc616` | 5.8.13 | **Final hardening** — strict single-path, fail-closed: URL path is the only station source; `create_visitor` 400s on missing/unknown/disabled slug; `create_print_job` derives station **only** from `visitor.print_station_id` (dropped the body param/fallback); rewrote `test_station_routing.py` (9 strict tests). |
+| `ec37f33` | 5.8.14 | **Regression lock** — removed the reassign dual-path (endpoint + `PrintJobReassign` schema + `reassignPrintJob` API + modal/state), removed the unused `PrintJobCreate` schema, removed the print-agent `DEFAULT_PRINT_STATION_SLUG` fallback, neutralized the client-driven staff station dropdown (now read-only `/{slug}` display), and added `test_no_reassign_route_exists`. |
+
+### 22.3 Regression-prevention audit (verification only — no code change)
+
+Every site that writes `print_station_id` was re-scanned and classified. All originate from the
+chain or the legitimate **agent node**; no alternate source exists.
+
+| Write site | Source | Verdict |
+|---|---|---|
+| `create_visitor` (`main.py`) | `station` resolved from the URL-path slug (`visitor.station`), enabled-only, fail-closed 400 | Chain entry |
+| `create_print_job` (`main.py`) | Derived **only** from `visitor.print_station_id`; fail-closed if `None`/disabled | Chain |
+| `checkin_again` (`main.py`) | Carry-over from `original.print_station_id`; no client override | Chain |
+| `assign_print_agent` (`main.py`) | Admin binds an **agent** to a station | Agent node (terminal), not visitor routing |
+| Agent self-test label (`main.py`) | The agent's **own** assigned station | Agent node |
+| Station QR label (`main.py`) | The station printing **its own** QR sign | Station-scoped admin action |
+
+All other `print_station_id` references are reads/comparisons — the agent-layer match
+enforcement (jobs rejected when `print_job.print_station_id != agent.print_station_id`) and the
+pending-jobs filter by `agent.print_station_id`, ensuring agents consume only matching-station
+jobs. Frontend `getPrintStationSlug()` reads `window.location.pathname` **only** (no query
+param); its value is sent to `createVisitor` at a single point and is otherwise read-only display.
+No `?station`, `location.search`, `URLSearchParams`, request-body station override, `reassign`,
+default, or fallback exists in backend, frontend, or print-agent.
+
+### 22.4 Validation
+
+- Backend pytest **80 passed**; `py_compile` **exit 0**.
+- Frontend test **9 passed**; build **success**; lint **14 problems (13 errors, 1 warning)** —
+  down from the §21 baseline of 16 (removed two dead-variable warnings when the reassign/dropdown
+  state was deleted); no new problems introduced.
+- `git diff --check` **clean**; working tree clean at `Milestone 5.8.14`.
+
+### 22.5 Standing constraint (regression prevention)
+
+The routing architecture is **locked**. Future work must not reintroduce any station assignment
+outside `URL → visitor → job → agent`: no query-param routing, no default values, no request-body
+overrides, and no reassign or equivalent secondary-assignment mechanism. `test_no_reassign_route_exists`
+and the strict `test_station_routing.py` suite guard against regression.
+
+**Suggested commit message:**
+`Milestone 5.9: station-routing architecture lock — single deterministic URL→visitor→job→agent path; regression-prevention audit (docs)`
