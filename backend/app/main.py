@@ -55,6 +55,7 @@ from .schemas import (
 
 import logging
 import json
+import io
 import re
 import shutil
 import qrcode
@@ -196,10 +197,12 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 PHOTO_DIR = UPLOAD_DIR / "photos"
 BADGE_DIR = UPLOAD_DIR / "badges"
 QR_DIR = UPLOAD_DIR / "qr-codes"
+LOGO_DIR = UPLOAD_DIR / "theme-logos"
 
 PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 BADGE_DIR.mkdir(parents=True, exist_ok=True)
 QR_DIR.mkdir(parents=True, exist_ok=True)
+LOGO_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
@@ -858,6 +861,16 @@ REQUIRED_THEME_KEYS = {
 }
 ALLOWED_THEME_KEYS = REQUIRED_THEME_KEYS | {"logoOverlay", "crt"}
 
+# Logo overlays may only reference bundled assets or uploaded logos, never
+# arbitrary/external URLs (prevents offline breakage and beaconing).
+LOGO_OVERLAY_PATTERN = re.compile(
+    r"^/(themes|uploads/theme-logos)/[A-Za-z0-9_\-./]+\.(png|webp|jpe?g)$",
+    re.IGNORECASE,
+)
+
+MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+MAX_LOGO_DIM = 512  # px (longest edge after downscale)
+
 
 def load_user_themes() -> dict:
     if not USER_THEMES_FILE.exists():
@@ -898,6 +911,14 @@ def _validate_theme_tokens(tokens: dict) -> dict:
     for key, value in tokens.items():
         if key == "crt":
             cleaned[key] = value is True or str(value).lower() == "true"
+        elif key == "logoOverlay":
+            text_value = str(value).strip()
+            if text_value and not LOGO_OVERLAY_PATTERN.fullmatch(text_value):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Logo overlay must be a local image path under /themes/ or /uploads/theme-logos/.",
+                )
+            cleaned[key] = text_value
         else:
             cleaned[key] = str(value)
     return cleaned
@@ -971,6 +992,91 @@ def delete_theme(
     save_user_themes(themes)
     audit(current_user, "DELETE_THEME", f"Theme={theme_id}")
     return {"status": "deleted", "id": theme_id}
+
+
+def _logo_filename(theme_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", theme_id) + ".png"
+
+
+@app.post("/api/themes/{theme_id}/logo")
+def upload_theme_logo(
+    theme_id: str,
+    file: UploadFile = File(...),
+    current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
+):
+    if theme_id in BUILTIN_THEME_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in themes cannot be modified. Create a copy to customize it.",
+        )
+    themes = load_user_themes()
+    if theme_id not in themes:
+        raise HTTPException(status_code=404, detail="Theme not found.")
+
+    # Enforce size cap before decoding (reject if larger than the limit).
+    data = file.file.read(MAX_LOGO_BYTES + 1)
+    if len(data) > MAX_LOGO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Logo must be {MAX_LOGO_BYTES // (1024 * 1024)} MB or smaller.",
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+
+    # Decode through Pillow; this rejects SVG/non-raster and mangled files, and
+    # guards against decompression bombs via Pillow's pixel limit.
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported or invalid image. Use a PNG, JPEG, or WebP file.",
+        )
+
+    # Re-encode to PNG (drops any embedded payload/metadata, keeps transparency).
+    image = ImageOps.exif_transpose(image)
+    image = image.convert("RGBA")
+    image.thumbnail((MAX_LOGO_DIM, MAX_LOGO_DIM))
+
+    filename = _logo_filename(theme_id)
+    image.save(LOGO_DIR / filename, format="PNG")
+
+    overlay_path = f"/uploads/theme-logos/{filename}"
+    tokens = dict(themes[theme_id])
+    tokens["logoOverlay"] = overlay_path
+    themes[theme_id] = _validate_theme_tokens(tokens)
+    save_user_themes(themes)
+    audit(current_user, "UPLOAD_THEME_LOGO", f"Theme={theme_id}")
+    return {theme_id: themes[theme_id]}
+
+
+@app.delete("/api/themes/{theme_id}/logo")
+def delete_theme_logo(
+    theme_id: str,
+    current_user: str = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
+):
+    if theme_id in BUILTIN_THEME_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in themes cannot be modified.",
+        )
+    themes = load_user_themes()
+    if theme_id not in themes:
+        raise HTTPException(status_code=404, detail="Theme not found.")
+
+    logo_file = LOGO_DIR / _logo_filename(theme_id)
+    if logo_file.exists():
+        logo_file.unlink()
+
+    tokens = dict(themes[theme_id])
+    tokens["logoOverlay"] = ""
+    themes[theme_id] = _validate_theme_tokens(tokens)
+    save_user_themes(themes)
+    audit(current_user, "DELETE_THEME_LOGO", f"Theme={theme_id}")
+    return {theme_id: themes[theme_id]}
 
 @app.get("/health")
 def health():

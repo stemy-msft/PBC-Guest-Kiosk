@@ -43,6 +43,8 @@ import {
   createTheme,
   updateTheme,
   deleteTheme,
+  uploadThemeLogo,
+  deleteThemeLogo,
   updatePrintStation,
   uploadPhoto,
   updateUser,
@@ -628,6 +630,39 @@ const styles = getStyles(theme, isCrtTheme);
       await loadUserThemes();
       setEditingTheme(null);
       alert("Theme saved successfully.");
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleThemeLogoUpload(file) {
+    if (!editingTheme || !file) {
+      return;
+    }
+    if (editingTheme.isNew) {
+      alert("Save the theme first, then add a logo.");
+      return;
+    }
+    try {
+      const result = await uploadThemeLogo(editingTheme.originalId, file);
+      const saved = result[editingTheme.originalId];
+      updateThemeToken("logoOverlay", saved.logoOverlay);
+      await loadUserThemes();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleThemeLogoRemove() {
+    if (!editingTheme || editingTheme.isNew) {
+      return;
+    }
+    try {
+      await deleteThemeLogo(editingTheme.originalId);
+      updateThemeToken("logoOverlay", "");
+      await loadUserThemes();
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -2393,6 +2428,91 @@ const styles = getStyles(theme, isCrtTheme);
                   >
                     Enforces the theme font across every control and enables the
                     retro monospace terminal styling.
+                  </p>
+                </div>
+
+                <div style={styles.fieldGroup}>
+                  <label
+                    style={{
+                      display: "block",
+                      color: theme.label,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Logo overlay (optional)
+                  </label>
+                  {t.logoOverlay ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      <img
+                        src={t.logoOverlay}
+                        alt="Logo overlay preview"
+                        style={{
+                          width: "64px",
+                          height: "64px",
+                          objectFit: "contain",
+                          borderRadius: "8px",
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor: theme.surfaceSecondary,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleThemeLogoRemove}
+                        disabled={editingTheme.isNew}
+                        style={{
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor: theme.surface,
+                          color: theme.textPrimary,
+                          borderRadius: "10px",
+                          padding: "8px 14px",
+                          cursor: editingTheme.isNew ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Remove logo
+                      </button>
+                    </div>
+                  ) : null}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={editingTheme.isNew}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      handleThemeLogoUpload(file);
+                      e.target.value = "";
+                    }}
+                    style={{ marginTop: "10px", color: theme.textPrimary }}
+                  />
+                  <p
+                    style={
+                      editingTheme.isNew
+                        ? {
+                            marginTop: "10px",
+                            padding: "10px 12px",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            color: theme.buttonText,
+                            backgroundColor: theme.primary,
+                            border: `1px solid ${theme.primary}`,
+                            borderRadius: "8px",
+                          }
+                        : {
+                            marginTop: "6px",
+                            fontSize: "13px",
+                            color: theme.textSecondary,
+                          }
+                    }
+                  >
+                    {editingTheme.isNew
+                      ? "⚠ Save the theme first, then upload a logo."
+                      : "PNG, JPEG, or WebP up to 2 MB. Re-encoded to a transparent PNG and scaled to 512px."}
                   </p>
                 </div>
 

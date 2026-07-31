@@ -728,6 +728,41 @@ export async function deleteTheme(id) {
   return await handleResponse(response, "Failed to delete theme");
 }
 
+export async function uploadThemeLogo(id, file) {
+  const token = localStorage.getItem("access_token");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(
+    `${API_BASE}/api/themes/${encodeURIComponent(id)}/logo`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    }
+  );
+
+  return await handleResponse(response, "Failed to upload logo");
+}
+
+export async function deleteThemeLogo(id) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/themes/${encodeURIComponent(id)}/logo`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return await handleResponse(response, "Failed to remove logo");
+}
+
   export async function printStationQrLabel(stationId) {
     const token = localStorage.getItem("access_token");
 
