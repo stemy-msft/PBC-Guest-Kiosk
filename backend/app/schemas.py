@@ -79,9 +79,6 @@ class PrintAgentCredentialIssueResponse(BaseModel):
     agent_token: str
     message: str
 
-class PrintJobCreate(BaseModel):
-    station: str
-
 class PrintJobResponse(BaseModel):
     id: int
     visitor_id: int
@@ -298,10 +295,6 @@ class VisitorUpdateRequest(BaseModel):
     notes: str | None = None
 
 
-
-
-class PrintJobReassign(BaseModel):
-    station_id: int
 
 
 class ReportingCountItem(BaseModel):

@@ -29,7 +29,6 @@ from .schemas import (
     PrintAgentRegisterResponse,
     PrintAgentResponse,
     PrintJobPublicStatusResponse,
-    PrintJobReassign,
     PrintJobResponse,
     PrintJobStatusUpdate,
     PrintStationCreate,
@@ -1613,53 +1612,6 @@ def claim_print_job(
     db.refresh(print_job)
 
     return print_job
-
-@app.put("/api/print-jobs/{job_id}/reassign")
-def reassign_print_job(
-    job_id: int,
-    request: PrintJobReassign,
-    current_user: str = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    job = (
-        db.query(PrintJob)
-        .filter(PrintJob.id == job_id)
-        .first()
-    )
-    if not job:
-        raise HTTPException(
-            status_code=404,
-            detail="Print job not found"
-        )
-    if job.status != "Pending":
-        raise HTTPException(
-            status_code=400,
-            detail="Only pending jobs may be reassigned"
-        )
-    station = (
-        db.query(PrintStation)
-        .filter(PrintStation.id == request.station_id)
-        .first()
-    )
-    if not station:
-        raise HTTPException(
-            status_code=404,
-            detail="Print station not found"
-        )
-    job.print_station_id = request.station_id
-    db.commit()
-    db.refresh(job)
-    audit(
-        current_user,
-        "REASSIGN_PRINT_JOB",
-        f"PrintJobID={job.id}, StationID={station.id}, StationName={station.name}",
-    )
-    return {
-        "status": "success",
-        "job_id": job.id,
-        "station_id": station.id,
-        "station_name": station.name,
-    }
 
 @app.delete("/api/print-jobs/completed")
 def clear_completed_print_jobs(

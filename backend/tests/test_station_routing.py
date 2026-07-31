@@ -151,3 +151,21 @@ def test_mobile_qr_routes_badge_to_scanned_station(client, db_session):
     printed = client.post(f"/api/visitors/{visitor['id']}/print")
     assert printed.status_code == 200, printed.text
     assert _job(db_session, printed.json()["id"]).print_station_id == scanned.id
+
+
+def test_no_reassign_route_exists(client, db_session):
+    # The reassign endpoint was a secondary station-assignment path that set a
+    # job's station from a request body, bypassing the URL -> visitor -> job
+    # chain. It must not exist: there is exactly one routing path.
+    station = _station(db_session, "dining-hall")
+    visitor = _check_in(client, station="dining-hall").json()
+    _give_badge(db_session, visitor["id"])
+    job_id = client.post(f"/api/visitors/{visitor['id']}/print").json()["id"]
+
+    response = client.put(
+        f"/api/print-jobs/{job_id}/reassign", json={"station_id": station.id}
+    )
+    # 404 (no such route) or 405 (method not allowed) — never a success.
+    assert response.status_code in (404, 405)
+    # The job's station is untouched and still derived from the visitor.
+    assert _job(db_session, job_id).print_station_id == station.id

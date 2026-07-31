@@ -632,26 +632,6 @@ export async function saveSettings(data) {
   return await handleResponse(response, "Failed to save settings");
 }
 
-export async function reassignPrintJob(jobId, stationId) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-jobs/${jobId}/reassign`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        station_id: stationId,
-      }),
-    }
-  );
-
-  return await handleResponse(response, "Failed to reassign print job");
-}
-
   export async function printStationQrLabel(stationId) {
     const token = localStorage.getItem("access_token");
 

@@ -23,7 +23,6 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 AGENT_KEY = os.environ.get("PBC_PRINT_AGENT_KEY", "")
 PRINT_STATION_SLUG = os.environ.get("PBC_PRINT_STATION_SLUG", "")
-DEFAULT_PRINT_STATION_SLUG = os.environ.get("PBC_DEFAULT_PRINT_STATION_SLUG", "")
 AGENT_VERSION = "1.0.0"
 
 print(f"Print Station: {PRINT_STATION_SLUG or '(unassigned)'}")
@@ -62,7 +61,7 @@ def register_agent():
     global PRINT_STATION_SLUG
     global AGENT_TOKEN
 
-    station_slug = PRINT_STATION_SLUG or DEFAULT_PRINT_STATION_SLUG or None
+    station_slug = PRINT_STATION_SLUG or None
 
     payload = {
         "agent_key": AGENT_KEY or None,

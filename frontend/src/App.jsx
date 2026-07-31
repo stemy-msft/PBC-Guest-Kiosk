@@ -33,7 +33,6 @@ import {
   login,
   printAgentTestLabel,
   printStationQrLabel,
-  reassignPrintJob,
   resetPassword,
   saveSettings,
   searchVisitors,
@@ -108,10 +107,6 @@ export default function App() {
   const [systemSettings, setSystemSettings] = useState(null);
   const [editingSettings, setEditingSettings] = useState(null);
 
-  const [selectedPrintJob, setSelectedPrintJob] = useState(null);
-  const [showReassignModal, setShowReassignModal] = useState(false);
-  const [reassignStationId, setReassignStationId] = useState("");
-
 
     // User State variables
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -166,7 +161,6 @@ export default function App() {
       expected_departure_time: null,
     }); 
     const [selectedVisitor, setSelectedVisitor] = useState(null);
-    const [staffPrintStation, setStaffPrintStation] = useState("");
     const [vehiclePlate, setVehiclePlate] = useState("");
     const [visitCount, setVisitCount] = useState(0);
     const [visitorHistory, setVisitorHistory] = useState([]);
@@ -555,18 +549,6 @@ const styles = getStyles(theme, isCrtTheme);
       const data = await getPrintStations();
 
       setPrintStations(data);
-
-      if (!staffPrintStation && data.length > 0) {
-        const stationFromUrl = data.find(
-          (station) => station.slug === PRINT_STATION
-        );
-
-        if (stationFromUrl) {
-          setStaffPrintStation(stationFromUrl.slug);
-        } else {
-          setStaffPrintStation(data[0].slug);
-        }
-      }
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -3161,7 +3143,6 @@ const styles = getStyles(theme, isCrtTheme);
                   <li>Pending jobs</li>
                   <li>Completed jobs</li>
                   <li>Failed jobs</li>
-                  <li>Reassigned jobs</li>
                 </ul>
               </div>
             </div>
@@ -4006,16 +3987,6 @@ const styles = getStyles(theme, isCrtTheme);
 
                   <button
                     style={styles.staffActionButton}
-                    onClick={() => {
-                      setSelectedPrintJob(job);
-                      setShowReassignModal(true);
-                    }}
-                  >
-                    Redirect
-                  </button>
-
-                  <button
-                    style={styles.staffActionButton}
                     onClick={() => handleReprintJob(job)}
                   >
                     Reprint Badge
@@ -4033,107 +4004,6 @@ const styles = getStyles(theme, isCrtTheme);
             ))}
           </div>
         </div>
-
-        {showReassignModal && selectedPrintJob && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              zIndex: 1000,
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: theme.surface,
-                color: theme.textPrimary,
-                borderRadius: "16px",
-                padding: "24px",
-                width: "600px",
-                maxWidth: "90%",
-              }}
-            >
-              <h2>Redirect Print Job</h2>
-
-              <p>
-                <strong>Visitor:</strong> {selectedPrintJob.visitor_name}
-              </p>
-
-              <p>
-                <strong>Current Station:</strong>{" "}
-                {selectedPrintJob.station_name || "Unknown"}
-              </p>
-
-              <select
-                style={styles.input}
-                value={reassignStationId}
-                onChange={(e) =>
-                  setReassignStationId(Number(e.target.value))
-                }
-              >
-                <option value="">
-                  Select Destination Station
-                </option>
-
-                {printStations
-                  .filter((station) => station.enabled)
-                  .map((station) => (
-                    <option
-                      key={station.id}
-                      value={station.id}
-                    >
-                      {station.name}
-                    </option>
-                  ))}
-              </select>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  marginTop: "20px",
-                }}
-              >
-                <button
-                  style={styles.staffActionButton}
-                  onClick={async () => {
-                    try {
-                      await reassignPrintJob(
-                        selectedPrintJob.id,
-                        reassignStationId
-                      );
-
-                      await loadPrintJobs();
-
-                      setShowReassignModal(false);
-                      setSelectedPrintJob(null);
-                      setReassignStationId("");
-                    } catch (error) {
-                      console.error(error);
-                      alert(error.message);
-                    }
-                  }}
-                >
-                  Redirect
-                </button>
-
-                <button
-                  style={styles.staffActionButton}
-                  onClick={() => {
-                    setShowReassignModal(false);
-                    setSelectedPrintJob(null);
-                    setReassignStationId("");
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
     );
@@ -5292,23 +5162,6 @@ const styles = getStyles(theme, isCrtTheme);
           </div>
           {/* End Dashboard Summary Cards */}
 
-          Your Print Station:{" "}
-          <select
-            style={styles.input}
-            value={staffPrintStation}
-            onChange={(e) => setStaffPrintStation(e.target.value)}
-          >
-            {printStations
-              .filter((station) => station.enabled)
-              .map((station) => (
-                <option
-                  key={station.id}
-                  value={station.slug}
-                >
-                  {station.name}
-                </option>
-              ))}
-          </select>
           <p
             style={{
               marginTop: "6px",
@@ -5316,8 +5169,8 @@ const styles = getStyles(theme, isCrtTheme);
               color: theme.textSecondary,
             }}
           >
-            Station automatically selected from URL:
-            <strong> /{staffPrintStation}</strong>
+            Print station (from URL):
+            <strong> /{PRINT_STATION}</strong>
           </p>
 
           {/* Dashboard Buttons */}
