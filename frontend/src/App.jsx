@@ -95,6 +95,7 @@ export default function App() {
   const [screen, setScreen] = useState("home");
   const [screenHistory, setScreenHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryRef = useRef("");
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
@@ -208,6 +209,11 @@ export default function App() {
       return;
     }
 
+    // Refresh immediately on entering the dashboard so newly checked-in
+    // visitors and stats appear without waiting for the interval tick.
+    loadActiveVisitors();
+    loadDashboardStats();
+
     const interval = setInterval(() => {
       loadActiveVisitors();
       loadDashboardStats();
@@ -276,6 +282,12 @@ export default function App() {
       populateReturningVisitor(selectedVisitor);
     }, [selectedVisitor]);
 
+  // Keep a ref copy of the search query so screen-change refreshes can read
+  // the latest value without adding it as an effect dependency.
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
   // Load data when screens change
   useEffect(() => {
     if (screen === "users") {
@@ -302,6 +314,20 @@ export default function App() {
 
     if (screen === "settings") {
       loadSettings();
+    }
+
+    if (screen === "visitor-search" && searchQueryRef.current.trim()) {
+      // Re-run the last search on entry so check-in status stays current.
+      // Reads the query from a ref so this effect keeps only [screen] as a dep.
+      (async () => {
+        try {
+          const results = await searchVisitors(searchQueryRef.current);
+          setSearchResults(results);
+          setHasSearched(true);
+        } catch (error) {
+          console.error(error);
+        }
+      })();
     }
 
   }, [screen]);
@@ -436,6 +462,10 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   async function handleVisitorSearch() {
+    if (!searchQuery.trim()) {
+      return;
+    }
+
     try {
       const results = await searchVisitors(searchQuery);
 
@@ -614,6 +644,9 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   function navigateTo(screenName) {
+    // Release the camera stream so it does not stay active after leaving a
+    // photo-capture screen (e.g. returning check-in).
+    closeCamera();
     setScreenHistory((previous) => [...previous, screen]);
     setScreen(screenName);
   }
@@ -1118,7 +1151,10 @@ const styles = getStyles(theme, isCrtTheme);
       setBusy(true);
 
       await generateBadge(checkedInVisitorId);
-      await createPrintJob(checkedInVisitorId);
+      await reprintBadge(
+        checkedInVisitorId,
+        reprintStationId ? Number(reprintStationId) : null
+      );
 
       alert("Badge sent to printer.");
 
@@ -1363,8 +1399,9 @@ const styles = getStyles(theme, isCrtTheme);
     }
 
     await generateBadge(visitor.id);
-    await createPrintJob(
-      visitor.id
+    await reprintBadge(
+      visitor.id,
+      reprintStationId ? Number(reprintStationId) : null
     );
 
     const updatedVisitor = await getVisitor(visitor.id);
@@ -5215,11 +5252,13 @@ const styles = getStyles(theme, isCrtTheme);
 
           <div
             style={{
-              marginTop: "6px",
+              marginTop: "24px",
+              marginBottom: "24px",
               fontSize: "0.85rem",
               color: theme.textSecondary,
               display: "flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: "8px",
               flexWrap: "wrap",
             }}

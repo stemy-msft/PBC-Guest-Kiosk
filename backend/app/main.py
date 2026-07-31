@@ -2797,6 +2797,9 @@ def search_visitors(
     results = (
         db.query(Visitor)
         .filter(
+            # Exclude synthetic System records (QR label / printer test
+            # placeholders) so they never surface in staff visitor searches.
+            Visitor.visitor_type != "System",
             or_(
                 func.lower(Visitor.first_name).like(search_term),
                 func.lower(Visitor.last_name).like(search_term),
@@ -2806,7 +2809,7 @@ def search_visitors(
                 func.lower(Visitor.host_name).like(search_term),
                 func.lower(Visitor.vehicle_plate).like(search_term),
                 func.lower(Visitor.notes).like(search_term),
-            )
+            ),
         )
         .order_by(Visitor.check_in_time.desc())
         .all()
@@ -3015,7 +3018,11 @@ def create_print_job(
     if visitor.print_station_id is None:
         raise HTTPException(
             status_code=400,
-            detail="This visitor has no check-in station; cannot print.",
+            detail=(
+                "This visitor doesn't have a check-in station yet, so the "
+                "badge can't be printed. Please choose a print station and "
+                "try again."
+            ),
         )
 
     print_station = (
@@ -3097,7 +3104,11 @@ def reprint_badge(
         if visitor.print_station_id is None:
             raise HTTPException(
                 status_code=400,
-                detail="This visitor has no check-in station; cannot print.",
+                detail=(
+                    "This visitor doesn't have a check-in station yet, so the "
+                    "badge can't be printed. Please choose a print station and "
+                    "try again."
+                ),
             )
 
         print_station = (
