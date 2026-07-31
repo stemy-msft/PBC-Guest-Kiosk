@@ -185,11 +185,14 @@ def download_badge(job_id):
 
     return badge_path
 
-def mark_job_status(job_id, status, error_message=None):
+def mark_job_status(job_id, status, error_message=None, claim_generation=None):
     payload = {
         "status": status,
         "printer_name": PRINTER_NAME,
         "error_message": error_message,
+        # Batch 5D: the generation we claimed with is mandatory server-side so a
+        # stale update from a recovered/reclaimed lease is rejected (409).
+        "claim_generation": claim_generation,
     }
 
     response = requests.put(
@@ -274,6 +277,8 @@ def process_job(job):
         print(f"Print job {job_id} was already claimed")
         return
 
+    claim_generation = claimed_job.get("claim_generation")
+
     try:
         print(f"Downloading badge for print job {job_id}")
         badge_path = download_badge(job_id)
@@ -282,13 +287,18 @@ def process_job(job):
         print_badge(badge_path)
 
         print(f"Marking print job {job_id} completed")
-        mark_job_status(job_id, "Completed")
+        mark_job_status(job_id, "Completed", claim_generation=claim_generation)
 
     except Exception as error:
         print(f"Print job {job_id} failed: {error}")
 
         try:
-            mark_job_status(job_id, "Failed", str(error))
+            mark_job_status(
+                job_id,
+                "Failed",
+                str(error),
+                claim_generation=claim_generation,
+            )
         except Exception as status_error:
             print(f"Failed to update failed status for print job {job_id}: {status_error}")
 

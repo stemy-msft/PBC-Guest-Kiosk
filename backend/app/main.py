@@ -1,5 +1,5 @@
 from urllib3 import request
-from .auth import (create_access_token, generate_agent_token, get_current_user, hash_agent_verifier, require_admin, verify_password, hash_password)
+from .auth import (create_access_token, generate_agent_token, get_current_user, hash_agent_verifier, require_admin, require_print_agent, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine
 from .dependencies import get_db
@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw, ImageFont
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 from uuid import uuid4
 from .schemas import (
@@ -29,6 +29,7 @@ from .schemas import (
     PrintAgentRegisterResponse,
     PrintAgentResponse,
     PrintJobCreate,
+    PrintJobPublicStatusResponse,
     PrintJobReassign,
     PrintJobResponse,
     PrintJobStatusUpdate,
@@ -58,6 +59,74 @@ import qrcode
 
 
 Base.metadata.create_all(bind=engine)
+
+
+# ---------------------------------------------------------------------------
+# Batch 5D - Step 0: inline, idempotent startup migration for print_jobs.
+#
+# SQLAlchemy's create_all() only CREATES missing tables; it never ALTERs an
+# existing table to add new columns. Deployments that already have a
+# print_jobs table therefore need the Batch 5D ownership/lease/recovery
+# columns added in place. This is a deliberately tiny, dependency-free
+# migration (NO Alembic) that:
+#   * inspects the live schema with PRAGMA table_info(print_jobs),
+#   * adds only the columns that are missing (safe to run repeatedly),
+#   * never drops or rewrites data.
+#
+# Equivalent raw SQL for manual execution (run each only if the column is
+# absent; SQLite has no "ADD COLUMN IF NOT EXISTS"):
+#
+#   ALTER TABLE print_jobs ADD COLUMN claimed_by_agent_id INTEGER;
+#   ALTER TABLE print_jobs ADD COLUMN claim_expires_at DATETIME;
+#   ALTER TABLE print_jobs ADD COLUMN claim_generation INTEGER NOT NULL DEFAULT 0;
+#   ALTER TABLE print_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+#   ALTER TABLE print_jobs ADD COLUMN last_recovery_reason VARCHAR;
+# ---------------------------------------------------------------------------
+
+_PRINT_JOBS_MIGRATION_COLUMNS = (
+    ("claimed_by_agent_id", "INTEGER"),
+    ("claim_expires_at", "DATETIME"),
+    ("claim_generation", "INTEGER NOT NULL DEFAULT 0"),
+    ("attempt_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("last_recovery_reason", "VARCHAR"),
+)
+
+
+def _apply_print_jobs_ownership_migration(bind) -> list[str]:
+    """Add any missing Batch 5D print_jobs columns. Returns applied column names."""
+    applied: list[str] = []
+    with bind.begin() as conn:
+        existing = {
+            row[1]  # PRAGMA table_info: (cid, name, type, notnull, dflt, pk)
+            for row in conn.exec_driver_sql(
+                "PRAGMA table_info(print_jobs)"
+            ).fetchall()
+        }
+
+        # If the table does not exist yet (fresh DB before create_all created
+        # it), PRAGMA returns no rows and create_all already built the full
+        # schema from the model, so there is nothing to backfill.
+        if not existing:
+            return applied
+
+        for column_name, column_def in _PRINT_JOBS_MIGRATION_COLUMNS:
+            if column_name in existing:
+                continue
+            conn.exec_driver_sql(
+                f"ALTER TABLE print_jobs ADD COLUMN {column_name} {column_def}"
+            )
+            applied.append(column_name)
+
+    return applied
+
+
+_migrated_columns = _apply_print_jobs_ownership_migration(engine)
+if _migrated_columns:
+    logging.getLogger("guest-kiosk").warning(
+        "Batch 5D migration added print_jobs columns: %s",
+        ", ".join(_migrated_columns),
+    )
+
 
 with Session(engine) as db:
     create_default_admin(db)
@@ -174,6 +243,23 @@ VALID_PRINT_JOB_STATUSES = {
     "Failed",
 }
 
+# Batch 5D ownership/recovery tuning (see remediation plan §20.5 / §21.7).
+#   * A claim leases a job for PRINT_JOB_LEASE_SECONDS. The agent prints
+#     synchronously well within this window (agent print timeout is ~60s).
+#   * last_seen must be stale by PRINT_AGENT_STALE_SECONDS as a corroborating
+#     liveness guard before an expired lease is recovered - this avoids
+#     reclaiming a job from an agent that is merely mid-print.
+#   * A job is retried at most PRINT_JOB_MAX_ATTEMPTS times before it is failed.
+PRINT_JOB_LEASE_SECONDS = 120
+PRINT_AGENT_STALE_SECONDS = 300
+PRINT_JOB_MAX_ATTEMPTS = 3
+
+# Statuses considered "in flight" (owned by an agent) and thus eligible for
+# lease-expiry recovery. "Claimed" is reserved for a future explicit
+# claimed->printing split (Batch 5E); today a claim moves straight to
+# "Printing" to preserve existing dashboard/stat semantics.
+IN_FLIGHT_PRINT_STATUSES = ("Printing",)
+
 # Defs
 
 def audit(
@@ -184,6 +270,100 @@ def audit(
     audit_logger.info(
         f"User='{user}' Action='{action}' Details='{details}'"
     )
+
+
+def recover_stale_print_jobs(
+    db: Session,
+    *,
+    station_id: int | None = None,
+    job_id: int | None = None,
+) -> int:
+    """Request-driven recovery of jobs whose owning agent has gone away.
+
+    A job is recovered only when BOTH its lease has expired AND its owning
+    agent's last_seen is stale (or the agent is gone). Recovered jobs are
+    requeued to Pending - or Failed once the retry cap is reached - and their
+    claim_generation is bumped so any late status update from the dead lease is
+    rejected as stale. Returns the number of jobs acted upon.
+
+    This is intentionally conservative: the exclusive, race-free part of the
+    workflow is the atomic claim; recovery merely releases abandoned leases so
+    a fresh atomic claim can succeed.
+    """
+    now = datetime.utcnow()
+
+    query = db.query(PrintJob).filter(
+        PrintJob.status.in_(IN_FLIGHT_PRINT_STATUSES),
+        PrintJob.claim_expires_at.isnot(None),
+        PrintJob.claim_expires_at < now,
+    )
+
+    if station_id is not None:
+        query = query.filter(PrintJob.print_station_id == station_id)
+
+    if job_id is not None:
+        query = query.filter(PrintJob.id == job_id)
+
+    recovered = 0
+
+    for job in query.all():
+        owning_agent = None
+        if job.claimed_by_agent_id is not None:
+            owning_agent = (
+                db.query(PrintAgent)
+                .filter(PrintAgent.id == job.claimed_by_agent_id)
+                .first()
+            )
+
+        agent_is_stale = (
+            owning_agent is None
+            or owning_agent.last_seen is None
+            or (now - owning_agent.last_seen).total_seconds()
+            > PRINT_AGENT_STALE_SECONDS
+        )
+
+        if not agent_is_stale:
+            # Lease expired but the agent is still alive and heartbeating -
+            # most likely a slow print. Leave it to complete on its own.
+            continue
+
+        attempts = job.attempt_count or 0
+        job.claim_generation = (job.claim_generation or 0) + 1
+        job.claimed_by_agent_id = None
+        job.claim_expires_at = None
+
+        if attempts >= PRINT_JOB_MAX_ATTEMPTS:
+            job.status = "Failed"
+            job.last_recovery_reason = (
+                f"Retry cap reached after {attempts} attempt(s); "
+                "owning agent unresponsive"
+            )
+            job.error_message = (
+                job.error_message
+                or "Print agent became unresponsive; retry limit reached"
+            )
+        else:
+            job.status = "Pending"
+            job.printer_name = None
+            job.claimed_time = None
+            job.last_recovery_reason = (
+                f"Lease expired and agent unresponsive after "
+                f"{attempts} attempt(s); requeued"
+            )
+
+        audit(
+            "print-recovery",
+            "RECOVER_PRINT_JOB",
+            f"JobID={job.id}, NewStatus={job.status}, "
+            f"Attempts={attempts}, Generation={job.claim_generation}",
+        )
+        recovered += 1
+
+    if recovered:
+        db.commit()
+
+    return recovered
+
 
 def build_station_checkin_url(station: PrintStation) -> str:
     settings = load_system_settings()
@@ -1154,6 +1334,7 @@ def revoke_print_agent_credentials(
 def get_print_job_badge_image(
     print_job_id: int,
     db: Session = Depends(get_db),
+    agent: PrintAgent = Depends(require_print_agent),
 ):
     print_job = (
         db.query(PrintJob)
@@ -1165,6 +1346,15 @@ def get_print_job_badge_image(
         raise HTTPException(
             status_code=404,
             detail="Print job not found",
+        )
+
+    # An agent may only fetch badge images for its own station.
+    if agent.print_station_id is not None and (
+        print_job.print_station_id != agent.print_station_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Print job belongs to a different station",
         )
 
     badge_path = Path(print_job.badge_path)
@@ -1180,6 +1370,45 @@ def get_print_job_badge_image(
         media_type="image/png",
         filename=f"print-job-{print_job_id}.png",
     )
+
+@app.get(
+    "/api/print-jobs/{print_job_id}/status",
+    response_model=PrintJobPublicStatusResponse,
+)
+def get_print_job_public_status(
+    print_job_id: int,
+    db: Session = Depends(get_db),
+):
+    """Anonymous, minimized job-status projection for the guest screen.
+
+    Returns only the normalized status and friendly station name. It never
+    exposes printer name, agent identity/IP, lease timing, or generation, per
+    the ratified visitor-facing identity boundary (§21.10). Recovery is not run
+    here: this is a read-only visitor view, and the agent-facing endpoints own
+    lease recovery.
+    """
+    print_job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == print_job_id)
+        .first()
+    )
+
+    if print_job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print job not found",
+        )
+
+    station = (
+        db.query(PrintStation)
+        .filter(PrintStation.id == print_job.print_station_id)
+        .first()
+    )
+
+    return {
+        "status": print_job.status,
+        "station_name": station.name if station else None,
+    }
 
 @app.get("/api/print-jobs")
 def get_print_jobs(
@@ -1239,32 +1468,34 @@ def get_print_jobs(
 
 @app.get("/api/print-jobs/pending", response_model=list[PrintJobResponse])
 def get_pending_print_jobs(
-    station: str | None = None,
     db: Session = Depends(get_db),
+    agent: PrintAgent = Depends(require_print_agent),
 ):
-    query = db.query(PrintJob).filter(
-        PrintJob.status == "Pending"
-    )
+    # Station is always derived from the authenticated agent.
+    if agent.print_station_id is None:
+        return []
 
-    if station:
-        print_station = (
-            db.query(PrintStation)
-            .filter(
-                PrintStation.slug == station,
-                PrintStation.enabled == True,
-            )
-            .first()
-        )
+    station_id = agent.print_station_id
 
-        if print_station is None:
-            return []
+    # Optional backstop cleanup; correctness does not depend on this sweep.
+    recover_stale_print_jobs(db, station_id=station_id)
 
-        query = query.filter(
-            PrintJob.print_station_id == print_station.id
-        )
+    now = datetime.utcnow()
 
+    # Surface claimable jobs: Pending, plus Printing jobs whose lease lapsed so
+    # a restarted/replacement agent can atomically re-claim them without waiting
+    # for the recovery sweep.
     return (
-        query
+        db.query(PrintJob)
+        .filter(
+            PrintJob.print_station_id == station_id,
+            or_(
+                PrintJob.status == "Pending",
+                (PrintJob.status == "Printing")
+                & (PrintJob.claim_expires_at.isnot(None))
+                & (PrintJob.claim_expires_at < now),
+            ),
+        )
         .order_by(PrintJob.created_time.asc())
         .all()
     )
@@ -1274,6 +1505,7 @@ def claim_print_job(
     print_job_id: int,
     printer_name: str = "Unspecified Printer",
     db: Session = Depends(get_db),
+    agent: PrintAgent = Depends(require_print_agent),
 ):
     print_job = (
         db.query(PrintJob)
@@ -1287,17 +1519,59 @@ def claim_print_job(
             detail="Print job not found",
         )
 
-    if print_job.status != "Pending":
+    # Cross-station protection: an agent may only claim jobs for its station.
+    if agent.print_station_id is None or (
+        print_job.print_station_id != agent.print_station_id
+    ):
         raise HTTPException(
-            status_code=409,
-            detail=f"Job already {print_job.status}",
+            status_code=403,
+            detail="Print job belongs to a different station",
         )
 
-    print_job.status = "Printing"
-    print_job.printer_name = printer_name
-    print_job.claimed_time = datetime.now()
+    # Optional backstop cleanup (retry cap -> Failed for fully stale jobs).
+    recover_stale_print_jobs(db, job_id=print_job_id)
+
+    now = datetime.utcnow()
+    lease_expires = now + timedelta(seconds=PRINT_JOB_LEASE_SECONDS)
+
+    # Self-correcting atomic claim: a job is claimable when it is Pending, or a
+    # Printing job whose lease has lapsed (NULL or past expiry). This single
+    # conditional UPDATE is the exclusive, race-free gate - concurrent claimants
+    # see 0 rows and get 409. Bumping claim_generation invalidates any late
+    # status update from the prior lease. Correctness lives here, not in the
+    # recovery sweep.
+    updated = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.id == print_job_id,
+            PrintJob.status.in_(("Pending", "Printing")),
+            or_(
+                PrintJob.claim_expires_at.is_(None),
+                PrintJob.claim_expires_at < now,
+            ),
+        )
+        .update(
+            {
+                PrintJob.status: "Printing",
+                PrintJob.printer_name: printer_name,
+                PrintJob.claimed_time: now,
+                PrintJob.claimed_by_agent_id: agent.id,
+                PrintJob.claim_expires_at: lease_expires,
+                PrintJob.claim_generation: PrintJob.claim_generation + 1,
+                PrintJob.attempt_count: PrintJob.attempt_count + 1,
+            },
+            synchronize_session=False,
+        )
+    )
 
     db.commit()
+
+    if updated == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Print job is not available to claim",
+        )
+
     db.refresh(print_job)
 
     return print_job
@@ -1393,6 +1667,7 @@ def update_print_job_status(
     print_job_id: int,
     status_update: PrintJobStatusUpdate,
     db: Session = Depends(get_db),
+    agent: PrintAgent = Depends(require_print_agent),
 ):
     print_job = (
         db.query(PrintJob)
@@ -1406,6 +1681,37 @@ def update_print_job_status(
             detail="Print job not found",
         )
 
+    # An agent may only report on jobs it owns / that belong to its station.
+    if (
+        print_job.claimed_by_agent_id is not None
+        and print_job.claimed_by_agent_id != agent.id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Print job is owned by another agent",
+        )
+    if (
+        agent.print_station_id is not None
+        and print_job.print_station_id != agent.print_station_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Print job belongs to a different station",
+        )
+
+    # claim_generation is a mandatory invariant on every status report and is
+    # the sole authority for stale-lease rejection, independent of job.status.
+    if status_update.claim_generation is None:
+        raise HTTPException(
+            status_code=400,
+            detail="claim_generation is required",
+        )
+    if status_update.claim_generation != print_job.claim_generation:
+        raise HTTPException(
+            status_code=409,
+            detail="Stale print job update rejected",
+        )
+
     normalized_status = status_update.status.strip().title()
 
     if normalized_status not in VALID_PRINT_JOB_STATUSES:
@@ -1417,6 +1723,10 @@ def update_print_job_status(
     print_job.status = normalized_status
     print_job.printer_name = status_update.printer_name or print_job.printer_name
     print_job.error_message = status_update.error_message
+
+    # Terminal states release the lease so recovery never touches them again.
+    if normalized_status in ("Completed", "Failed"):
+        print_job.claim_expires_at = None
 
     if normalized_status == "Completed":
         print_job.completed_time = datetime.now()
@@ -1726,6 +2036,7 @@ def print_station_heartbeat(
     request: PrintStationHeartbeat,
     http_request: Request,
     db: Session = Depends(get_db),
+    agent: PrintAgent = Depends(require_print_agent),
 ):
     station = (
         db.query(PrintStation)

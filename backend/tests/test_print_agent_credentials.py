@@ -197,10 +197,10 @@ def test_disabled_agent_is_not_authenticated(client, db_session):
     assert auth.resolve_print_agent_credential(token, db_session) is None
 
 
-# --- 11: grace period ----------------------------------------------------------
+# --- 11: strict enforcement (grace removed) -----------------------------------
 
-def test_existing_tokenless_agent_still_reaches_print_endpoints(client, db_session):
-    # An agent deployed before Batch 5C: enabled, no credential row.
+def test_tokenless_agent_is_rejected(client, db_session):
+    # Grace mode has been removed: print-agent endpoints require a token.
     station = PrintStation(name="Front Desk", slug="front-desk", enabled=True)
     db_session.add(station)
     db_session.add(
@@ -208,10 +208,9 @@ def test_existing_tokenless_agent_still_reaches_print_endpoints(client, db_sessi
     )
     db_session.commit()
 
-    # No Authorization header at all — must still be served during the grace period.
-    response = client.get("/api/print-jobs/pending?station=front-desk")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    # No Authorization header at all — must now be rejected.
+    response = client.get("/api/print-jobs/pending")
+    assert response.status_code == 401
 
 
 # --- 12: unrelated workflows unchanged ----------------------------------------

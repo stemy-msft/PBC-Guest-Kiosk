@@ -137,21 +137,20 @@ def test_public_kiosk_create_visitor_reachable_without_auth(client):
 
 
 # 10
-def test_print_agent_endpoints_reachable_under_current_trust_model(client):
-    """Guards against ACCIDENTAL breakage of the print-agent workflow.
+def test_print_agent_endpoints_require_a_token(client):
+    """Print-agent endpoints are strictly authenticated (grace mode removed).
 
-    NOTE: This asserts the CURRENT "network-trusted" behavior only. It does NOT
-    endorse leaving these endpoints unauthenticated; hardening the kiosk/agent
-    trust boundary is tracked separately (remediation plan Batch 5 / F-004).
+    Batch 5D closed the network-trust window: every print-agent endpoint now
+    requires a valid agent token, so unauthenticated requests are rejected with
+    401 before any resource lookup happens.
     """
     pending = client.get("/api/print-jobs/pending")
-    assert pending.status_code == 200
-    assert isinstance(pending.json(), list)
+    assert pending.status_code == 401
 
-    # A missing badge image returns 404 (endpoint reachable) rather than 401
-    # (which would indicate an auth wall was added in front of the agent path).
+    # Even a missing badge image is gated by auth now: 401 (not 404), proving
+    # the auth wall sits in front of the agent path.
     badge = client.get("/api/print-jobs/999999/badge-image")
-    assert badge.status_code == 404
+    assert badge.status_code == 401
 
 
 # --- Batch 3: server-side authentication (F-003) + authorization (F-002). ---

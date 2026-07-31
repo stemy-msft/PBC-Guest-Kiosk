@@ -62,6 +62,27 @@ class PrintJob(Base):
     claimed_time = Column(DateTime, nullable=True)
     completed_time = Column(DateTime, nullable=True)
 
+    # Batch 5D: ownership + lease + recovery bookkeeping.
+    #   claimed_by_agent_id  - the print agent that currently owns the lease.
+    #   claim_expires_at     - UTC lease expiry; past this the claim is stale.
+    #   claim_generation     - bumped on every claim/requeue so a late update
+    #                          from a prior lease can be detected and rejected.
+    #   attempt_count        - number of claim attempts (bounded retry cap).
+    #   last_recovery_reason - human-readable reason of the last auto-recovery.
+    claimed_by_agent_id = Column(
+        Integer,
+        ForeignKey("print_agents.id"),
+        nullable=True,
+    )
+    claim_expires_at = Column(DateTime, nullable=True)
+    claim_generation = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    attempt_count = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_recovery_reason = Column(String, nullable=True)
+
     visitor = relationship("Visitor", back_populates="print_jobs")
 
 class User(Base):

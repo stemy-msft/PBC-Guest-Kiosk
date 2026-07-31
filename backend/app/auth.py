@@ -233,3 +233,69 @@ def get_optional_print_agent(
     db.commit()
 
     return agent
+
+
+def require_print_agent(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Strict print-agent auth dependency (Batch 5D final hardening).
+
+    A single deterministic model with no grace fallback:
+
+    * No ``Authorization: Bearer`` header -> ``401`` (a token is required).
+    * A well-formed token whose credential is missing/revoked/verifier-mismatch,
+      or whose owning agent no longer exists -> ``401`` (invalid token).
+    * A valid token whose owning agent is DISABLED -> ``403``.
+    * A valid, unrevoked token for an ENABLED agent -> returns the ``PrintAgent``
+      and stamps ``last_used_at``.
+    """
+    header = request.headers.get("Authorization", "")
+
+    if not header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Print-agent token required"
+        )
+
+    token = header[len("bearer ") :].strip()
+
+    if not token or "." not in token:
+        raise HTTPException(status_code=401, detail="Invalid print-agent token")
+
+    selector, verifier = token.split(".", 1)
+
+    if not selector or not verifier:
+        raise HTTPException(status_code=401, detail="Invalid print-agent token")
+
+    credential = (
+        db.query(PrintAgentCredential)
+        .filter(
+            PrintAgentCredential.token_selector == selector,
+            PrintAgentCredential.revoked.is_(False),
+        )
+        .first()
+    )
+
+    if credential is None or not _verify_agent_verifier(
+        verifier, credential.token_hash
+    ):
+        raise HTTPException(status_code=401, detail="Invalid print-agent token")
+
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == credential.print_agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(status_code=401, detail="Invalid print-agent token")
+
+    if not agent.enabled:
+        raise HTTPException(
+            status_code=403, detail="Print agent is disabled"
+        )
+
+    credential.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return agent

@@ -94,15 +94,32 @@ class PrintJobResponse(BaseModel):
     completed_time: Optional[datetime] = None
     station_name: Optional[str] = None
     station_slug: Optional[str] = None
+    claim_generation: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+class PrintJobPublicStatusResponse(BaseModel):
+    """Batch 5D visitor-facing status projection.
+
+    Deliberately minimal per the ratified visitor-facing identity boundary
+    (§21.10): it exposes only the normalized job status and the friendly
+    station name. It never leaks printer name, agent identity/IP, lease
+    timing, generation, or any internal transition state.
+    """
+
+    status: str
+    station_name: Optional[str] = None
 
 
 class PrintJobStatusUpdate(BaseModel):
     status: str
     printer_name: Optional[str] = None
     error_message: Optional[str] = None
+    # Optional at the schema level only for typing convenience; the server
+    # requires it on every status update (400 if missing, 409 on mismatch).
+    claim_generation: Optional[int] = None
 
 
 class PrintStationCreate(BaseModel):
