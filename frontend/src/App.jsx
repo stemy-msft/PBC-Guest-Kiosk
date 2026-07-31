@@ -5,6 +5,7 @@ import {
 } from "./lib/viewModel";
 import {
   assignPrintAgent,
+  deletePrintAgent,
   bulkCheckout,
   changePassword,
   checkInAgain,
@@ -12,6 +13,7 @@ import {
   clearCompletedPrintJobs,
   clearFailedPrintJobs,
   createPrintJob,
+  reprintBadge,
   createPrintStation,
   createUser,
   createVisitor,
@@ -96,6 +98,8 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [assignStationId, setAssignStationId] = useState("");
+  const [reprintStationId, setReprintStationId] = useState("");
   const [selectedCamera, setSelectedCamera] = useState("");
   const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
   const [showPrintStationModal, setShowPrintStationModal] = useState(false);
@@ -549,6 +553,26 @@ const styles = getStyles(theme, isCrtTheme);
       const data = await getPrintStations();
 
       setPrintStations(data);
+
+      // Default the staff reprint destination to this device's URL station
+      // the first time stations load; leave any explicit choice untouched.
+      // The slug is derived locally (not from a component-scope value) so this
+      // loader stays a stable reference for the effects that call it.
+      setReprintStationId((current) => {
+        if (current) {
+          return current;
+        }
+        const segments = window.location.pathname
+          .split("/")
+          .filter(Boolean);
+        const slug = segments.length
+          ? decodeURIComponent(segments[segments.length - 1])
+          : "";
+        const urlStation = data.find(
+          (station) => station.slug === slug
+        );
+        return urlStation ? String(urlStation.id) : current;
+      });
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -1038,7 +1062,10 @@ const styles = getStyles(theme, isCrtTheme);
 
   async function handleReprintJob(job) {
     try {
-      await createPrintJob(job.visitor_id);
+      await reprintBadge(
+        job.visitor_id,
+        reprintStationId ? Number(reprintStationId) : null
+      );
       await loadPrintJobs();
     } catch (error) {
       console.error(error);
@@ -1048,7 +1075,10 @@ const styles = getStyles(theme, isCrtTheme);
 
   async function handleReprintBadge(visitorId) {
     try {
-      await createPrintJob(visitorId);
+      await reprintBadge(
+        visitorId,
+        reprintStationId ? Number(reprintStationId) : null
+      );
 
       setSuccessTitle("Badge Reprint Queued");
       setSuccessMessage(
@@ -1176,6 +1206,25 @@ const styles = getStyles(theme, isCrtTheme);
 
     try {
       await setPrintAgentEnabled(agent.id, enabled);
+      await loadPrintAgents();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
+  async function handleDeleteAgent(agent) {
+    const confirmed = window.confirm(
+      `Remove print agent '${agent.hostname}'? This deletes its registration ` +
+        `and credentials. Any badges it was printing return to the queue.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deletePrintAgent(agent.id);
       await loadPrintAgents();
     } catch (error) {
       console.error(error);
@@ -3638,6 +3687,9 @@ const styles = getStyles(theme, isCrtTheme);
                     style={styles.staffActionButton}
                     onClick={() => {
                       setSelectedAgent(agent);
+                      setAssignStationId(
+                        agent.station_id ? String(agent.station_id) : ""
+                      );
                       setShowAssignAgentModal(true);
                     }}
                   >
@@ -3650,108 +3702,107 @@ const styles = getStyles(theme, isCrtTheme);
                   >
                     Print Test Label
                   </button>
-                                    
 
-                  {showAssignAgentModal && selectedAgent && (
-                    <div
-                      style={{
-                        position: "fixed",
-                        inset: 0,
-                        backgroundColor: "rgba(0,0,0,0.5)",
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        zIndex: 1000,
-                      }}
-                    >
-                      <div
-                        style={{
-                          backgroundColor: theme.surface,
-                          color: theme.textPrimary,
-                          borderRadius: "16px",
-                          padding: "24px",
-                          width: "600px",
-                          maxWidth: "90%",
-                        }}
-                      >
-                        <h2>
-                          Assign Station - {selectedAgent.hostname}
-                        </h2>
-
-                        <select
-                          id="agent-station-select"
-                          style={styles.input}
-                          defaultValue={selectedAgent.station_id || ""}
-                        >
-                          <option value="">
-                            Unassigned
-                          </option>
-
-                          {printStations.map((station) => (
-                            <option
-                              key={station.id}
-                              value={station.id}
-                            >
-                              {station.name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "12px",
-                            marginTop: "20px",
-                          }}
-                        >
-                          <button
-                            style={styles.staffActionButton}
-                            onClick={async () => {
-                              try {
-                                const stationId =
-                                  document.getElementById(
-                                    "agent-station-select"
-                                  ).value;
-
-                                await assignPrintAgent(
-                                  selectedAgent.id,
-                                  stationId
-                                    ? Number(stationId)
-                                    : null
-                                );
-
-                                await loadPrintAgents();
-
-                                setShowAssignAgentModal(false);
-                                setSelectedAgent(null);
-                              } catch (error) {
-                                console.error(error);
-                                alert(error.message);
-                              }
-                            }}
-                          >
-                            Save
-                          </button>
-
-                          <button
-                            style={styles.staffActionButton}
-                            onClick={() => {
-                              setShowAssignAgentModal(false);
-                              setSelectedAgent(null);
-                            }}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <button
+                    style={{
+                      ...styles.staffActionButton,
+                      backgroundColor: "#8B1E1E",
+                    }}
+                    onClick={() => handleDeleteAgent(agent)}
+                  >
+                    Remove Agent
+                  </button>
 
                 </div>
 
               </div>
             ))}
           </div>
+
+          {showAssignAgentModal && selectedAgent && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0,0,0,0.5)",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                zIndex: 1000,
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: theme.surface,
+                  color: theme.textPrimary,
+                  borderRadius: "16px",
+                  padding: "24px",
+                  width: "600px",
+                  maxWidth: "90%",
+                }}
+              >
+                <h2>Assign Station - {selectedAgent.hostname}</h2>
+
+                <select
+                  style={styles.input}
+                  value={assignStationId}
+                  onChange={(event) =>
+                    setAssignStationId(event.target.value)
+                  }
+                >
+                  <option value="">Unassigned</option>
+
+                  {printStations.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.name}
+                    </option>
+                  ))}
+                </select>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    marginTop: "20px",
+                  }}
+                >
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={async () => {
+                      try {
+                        await assignPrintAgent(
+                          selectedAgent.id,
+                          assignStationId
+                            ? Number(assignStationId)
+                            : null
+                        );
+
+                        await loadPrintAgents();
+
+                        setShowAssignAgentModal(false);
+                        setSelectedAgent(null);
+                      } catch (error) {
+                        console.error(error);
+                        alert(error.message);
+                      }
+                    }}
+                  >
+                    Save
+                  </button>
+
+                  <button
+                    style={styles.staffActionButton}
+                    onClick={() => {
+                      setShowAssignAgentModal(false);
+                      setSelectedAgent(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -5162,16 +5213,36 @@ const styles = getStyles(theme, isCrtTheme);
           </div>
           {/* End Dashboard Summary Cards */}
 
-          <p
+          <div
             style={{
               marginTop: "6px",
               fontSize: "0.85rem",
               color: theme.textSecondary,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
             }}
           >
-            Print station (from URL):
-            <strong> /{PRINT_STATION}</strong>
-          </p>
+            <label htmlFor="staff-reprint-station">
+              My print station (reprint destination):
+            </label>
+            <select
+              id="staff-reprint-station"
+              style={{ ...styles.input, width: "auto", margin: 0 }}
+              value={reprintStationId}
+              onChange={(event) =>
+                setReprintStationId(event.target.value)
+              }
+            >
+              <option value="">Visitor&apos;s check-in station</option>
+              {printStations.map((station) => (
+                <option key={station.id} value={station.id}>
+                  {station.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Dashboard Buttons */}
           <div style={styles.dashboardButtonRow}>

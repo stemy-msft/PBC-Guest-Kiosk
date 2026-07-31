@@ -1969,5 +1969,26 @@ outside `URL → visitor → job → agent`: no query-param routing, no default 
 overrides, and no reassign or equivalent secondary-assignment mechanism. `test_no_reassign_route_exists`
 and the strict `test_station_routing.py` suite guard against regression.
 
+### 22.6 Sanctioned carve-out — authenticated staff reprint (Milestone 5.9 bug-fix)
+
+The kiosk **check-in** print path (`POST /api/visitors/{id}/print`) remains fully locked and
+anonymous: its station is derived solely from `visitor.print_station_id`, with no caller override.
+
+A staff **reprint** is a separate, explicitly authenticated action and is *not* part of the locked
+check-in chain. `POST /api/visitors/{id}/reprint` (requires `get_current_user`) lets a signed-in
+staff member direct a reprint to a chosen **enabled** destination station — for example, to reprint
+a badge where the guest actually is. It:
+
+- **requires authentication** (never an anonymous kiosk path);
+- **creates a NEW `Pending` job** at the chosen station and **never reassigns** an existing job;
+- **never mutates** the visitor's captured `print_station_id` (the check-in single-source-of-truth
+  is untouched); and
+- **fails closed** — an unknown or disabled destination returns `400`; when no `station_id` is
+  supplied it falls back to the visitor's check-in station under the same rules as check-in print.
+
+Because it neither overrides nor reassigns the locked chain, this carve-out does not weaken §22.
+It is guarded by `test_reprint_destination.py`, and `test_no_reassign_route_exists` /
+`test_station_routing.py` continue to prove the check-in path is unchanged.
+
 **Suggested commit message:**
 `Milestone 5.9: station-routing architecture lock — single deterministic URL→visitor→job→agent path; regression-prevention audit (docs)`

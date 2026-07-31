@@ -38,6 +38,7 @@ from .schemas import (
     PrintStationUpdate,
     ReportingSummaryResponse,
     ReturningVisitorCheckInRequest,
+    ReprintBadgeRequest,
     SettingsResponse,
     SettingsUpdate,
     UserCreate,
@@ -1257,6 +1258,68 @@ def set_print_agent_enabled(
         "station_name": assigned_station.name if assigned_station else None,
         "station_slug": assigned_station.slug if assigned_station else None,
     }
+
+@app.delete("/api/print-agents/{agent_id}")
+def delete_print_agent(
+    agent_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove a print agent registration (admin-only).
+
+    Deletes the agent row and any credentials issued to it. Print jobs that
+    were leased by this agent are released back into the queue (their claim is
+    cleared); the jobs themselves are never deleted. This lets an operator
+    remove a stale or duplicate agent (for example, a re-imaged Raspberry Pi
+    that registered under a new agent key).
+    """
+    agent = (
+        db.query(PrintAgent)
+        .filter(PrintAgent.id == agent_id)
+        .first()
+    )
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Print agent not found",
+        )
+
+    hostname = agent.hostname
+
+    # Release any jobs this agent had leased so they return to the queue for
+    # another agent to claim. The jobs are not deleted.
+    (
+        db.query(PrintJob)
+        .filter(PrintJob.claimed_by_agent_id == agent.id)
+        .update(
+            {
+                PrintJob.claimed_by_agent_id: None,
+                PrintJob.claim_expires_at: None,
+            },
+            synchronize_session=False,
+        )
+    )
+
+    # Remove issued credentials explicitly. SQLite does not enforce the
+    # ON DELETE CASCADE unless PRAGMA foreign_keys is enabled, so we delete
+    # them here rather than relying on the database.
+    (
+        db.query(PrintAgentCredential)
+        .filter(PrintAgentCredential.print_agent_id == agent.id)
+        .delete(synchronize_session=False)
+    )
+
+    db.delete(agent)
+    db.commit()
+
+    audit(
+        admin.username,
+        "DELETE_PRINT_AGENT",
+        f"AgentID={agent_id}, Hostname={hostname}",
+    )
+
+    return {"detail": "Print agent deleted"}
 
 @app.post(
     "/api/print-agents/{agent_id}/credentials/rotate",
@@ -2981,6 +3044,94 @@ def create_print_job(
     db.add(print_job)
     db.commit()
     db.refresh(print_job)
+
+    return print_job
+
+@app.post("/api/visitors/{visitor_id}/reprint", response_model=PrintJobResponse)
+def reprint_badge(
+    visitor_id: int,
+    request: ReprintBadgeRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Staff-initiated badge reprint (authenticated).
+
+    Unlike the kiosk check-in print path (POST .../print) — which derives the
+    station SOLELY from the visitor's check-in station and never accepts a
+    caller-supplied station — a reprint is an authenticated staff action that
+    may target a DIFFERENT destination station chosen by the operator (for
+    example, to reprint a badge at the location where the guest actually is).
+    This does not weaken check-in routing: it always creates a NEW print job
+    (never reassigns an existing one) and requires a valid, enabled destination
+    station. If no destination is supplied it falls back to the visitor's
+    check-in station using the same fail-closed rules as check-in printing.
+    """
+    visitor = (
+        db.query(Visitor)
+        .filter(Visitor.id == visitor_id)
+        .first()
+    )
+
+    if visitor is None:
+        raise HTTPException(status_code=404, detail="Visitor not found")
+
+    if not visitor.badge_path:
+        raise HTTPException(status_code=400, detail="Badge generated first")
+
+    if request.station_id is not None:
+        print_station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.id == request.station_id,
+                PrintStation.enabled == True,
+            )
+            .first()
+        )
+
+        if print_station is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected print station not found or unavailable.",
+            )
+    else:
+        if visitor.print_station_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This visitor has no check-in station; cannot print.",
+            )
+
+        print_station = (
+            db.query(PrintStation)
+            .filter(
+                PrintStation.id == visitor.print_station_id,
+                PrintStation.enabled == True,
+            )
+            .first()
+        )
+
+        if print_station is None:
+            raise HTTPException(
+                status_code=400,
+                detail="The visitor's check-in station is unavailable (maintenance).",
+            )
+
+    print_job = PrintJob(
+        visitor_id=visitor.id,
+        print_station_id=print_station.id,
+        badge_path=visitor.badge_path,
+        status="Pending",
+        created_time=datetime.now(),
+    )
+
+    db.add(print_job)
+    db.commit()
+    db.refresh(print_job)
+
+    audit(
+        current_user,
+        "REPRINT_BADGE",
+        f"VisitorID={visitor.id}, Station={print_station.slug}",
+    )
 
     return print_job
 

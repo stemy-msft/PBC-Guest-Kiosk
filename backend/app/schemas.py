@@ -43,6 +43,9 @@ class PasswordResetRequest(BaseModel):
 class PrintAgentAssign(BaseModel):
     station_id: int | None = None
 
+class ReprintBadgeRequest(BaseModel):
+    station_id: int | None = None
+
 class PrintAgentRegister(BaseModel):
     agent_key: str | None = None
     hostname: str

@@ -104,6 +104,29 @@ export async function createPrintJob(visitorId) {
   return await response.json();
 }
 
+export async function reprintBadge(visitorId, stationId) {
+  // Staff-initiated reprint. Unlike check-in printing, staff may direct the
+  // reprint to a chosen destination station (or null to use the visitor's
+  // check-in station). Authenticated endpoint.
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/visitors/${visitorId}/reprint`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        station_id: stationId ?? null,
+      }),
+    }
+  );
+
+  return await handleResponse(response, "Failed to queue badge reprint");
+}
+
 export async function checkInAgain(visitorId, data) {
   const token = localStorage.getItem("access_token");
   const response = await fetch(
@@ -445,6 +468,22 @@ export async function assignPrintAgent(agentId, stationId) {
   );
 
   return await handleResponse(response, "Failed to assign print agent");
+}
+
+export async function deletePrintAgent(agentId) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-agents/${agentId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return await handleResponse(response, "Failed to delete print agent");
 }
 
 export async function setPrintAgentEnabled(agentId, enabled) {
