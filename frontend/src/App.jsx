@@ -101,6 +101,8 @@ export default function App() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [assignStationId, setAssignStationId] = useState("");
   const [reprintStationId, setReprintStationId] = useState("");
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
+  const [detailSnapshot, setDetailSnapshot] = useState("");
   const [selectedCamera, setSelectedCamera] = useState("");
   const [showAssignAgentModal, setShowAssignAgentModal] = useState(false);
   const [showPrintStationModal, setShowPrintStationModal] = useState(false);
@@ -485,6 +487,7 @@ const styles = getStyles(theme, isCrtTheme);
       setVisitCount(historyData.visit_count);
       setVisitorHistory(historyData.history);
       setSelectedVisitor(visitor);
+      setDetailSnapshot(visitorFingerprint(visitor));
 
       setScreen("visitor-detail");
     } catch (error) {
@@ -651,6 +654,55 @@ const styles = getStyles(theme, isCrtTheme);
     setScreen(screenName);
   }
 
+  // Fingerprint of the editable visitor fields, used to detect unsaved edits.
+  function visitorFingerprint(visitor) {
+    if (!visitor) {
+      return "";
+    }
+    return JSON.stringify({
+      first_name: visitor.first_name ?? "",
+      last_name: visitor.last_name ?? "",
+      visitor_type: visitor.visitor_type ?? "",
+      purpose: visitor.purpose ?? "",
+      host_name: visitor.host_name ?? "",
+      vehicle_plate: visitor.vehicle_plate ?? "",
+      phone: visitor.phone ?? "",
+      email: visitor.email ?? "",
+      notes: visitor.notes ?? "",
+      expected_departure_time: visitor.expected_departure_time ?? null,
+    });
+  }
+
+  function handleLeaveVisitorDetail() {
+    if (
+      detailSnapshot &&
+      visitorFingerprint(selectedVisitor) !== detailSnapshot
+    ) {
+      const leave = window.confirm(
+        "You have unsaved changes to this visitor. Leave without saving? " +
+          'Click Cancel to stay, then use "Update Visitor Details" to save.'
+      );
+      if (!leave) {
+        return;
+      }
+    }
+    navigateTo("staff");
+  }
+
+  function handleLeaveReturningCheckin() {
+    if (returningPhotoFile && !checkedInVisitorId) {
+      const leave = window.confirm(
+        "You retook the visitor photo but haven't checked them in yet, so " +
+          "the new photo won't be saved. Leave anyway? Click Cancel to stay " +
+          "and check the visitor in."
+      );
+      if (!leave) {
+        return;
+      }
+    }
+    navigateTo("visitor-detail");
+  }
+
   async function handleUpdateVisitorDetails() {
     try {
       setBusy(true);
@@ -672,6 +724,7 @@ const styles = getStyles(theme, isCrtTheme);
 
       setSelectedVisitor(updatedVisitor);
       populateReturningVisitor(updatedVisitor);
+      setDetailSnapshot(visitorFingerprint(updatedVisitor));
 
       alert("Visitor updated successfully.");
     } catch (error) {
@@ -1113,16 +1166,7 @@ const styles = getStyles(theme, isCrtTheme);
         reprintStationId ? Number(reprintStationId) : null
       );
 
-      setSuccessTitle("Badge Reprint Queued");
-      setSuccessMessage(
-        "A new visitor badge has been sent to the printer."
-      );
-
-      setScreen("success");
-
-      setTimeout(() => {
-        setScreen("staff");
-      }, 3000);
+      alert("A new visitor badge has been sent to the printer.");
     } catch (error) {
       console.error(error);
       alert(error.message);
@@ -4768,7 +4812,7 @@ const styles = getStyles(theme, isCrtTheme);
 
         <button
           style={styles.backButton}
-          onClick={() => navigateTo("visitor-detail")}
+          onClick={handleLeaveReturningCheckin}
         >
           ← Visitor Details
         </button>
@@ -5529,11 +5573,27 @@ const styles = getStyles(theme, isCrtTheme);
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Password</label>
             <input
-              type="password"
+              type={showStaffPassword ? "text" : "password"}
               style={styles.input}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
+            <button
+              type="button"
+              onClick={() => setShowStaffPassword((shown) => !shown)}
+              style={{
+                marginTop: "6px",
+                background: "none",
+                border: "none",
+                color: theme.textSecondary,
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                padding: 0,
+                textDecoration: "underline",
+              }}
+            >
+              {showStaffPassword ? "Hide password" : "Show password"}
+            </button>
           </div>
 
           <button
@@ -5972,7 +6032,7 @@ const styles = getStyles(theme, isCrtTheme);
 
         <button
           style={styles.backButton}
-          onClick={() => navigateTo("staff")}
+          onClick={handleLeaveVisitorDetail}
         >
           ← Staff Dashboard
         </button>
