@@ -119,8 +119,15 @@ def test_active_visitors_requires_auth_and_succeeds_with_valid_token(client, see
 
 
 # 9
-def test_public_kiosk_create_visitor_reachable_without_auth(client):
+def test_public_kiosk_create_visitor_reachable_without_auth(client, db_session):
     """The kiosk check-in endpoint must remain usable without a staff JWT."""
+    from app.models import PrintStation
+
+    db_session.add(
+        PrintStation(name="Front Desk", slug="front-desk", enabled=True)
+    )
+    db_session.commit()
+
     resp = client.post(
         "/api/visitors",
         json={
@@ -130,6 +137,7 @@ def test_public_kiosk_create_visitor_reachable_without_auth(client):
             "purpose": "Visit",
             "host_type": "Staff",
             "host_name": "Someone",
+            "station": "front-desk",
         },
     )
     assert resp.status_code == 200

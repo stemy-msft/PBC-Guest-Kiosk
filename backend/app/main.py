@@ -6,7 +6,7 @@ from .dependencies import get_db
 from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta
-from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, Request
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,7 +28,6 @@ from .schemas import (
     PrintAgentRegister,
     PrintAgentRegisterResponse,
     PrintAgentResponse,
-    PrintJobCreate,
     PrintJobPublicStatusResponse,
     PrintJobReassign,
     PrintJobResponse,
@@ -415,7 +414,9 @@ def build_station_checkin_url(station: PrintStation) -> str:
 
     base_url = base_url.rstrip("/")
 
-    return f"{base_url}?station={station.slug}"
+    # Station context lives in the URL path only (never a query param), so the
+    # kiosk/QR URL is the single source of truth the SPA reads.
+    return f"{base_url}/{station.slug}"
 
 def find_font():
     candidates = [
@@ -2516,20 +2517,29 @@ def create_visitor(
     visitor: VisitorCreate,
     db: Session = Depends(get_db),
 ):
-    # Capture the check-in station (from the kiosk/QR URL) when it resolves to
-    # an enabled station, so downstream printing is server-authoritative.
-    resolved_station_id = None
-    if visitor.station:
-        station = (
-            db.query(PrintStation)
-            .filter(
-                PrintStation.slug == visitor.station,
-                PrintStation.enabled == True,
-            )
-            .first()
+    # The check-in station comes from the kiosk/QR URL path and is the single
+    # source of truth for where this visitor's badge prints. It must resolve to
+    # an enabled station or check-in fails closed - never default or ignore.
+    slug = (visitor.station or "").strip()
+    if not slug:
+        raise HTTPException(
+            status_code=400,
+            detail="A check-in station is required.",
         )
-        if station is not None:
-            resolved_station_id = station.id
+
+    station = (
+        db.query(PrintStation)
+        .filter(
+            PrintStation.slug == slug,
+            PrintStation.enabled == True,
+        )
+        .first()
+    )
+    if station is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Unknown or unavailable check-in station.",
+        )
 
     db_visitor = Visitor(
         first_name=visitor.first_name,
@@ -2546,7 +2556,7 @@ def create_visitor(
         expected_departure_time=visitor.expected_departure_time,
         check_in_time=datetime.now(),
         badge_printed=False,
-        print_station_id=resolved_station_id,
+        print_station_id=station.id,
     )
 
     db.add(db_visitor)
@@ -2621,11 +2631,6 @@ def checkin_again(
             ),
         )
 
-    print("request.first_name =", request.first_name)
-    print("request.last_name =", request.last_name)
-    print("original.first_name =", original.first_name)
-    print("original.last_name =", original.last_name)
-
     new_visitor = Visitor(
         first_name=request.first_name,
         last_name=request.last_name,
@@ -2650,10 +2655,10 @@ def checkin_again(
         check_out_method=None,
         badge_printed=False,
         badge_printed_time=None,
+        # Deterministic carry-over: a returning visit prints at the same station
+        # the original visit was captured at. No client override.
+        print_station_id=original.print_station_id,
 )
-
-    print("new_visitor.first_name =", new_visitor.first_name)
-    print("new_visitor.last_name =", new_visitor.last_name)
 
     db.add(new_visitor)
     db.commit()
@@ -2969,7 +2974,6 @@ def generate_badge(
 @app.post("/api/visitors/{visitor_id}/print", response_model=PrintJobResponse)
 def create_print_job(
     visitor_id: int,
-    request: PrintJobCreate | None = Body(default=None),
     db: Session = Depends(get_db),
 ):
     visitor = (
@@ -2990,34 +2994,28 @@ def create_print_job(
             detail="Badge generated first",
         )
 
-    # Server-authoritative station resolution: the station captured on the
-    # visitor at check-in wins. A caller-supplied slug is only a fallback for
-    # visitors with no persisted station (e.g. staff-initiated prints).
-    print_station = None
-    if visitor.print_station_id is not None:
-        print_station = (
-            db.query(PrintStation)
-            .filter(
-                PrintStation.id == visitor.print_station_id,
-                PrintStation.enabled == True,
-            )
-            .first()
+    # Station is derived ONLY from the station captured on the visitor at
+    # check-in. There is no caller-supplied fallback: if the visitor has no
+    # station (or it is disabled), printing fails closed and no job is created.
+    if visitor.print_station_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This visitor has no check-in station; cannot print.",
         )
 
-    if print_station is None and request is not None and request.station:
-        print_station = (
-            db.query(PrintStation)
-            .filter(
-                PrintStation.slug == request.station,
-                PrintStation.enabled == True,
-            )
-            .first()
+    print_station = (
+        db.query(PrintStation)
+        .filter(
+            PrintStation.id == visitor.print_station_id,
+            PrintStation.enabled == True,
         )
+        .first()
+    )
 
     if print_station is None:
         raise HTTPException(
             status_code=400,
-            detail="Print station is required or is in maintenance mode.",
+            detail="The visitor's check-in station is unavailable (maintenance).",
         )
 
     print_job = PrintJob(

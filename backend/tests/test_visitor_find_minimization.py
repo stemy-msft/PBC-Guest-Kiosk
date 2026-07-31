@@ -9,7 +9,18 @@ unchanged, and that authenticated staff endpoints still return the full
 """
 
 from app import auth
+from app.models import PrintStation
 from app.schemas import VisitorCheckoutLocatorResponse, VisitorResponse
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _seed_checkin_station(db_session):
+    """Every check-in requires a valid station (strict fail-closed model)."""
+    db_session.add(
+        PrintStation(name="Front Desk", slug="front-desk", enabled=True)
+    )
+    db_session.commit()
 
 
 # Exactly the fields the kiosk check-out screen reads.
@@ -56,6 +67,7 @@ def _create_visitor(client, first_name, last_name, visitor_type="Guest"):
             "host_name": "Pat Host",
             "vehicle_plate": "ABC123",
             "notes": "sensitive note",
+            "station": "front-desk",
         },
     )
     assert resp.status_code == 200, resp.text

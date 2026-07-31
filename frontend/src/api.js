@@ -85,17 +85,13 @@ export async function generateBadge(visitorId) {
   return await handleResponse(response, "Failed to generate badge");
 }
 
-export async function createPrintJob(visitorId, station) {
+export async function createPrintJob(visitorId) {
+  // The print station is derived server-side from the visitor's captured
+  // check-in station. The client never supplies or overrides it.
   const response = await fetch(
     `${API_BASE}/api/visitors/${visitorId}/print`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        station,
-      }),
     }
   );
 

@@ -1056,7 +1056,7 @@ const styles = getStyles(theme, isCrtTheme);
 
   async function handleReprintJob(job) {
     try {
-      await createPrintJob(job.visitor_id, staffPrintStation);
+      await createPrintJob(job.visitor_id);
       await loadPrintJobs();
     } catch (error) {
       console.error(error);
@@ -1066,7 +1066,7 @@ const styles = getStyles(theme, isCrtTheme);
 
   async function handleReprintBadge(visitorId) {
     try {
-      await createPrintJob(visitorId, staffPrintStation);
+      await createPrintJob(visitorId);
 
       setSuccessTitle("Badge Reprint Queued");
       setSuccessMessage(
@@ -1106,7 +1106,7 @@ const styles = getStyles(theme, isCrtTheme);
       setBusy(true);
 
       await generateBadge(checkedInVisitorId);
-      await createPrintJob(checkedInVisitorId, staffPrintStation);
+      await createPrintJob(checkedInVisitorId);
 
       alert("Badge sent to printer.");
 
@@ -1145,15 +1145,18 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   async function queuePrintJob(visitorId) {
-    return await createPrintJob(visitorId, staffPrintStation);
+    return await createPrintJob(visitorId);
   }  
 
   function getPrintStationSlug() {
-    const params = new URLSearchParams(window.location.search);
+    // Station context is read from the URL path only (never a query param):
+    // the last path segment of the kiosk/QR URL is the station slug. An
+    // unresolved station must fail closed rather than route to a default.
+    const segments = window.location.pathname.split("/").filter(Boolean);
 
-    // No silent default: an unresolved station must fail closed rather than
-    // route a badge to an arbitrary station.
-    return params.get("station") || "";
+    return segments.length
+      ? decodeURIComponent(segments[segments.length - 1])
+      : "";
   }
 
   async function handlePrintAgentTest(agent) {
@@ -1257,7 +1260,7 @@ const styles = getStyles(theme, isCrtTheme);
       }
 
       console.log("Creating print job...");
-      await createPrintJob(visitor.id, PRINT_STATION);
+      await createPrintJob(visitor.id);
 
       setSuccessTitle("Check-In Complete");
       setSuccessMessage(
@@ -1330,8 +1333,7 @@ const styles = getStyles(theme, isCrtTheme);
 
     await generateBadge(visitor.id);
     await createPrintJob(
-      visitor.id, 
-      staffPrintStation
+      visitor.id
     );
 
     const updatedVisitor = await getVisitor(visitor.id);
@@ -1383,7 +1385,7 @@ const styles = getStyles(theme, isCrtTheme);
 
       await generateBadge(visitor.id);
 
-      await createPrintJob(visitor.id, staffPrintStation);
+      await createPrintJob(visitor.id);
 
       setSuccessTitle("Visitor Checked In");
       setSuccessMessage(
@@ -5315,7 +5317,7 @@ const styles = getStyles(theme, isCrtTheme);
             }}
           >
             Station automatically selected from URL:
-            <strong> ?station={staffPrintStation}</strong>
+            <strong> /{staffPrintStation}</strong>
           </p>
 
           {/* Dashboard Buttons */}

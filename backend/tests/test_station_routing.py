@@ -1,10 +1,14 @@
-"""Station-routing: the check-in station (kiosk/QR URL) is captured on the
-visitor and is the server-authoritative source for where the badge prints.
+"""Station-routing (strict / fail-closed model).
 
-Chain under test: URL -> visitor.print_station_id -> print job.print_station_id.
-A caller-supplied slug is only a fallback for visitors with no persisted
-station (e.g. staff-initiated prints); it can never override a visitor's
-captured station.
+The station is captured from the kiosk/QR URL path at check-in and persisted on
+the visitor. It is the SINGLE source of truth for where the badge prints. There
+is exactly one path:
+
+    URL path -> visitor.print_station_id -> print job.print_station_id -> agent
+
+There is no query-param routing, no request-body station, and no fallback or
+default. If the station cannot be resolved from the URL the request fails closed
+(HTTP 400) and no visitor / print job is created.
 """
 
 from datetime import datetime
@@ -21,6 +25,7 @@ def _station(db, slug, name=None, enabled=True):
 
 
 def _check_in(client, station=None):
+    """POST a check-in; return the raw response so callers assert status."""
     payload = {
         "first_name": "Ada",
         "last_name": "Lovelace",
@@ -31,9 +36,7 @@ def _check_in(client, station=None):
     }
     if station is not None:
         payload["station"] = station
-    response = client.post("/api/visitors", json=payload)
-    assert response.status_code == 200, response.text
-    return response.json()
+    return client.post("/api/visitors", json=payload)
 
 
 def _give_badge(db, visitor_id):
@@ -48,81 +51,103 @@ def _job(db, job_id):
 
 def test_checkin_persists_station_and_print_derives_from_visitor(client, db_session):
     station = _station(db_session, "dining-hall")
-    visitor = _check_in(client, station="dining-hall")
+    response = _check_in(client, station="dining-hall")
+    assert response.status_code == 200, response.text
+    visitor = response.json()
     assert visitor["print_station_id"] == station.id
 
     _give_badge(db_session, visitor["id"])
 
-    # Even with an empty body station, the job routes via the visitor's station.
-    response = client.post(
-        f"/api/visitors/{visitor['id']}/print", json={"station": ""}
-    )
-    assert response.status_code == 200, response.text
-    assert _job(db_session, response.json()["id"]).print_station_id == station.id
+    # No body is sent: the job routes solely via the visitor's station.
+    printed = client.post(f"/api/visitors/{visitor['id']}/print")
+    assert printed.status_code == 200, printed.text
+    assert _job(db_session, printed.json()["id"]).print_station_id == station.id
 
 
-def test_print_prefers_visitor_station_over_conflicting_body(client, db_session):
+def test_print_uses_visitor_station_and_ignores_client_input(client, db_session):
     checkin_station = _station(db_session, "dining-hall")
     _station(db_session, "front-desk")
-    visitor = _check_in(client, station="dining-hall")
+    visitor = _check_in(client, station="dining-hall").json()
 
     _give_badge(db_session, visitor["id"])
 
-    # A body slug pointing at a different station must NOT override the
-    # station the visitor checked in at.
-    response = client.post(
+    # Even a body attempting to name another station cannot override or supply
+    # the station; it is ignored and the visitor's captured station is used.
+    printed = client.post(
         f"/api/visitors/{visitor['id']}/print", json={"station": "front-desk"}
     )
-    assert response.status_code == 200, response.text
-    assert _job(db_session, response.json()["id"]).print_station_id == checkin_station.id
-
-
-def test_print_falls_back_to_body_when_visitor_has_no_station(client, db_session):
-    station = _station(db_session, "front-desk")
-    visitor = _check_in(client)  # no station captured (e.g. staff-created)
-    assert visitor["print_station_id"] is None
-
-    _give_badge(db_session, visitor["id"])
-
-    response = client.post(
-        f"/api/visitors/{visitor['id']}/print", json={"station": "front-desk"}
+    assert printed.status_code == 200, printed.text
+    assert (
+        _job(db_session, printed.json()["id"]).print_station_id
+        == checkin_station.id
     )
-    assert response.status_code == 200, response.text
-    assert _job(db_session, response.json()["id"]).print_station_id == station.id
 
 
-def test_print_requires_a_station_somewhere(client, db_session):
-    visitor = _check_in(client)  # no station
-    _give_badge(db_session, visitor["id"])
-
-    response = client.post(
-        f"/api/visitors/{visitor['id']}/print", json={"station": ""}
-    )
+def test_checkin_without_station_fails_closed(client, db_session):
+    response = _check_in(client)  # no station in URL / payload
     assert response.status_code == 400
+    assert db_session.query(Visitor).count() == 0
 
 
-def test_checkin_with_unknown_station_is_not_persisted(client, db_session):
-    visitor = _check_in(client, station="does-not-exist")
-    assert visitor["print_station_id"] is None
+def test_checkin_with_unknown_station_fails_closed(client, db_session):
+    response = _check_in(client, station="does-not-exist")
+    assert response.status_code == 400
+    assert db_session.query(Visitor).count() == 0
 
 
-def test_checkin_with_disabled_station_is_not_persisted(client, db_session):
+def test_checkin_with_disabled_station_fails_closed(client, db_session):
     _station(db_session, "maint", enabled=False)
-    visitor = _check_in(client, station="maint")
-    assert visitor["print_station_id"] is None
+    response = _check_in(client, station="maint")
+    assert response.status_code == 400
+    assert db_session.query(Visitor).count() == 0
+
+
+def test_print_fails_closed_when_visitor_has_no_station(client, db_session):
+    # A visitor with no captured station (e.g. legacy row) can never print.
+    visitor = Visitor(
+        first_name="Grace",
+        last_name="Hopper",
+        visitor_type="Guest",
+        purpose="Visit",
+        host_type="Staff",
+        host_name="Someone",
+        check_in_time=datetime.now(),
+        badge_printed=False,
+        badge_path="/tmp/does-not-exist-badge.png",
+        print_station_id=None,
+    )
+    db_session.add(visitor)
+    db_session.commit()
+    db_session.refresh(visitor)
+
+    response = client.post(f"/api/visitors/{visitor.id}/print")
+    assert response.status_code == 400
+    assert db_session.query(PrintJob).count() == 0
+
+
+def test_print_fails_closed_when_station_disabled_after_checkin(client, db_session):
+    station = _station(db_session, "dining-hall")
+    visitor = _check_in(client, station="dining-hall").json()
+    _give_badge(db_session, visitor["id"])
+
+    # Station goes into maintenance after check-in.
+    station.enabled = False
+    db_session.commit()
+
+    response = client.post(f"/api/visitors/{visitor['id']}/print")
+    assert response.status_code == 400
+    assert db_session.query(PrintJob).count() == 0
 
 
 def test_mobile_qr_routes_badge_to_scanned_station(client, db_session):
     # Two locations; the visitor scans the QR at station B on their phone.
     _station(db_session, "dining-hall")
     scanned = _station(db_session, "rv-area")
-    visitor = _check_in(client, station="rv-area")
+    visitor = _check_in(client, station="rv-area").json()
     assert visitor["print_station_id"] == scanned.id
 
     _give_badge(db_session, visitor["id"])
 
-    response = client.post(
-        f"/api/visitors/{visitor['id']}/print", json={"station": "rv-area"}
-    )
-    assert response.status_code == 200, response.text
-    assert _job(db_session, response.json()["id"]).print_station_id == scanned.id
+    printed = client.post(f"/api/visitors/{visitor['id']}/print")
+    assert printed.status_code == 200, printed.text
+    assert _job(db_session, printed.json()["id"]).print_station_id == scanned.id
