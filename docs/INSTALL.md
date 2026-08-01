@@ -159,6 +159,37 @@ Behavior:
 
 ---
 
+# Upload / Image Limits
+
+User-supplied images (visitor photos, theme logos) are bounded to protect the
+server. Every upload is decoded through Pillow and re-encoded, which strips any
+embedded payload. All variables are optional; defaults are applied if unset.
+
+```env
+# Visitor photos (public kiosk check-in)
+PBC_MAX_PHOTO_UPLOAD_BYTES=5242880   # 5 MB; larger uploads are rejected (413)
+PBC_MAX_PHOTO_DIMENSION=1600         # longest edge in px; larger is downscaled
+
+# Theme logos (admin only)
+PBC_MAX_LOGO_UPLOAD_BYTES=2097152    # 2 MB
+PBC_MAX_LOGO_DIMENSION=512
+
+# Global decoded-pixel ceiling (decompression-bomb guard)
+PBC_MAX_IMAGE_PIXELS=24000000
+```
+
+Behavior:
+
+- The byte cap is enforced **before** decoding, so oversized files are
+  rejected without spending memory on them.
+- Files that are not valid images (wrong type, truncated, or that exceed
+  `PBC_MAX_IMAGE_PIXELS` when decoded) are rejected with HTTP 400.
+- Stored filenames are derived from server-side identifiers (the integer
+  visitor id, or a sanitized theme id), so the uploaded filename cannot direct
+  where the file is written.
+
+---
+
 # System Settings File
 
 The backend also loads site-specific runtime settings (theme, check-in URL,

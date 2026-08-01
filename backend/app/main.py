@@ -248,6 +248,10 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# F-010: cap total decoded pixels so a small but highly-compressed "bomb" image
+# cannot exhaust memory. Applies to every Image.open().load() in the app.
+Image.MAX_IMAGE_PIXELS = int(os.getenv("PBC_MAX_IMAGE_PIXELS", str(24_000_000)))
+
 # LOG_DIR = BASE_DIR / "logs"
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -1103,8 +1107,13 @@ LOGO_OVERLAY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
-MAX_LOGO_DIM = 512  # px (longest edge after downscale)
+MAX_LOGO_BYTES = int(os.getenv("PBC_MAX_LOGO_UPLOAD_BYTES", str(2 * 1024 * 1024)))  # 2 MB
+MAX_LOGO_DIM = int(os.getenv("PBC_MAX_LOGO_DIMENSION", "512"))  # px (longest edge)
+
+# Visitor photo upload bounds (F-010). Kiosk photos come from a webcam/phone, so
+# the cap is a little larger than the logo but still bounded.
+MAX_PHOTO_BYTES = int(os.getenv("PBC_MAX_PHOTO_UPLOAD_BYTES", str(5 * 1024 * 1024)))  # 5 MB
+MAX_PHOTO_DIM = int(os.getenv("PBC_MAX_PHOTO_DIMENSION", "1600"))  # px (longest edge)
 
 
 def load_user_themes() -> dict:
@@ -3959,11 +3968,32 @@ def upload_photo(
             detail="Visitor not found",
         )
 
-    file_path = PHOTO_DIR / f"{visitor_id}.jpg"
+    # Enforce the size cap before decoding (reject if larger than the limit).
+    data = file.file.read(MAX_PHOTO_BYTES + 1)
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Photo must be {MAX_PHOTO_BYTES // (1024 * 1024)} MB or smaller.",
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
 
-    image = Image.open(file.file)
+    # Decode through Pillow; this rejects non-raster/mangled files and, via the
+    # global MAX_IMAGE_PIXELS cap, guards against decompression bombs.
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported or invalid image. Use a PNG, JPEG, or WebP file.",
+        )
+
+    # Re-encode to a bounded JPEG (drops embedded payloads/metadata, caps size).
+    file_path = PHOTO_DIR / f"{visitor_id}.jpg"
     image = ImageOps.exif_transpose(image)
     image = image.convert("RGB")
+    image.thumbnail((MAX_PHOTO_DIM, MAX_PHOTO_DIM))
     image.save(file_path, format="JPEG", quality=92)
 
     visitor.photo_path = f"uploads/photos/{visitor_id}.jpg"
