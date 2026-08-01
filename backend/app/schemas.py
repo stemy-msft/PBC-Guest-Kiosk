@@ -50,6 +50,11 @@ class DashboardStatsResponse(BaseModel):
     jobs_requiring_attention: int = 0
     recovering_jobs: int = 0
 
+    # M9.2 Batch 3 station awareness (additive; defaults keep older
+    # callers/tests working).
+    stations_needing_attention: int = 0
+    stations_with_stuck_jobs: int = 0
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -192,6 +197,22 @@ class PrintStationResponse(BaseModel):
     # Defaults keep endpoints that return a bare station (create/update) valid.
     status: str = "offline"
     online: bool = False
+
+    # M9.2 Batch 3: per-station queue signals and operator-facing diagnostics.
+    # All default so create/update (which return a bare station) stay valid.
+    pending_jobs: int = 0
+    printing_jobs: int = 0
+    failed_jobs: int = 0
+    recovering_jobs: int = 0
+    jobs_requiring_attention: int = 0
+    oldest_pending_age_seconds: Optional[float] = None
+
+    operational_state: str = "healthy"
+    attention: bool = False
+    attention_level: str = "none"
+    attention_reasons: list[str] = []
+    recommended_action: Optional[str] = None
+    summary: str = "Healthy"
 
     class Config:
         from_attributes = True

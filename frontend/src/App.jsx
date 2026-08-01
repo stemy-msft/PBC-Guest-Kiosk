@@ -5434,6 +5434,102 @@ const styles = getStyles(theme, isCrtTheme);
                     {onlineAgents.length}
                   </div>
 
+                  {(() => {
+                    const level = station.attention_level || "none";
+                    const badgeColor =
+                      level === "critical"
+                        ? theme.danger
+                        : level === "warn"
+                          ? "#b8860b"
+                          : theme.success;
+                    const stateLabel = (
+                      station.operational_state || "healthy"
+                    ).toUpperCase();
+                    return (
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          marginBottom: "10px",
+                          padding: "12px",
+                          borderRadius: "12px",
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor:
+                            level === "none" ? "transparent" : `${badgeColor}14`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <span
+                            style={{
+                              backgroundColor: badgeColor,
+                              color: "#fff",
+                              borderRadius: "999px",
+                              padding: "2px 10px",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              letterSpacing: "0.5px",
+                            }}
+                          >
+                            {stateLabel}
+                          </span>
+                          <span style={{ fontSize: "13px", color: theme.text }}>
+                            {station.summary}
+                          </span>
+                        </div>
+
+                        {(station.pending_jobs > 0 ||
+                          station.failed_jobs > 0) && (
+                          <div
+                            style={{
+                              marginTop: "8px",
+                              fontSize: "12px",
+                              color: theme.textSecondary,
+                            }}
+                          >
+                            {station.pending_jobs} pending ·{" "}
+                            {station.failed_jobs} failed
+                          </div>
+                        )}
+
+                        {station.attention &&
+                          Array.isArray(station.attention_reasons) &&
+                          station.attention_reasons.length > 0 && (
+                            <ul
+                              style={{
+                                margin: "8px 0 0 0",
+                                paddingLeft: "18px",
+                                fontSize: "12px",
+                                color: theme.text,
+                              }}
+                            >
+                              {station.attention_reasons.map((reason, idx) => (
+                                <li key={idx}>{reason}</li>
+                              ))}
+                            </ul>
+                          )}
+
+                        {station.recommended_action && (
+                          <div
+                            style={{
+                              marginTop: "8px",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              color: badgeColor,
+                            }}
+                          >
+                            → {station.recommended_action}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <div
                     style={{
                       display: "flex",
@@ -6529,6 +6625,49 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
           </div>
           {/* End queue diagnostics cards */}
+
+          {/* M9.2 Batch 3: station awareness cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(2, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2
+                style={{
+                  color:
+                    (dashboardStats?.stations_needing_attention ?? 0) > 0
+                      ? theme.danger
+                      : theme.textSecondary,
+                }}
+              >
+                {dashboardStats?.stations_needing_attention ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Stations</h2>
+              <p>Needing Attention</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2
+                style={{
+                  color:
+                    (dashboardStats?.stations_with_stuck_jobs ?? 0) > 0
+                      ? theme.danger
+                      : theme.textSecondary,
+                }}
+              >
+                {dashboardStats?.stations_with_stuck_jobs ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Stations</h2>
+              <p>With Stuck Jobs</p>
+            </div>
+          </div>
+          {/* End station awareness cards */}
 
           <div
             style={{

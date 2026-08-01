@@ -6,12 +6,14 @@ from .dependencies import get_db
 from .liveness import (
     AGENT_ONLINE_SECONDS,
     STATION_STATUS_MAINTENANCE,
+    STATION_STATUS_OFFLINE,
     STATION_STATUS_ONLINE,
     STATION_STATUS_STALE,
     agent_is_online,
     station_status,
 )
 from . import queue_diagnostics
+from . import station_diagnostics
 from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta, timezone
@@ -733,6 +735,74 @@ def root():
         "version": "1.0",
     }
 
+
+def _collect_station_job_signals(
+    db: Session,
+    now: datetime,
+    station_status_by_id: dict[int, str],
+) -> dict[int, dict]:
+    """Aggregate per-station queue signals for station diagnostics (Batch 3).
+
+    Returns ``{station_id: {...}}`` with pending/printing/failed/recovering
+    counts, the number of open jobs requiring attention (via
+    ``queue_diagnostics``), and the oldest pending job's age in seconds. One
+    pass over the jobs so the dashboard and the station list stay consistent.
+    """
+    signals: dict[int, dict] = {}
+
+    def _slot(station_id) -> dict:
+        return signals.setdefault(
+            station_id,
+            {
+                "pending_jobs": 0,
+                "printing_jobs": 0,
+                "failed_jobs": 0,
+                "recovering_jobs": 0,
+                "jobs_requiring_attention": 0,
+                "oldest_pending_created": None,
+            },
+        )
+
+    for job in db.query(PrintJob).all():
+        slot = _slot(job.print_station_id)
+        if job.status == "Pending":
+            slot["pending_jobs"] += 1
+            if job.last_recovery_reason:
+                slot["recovering_jobs"] += 1
+            created = job.created_time
+            if created is not None and (
+                slot["oldest_pending_created"] is None
+                or created < slot["oldest_pending_created"]
+            ):
+                slot["oldest_pending_created"] = created
+        elif job.status == "Printing":
+            slot["printing_jobs"] += 1
+        elif job.status == "Failed":
+            slot["failed_jobs"] += 1
+
+        if job.status != "Completed":
+            station_online = (
+                station_status_by_id.get(job.print_station_id)
+                == STATION_STATUS_ONLINE
+            )
+            if queue_diagnostics.job_diagnostics(
+                status=job.status,
+                created_time=job.created_time,
+                claimed_time=job.claimed_time,
+                attempt_count=job.attempt_count,
+                last_recovery_reason=job.last_recovery_reason,
+                error_message=job.error_message,
+                station_online=station_online,
+                now=now,
+            )["attention"]:
+                slot["jobs_requiring_attention"] += 1
+
+    for slot in signals.values():
+        slot["oldest_pending_age_seconds"] = queue_diagnostics.age_seconds(
+            slot.pop("oldest_pending_created"), now
+        )
+    return signals
+
 @app.get("/api/dashboard",response_model=DashboardStatsResponse,)
 def get_dashboard_stats(
     current_user: str = Depends(get_current_user),
@@ -856,6 +926,28 @@ def get_dashboard_stats(
         if diagnostics["attention"]:
             jobs_requiring_attention += 1
 
+    # M9.2 Batch 3 station awareness: derive, per station, whether it needs an
+    # operator's attention and whether it holds stuck (attention) jobs.
+    signals_by_station = _collect_station_job_signals(
+        db, now, station_status_by_id
+    )
+    stations_needing_attention = 0
+    stations_with_stuck_jobs = 0
+    for station_id, st_status in station_status_by_id.items():
+        sig = signals_by_station.get(station_id, {})
+        if sig.get("jobs_requiring_attention", 0) > 0:
+            stations_with_stuck_jobs += 1
+        if station_diagnostics.station_diagnostics(
+            status=st_status,
+            pending_jobs=sig.get("pending_jobs", 0),
+            printing_jobs=sig.get("printing_jobs", 0),
+            failed_jobs=sig.get("failed_jobs", 0),
+            recovering_jobs=sig.get("recovering_jobs", 0),
+            jobs_requiring_attention=sig.get("jobs_requiring_attention", 0),
+            oldest_pending_age_seconds=sig.get("oldest_pending_age_seconds"),
+        )["attention"]:
+            stations_needing_attention += 1
+
     return DashboardStatsResponse(
         active_visitors=active_visitors,
         checked_in_today=checked_in_today,
@@ -873,6 +965,8 @@ def get_dashboard_stats(
         oldest_pending_age_seconds=oldest_pending_age_seconds,
         jobs_requiring_attention=jobs_requiring_attention,
         recovering_jobs=recovering_jobs,
+        stations_needing_attention=stations_needing_attention,
+        stations_with_stuck_jobs=stations_with_stuck_jobs,
     )
 
 @app.get("/api/settings",response_model=SettingsResponse,)
@@ -2430,12 +2524,38 @@ def get_print_stations(
         if a.print_station_id is not None and a.enabled:
             seens_by_station.setdefault(a.print_station_id, []).append(a.last_seen)
 
-    results = []
-    for station in stations:
-        status = station_status(
+    # Server-derived status per station, then per-station queue signals so each
+    # station row carries its own operator-facing diagnostics (Batch 3).
+    station_status_by_id = {
+        station.id: station_status(
             enabled=bool(station.enabled),
             agent_last_seens=seens_by_station.get(station.id, []),
             now=now,
+        )
+        for station in stations
+    }
+    signals_by_station = _collect_station_job_signals(
+        db, now, station_status_by_id
+    )
+
+    results = []
+    for station in stations:
+        status = station_status_by_id[station.id]
+        sig = signals_by_station.get(station.id, {})
+        pending_jobs = sig.get("pending_jobs", 0)
+        printing_jobs = sig.get("printing_jobs", 0)
+        failed_jobs = sig.get("failed_jobs", 0)
+        recovering_jobs = sig.get("recovering_jobs", 0)
+        jobs_requiring_attention = sig.get("jobs_requiring_attention", 0)
+        oldest_pending_age_seconds = sig.get("oldest_pending_age_seconds")
+        diag = station_diagnostics.station_diagnostics(
+            status=status,
+            pending_jobs=pending_jobs,
+            printing_jobs=printing_jobs,
+            failed_jobs=failed_jobs,
+            recovering_jobs=recovering_jobs,
+            jobs_requiring_attention=jobs_requiring_attention,
+            oldest_pending_age_seconds=oldest_pending_age_seconds,
         )
         results.append(
             {
@@ -2449,6 +2569,18 @@ def get_print_stations(
                 "last_ip": station.last_ip,
                 "status": status,
                 "online": status == STATION_STATUS_ONLINE,
+                "pending_jobs": pending_jobs,
+                "printing_jobs": printing_jobs,
+                "failed_jobs": failed_jobs,
+                "recovering_jobs": recovering_jobs,
+                "jobs_requiring_attention": jobs_requiring_attention,
+                "oldest_pending_age_seconds": oldest_pending_age_seconds,
+                "operational_state": diag["operational_state"],
+                "attention": diag["attention"],
+                "attention_level": diag["attention_level"],
+                "attention_reasons": diag["attention_reasons"],
+                "recommended_action": diag["recommended_action"],
+                "summary": diag["summary"],
             }
         )
     return results
