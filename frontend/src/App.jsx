@@ -97,6 +97,48 @@ function formatJobAge(seconds) {
   return `${hours}h ${remMinutes}m`;
 }
 
+// Derive a single operator-facing health verdict from the dashboard stats so the
+// summary-first dashboard can replace nine diagnostic cards with one card.
+// All inputs already come from the existing dashboard endpoint (no backend change).
+function deriveSystemHealth(stats) {
+  if (!stats) {
+    return { state: "healthy", label: "All Clear", items: [] };
+  }
+  const offlineAgents = stats.offline_agents ?? 0;
+  const stationsNeedingAttention = stats.stations_needing_attention ?? 0;
+  const stationsWithStuckJobs = stats.stations_with_stuck_jobs ?? 0;
+  const jobsRequiringAttention = stats.jobs_requiring_attention ?? 0;
+  const staleStations = stats.stale_stations ?? 0;
+  const oldest = stats.oldest_pending_age_seconds;
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const items = [];
+  if (offlineAgents > 0) items.push(`${plural(offlineAgents, "agent")} offline`);
+  if (stationsNeedingAttention > 0)
+    items.push(`${plural(stationsNeedingAttention, "station")} need attention`);
+  if (stationsWithStuckJobs > 0)
+    items.push(`${plural(stationsWithStuckJobs, "station")} with stuck jobs`);
+  if (jobsRequiringAttention > 0)
+    items.push(`${plural(jobsRequiringAttention, "job")} need attention`);
+  if (staleStations > 0) items.push(`${plural(staleStations, "station")} stale`);
+  if (typeof oldest === "number") items.push(`oldest pending ${formatJobAge(oldest)}`);
+
+  let state = "healthy";
+  if (stationsNeedingAttention > 0) {
+    state = "critical";
+  } else if (
+    jobsRequiringAttention > 0 ||
+    stationsWithStuckJobs > 0 ||
+    staleStations > 0 ||
+    offlineAgents > 0
+  ) {
+    state = "attention";
+  }
+  const label =
+    state === "critical" ? "Critical" : state === "attention" ? "Warning" : "All Clear";
+  return { state, label, items };
+}
+
 
 export default function App() {
 
@@ -139,6 +181,11 @@ export default function App() {
   const [reprintStationId, setReprintStationId] = useState("");
   // Per-job destination chosen when redirecting a pending print job, keyed by job id.
   const [redirectStationByJob, setRedirectStationByJob] = useState({});
+  // M9.2 Batch 4 progressive disclosure: dashboard advanced-diagnostics toggle,
+  // and per-card expansion maps for print jobs and stations (keyed by id).
+  const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+  const [expandedJobIds, setExpandedJobIds] = useState({});
+  const [expandedStationIds, setExpandedStationIds] = useState({});
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [detailSnapshot, setDetailSnapshot] = useState("");
   const [selectedCamera, setSelectedCamera] = useState("");
@@ -5043,7 +5090,18 @@ const styles = getStyles(theme, isCrtTheme);
               gap: "20px",
             }}
           >
-            {visiblePrintJobs.map((job) => (
+            {visiblePrintJobs.map((job) => {
+              const expanded = !!expandedJobIds[job.id];
+              const issueCount = Array.isArray(job.attention_reasons)
+                ? job.attention_reasons.length
+                : 0;
+              const statusColor =
+                job.status === "Completed"
+                  ? theme.success
+                  : job.status === "Failed"
+                    ? theme.danger
+                    : theme.primary;
+              return (
               <div
                 key={job.id}
                 style={{
@@ -5053,51 +5111,46 @@ const styles = getStyles(theme, isCrtTheme);
                   padding: "20px",
                 }}
               >
-                <h3>
-                  {job.visitor_name}
-                </h3>
-
-                <p
+                {/* Compact header — always visible, uniform height */}
+                <div
                   style={{
-                    color: theme.textSecondary,
-                    marginBottom: "12px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: "8px",
                   }}
                 >
-                  Print Job #{job.id}
-                </p>
-
-                <p>
-                  <strong>Visitor:</strong> {job.visitor_name}
-                </p>
-
-                <p>
-                  <strong>Visitor Type:</strong> {job.visitor_type}
-                </p>
-
-                <p>
-                  <strong>Station:</strong>{" "}
-                  {job.station_name || "Unknown"}
-                </p>
-
-                <div style={{ marginBottom: "8px" }}>
-                  <strong>Status:</strong>{" "}
+                  <h3 style={{ margin: 0 }}>{job.visitor_name}</h3>
                   <span
-                    style={{
-                      color:
-                        job.status === "Completed"
-                          ? theme.success
-                          : job.status === "Failed"
-                          ? theme.danger
-                          : theme.primary,
-                      fontWeight: "bold",
-                    }}
+                    style={{ color: theme.textSecondary, fontSize: "0.8rem" }}
                   >
+                    #{job.id}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "8px",
+                    marginBottom: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ color: statusColor, fontWeight: "bold" }}>
                     {job.status}
                   </span>
+                  {typeof job.age_seconds === "number" && (
+                    <span
+                      style={{ color: theme.textSecondary, fontSize: "0.85rem" }}
+                    >
+                      · {formatJobAge(job.age_seconds)}
+                    </span>
+                  )}
                   {job.attention && (
                     <span
                       style={{
-                        marginLeft: "8px",
                         padding: "2px 8px",
                         borderRadius: "8px",
                         fontSize: "0.75rem",
@@ -5114,91 +5167,167 @@ const styles = getStyles(theme, isCrtTheme);
                         : "Check"}
                     </span>
                   )}
-                </div>
-
-                {Array.isArray(job.attention_reasons) &&
-                  job.attention_reasons.length > 0 && (
-                    <ul
-                      style={{
-                        margin: "0 0 8px 0",
-                        paddingLeft: "18px",
-                        color:
-                          job.attention_level === "critical"
-                            ? theme.danger
-                            : theme.textSecondary,
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      {job.attention_reasons.map((reason, index) => (
-                        <li key={index}>{reason}</li>
-                      ))}
-                    </ul>
-                  )}
-
-                <div style={{ marginBottom: "8px" }}>
-                  <strong>Printer:</strong>{" "}
-                  {job.printer_name || "Unknown"}
-                </div>
-
-                {typeof job.age_seconds === "number" && (
-                  <p>
-                    <strong>Age:</strong> {formatJobAge(job.age_seconds)}
-                  </p>
-                )}
-
-                {job.status !== "Completed" && (
-                  <p>
-                    <strong>Station Health:</strong>{" "}
+                  {issueCount > 0 && (
                     <span
-                      style={{
-                        color: job.station_online
-                          ? theme.success
-                          : theme.danger,
-                        fontWeight: "bold",
-                      }}
+                      style={{ color: theme.textSecondary, fontSize: "0.8rem" }}
                     >
-                      {job.station_status || "unknown"}
+                      {issueCount} issue{issueCount === 1 ? "" : "s"}
                     </span>
-                  </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedJobIds((current) => ({
+                      ...current,
+                      [job.id]: !current[job.id],
+                    }))
+                  }
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: theme.primary,
+                    fontSize: "0.85rem",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {expanded ? "Hide details ▾" : "Details ▸"}
+                </button>
+
+                {/* Expanded diagnostics — progressive disclosure (all fields preserved) */}
+                {expanded && (
+                  <div style={{ marginTop: "10px" }}>
+                    <p>
+                      <strong>Visitor Type:</strong> {job.visitor_type}
+                    </p>
+
+                    <p>
+                      <strong>Station:</strong>{" "}
+                      {job.station_name || "Unknown"}
+                    </p>
+
+                    {Array.isArray(job.attention_reasons) &&
+                      job.attention_reasons.length > 0 && (
+                        <ul
+                          style={{
+                            margin: "0 0 8px 0",
+                            paddingLeft: "18px",
+                            color:
+                              job.attention_level === "critical"
+                                ? theme.danger
+                                : theme.textSecondary,
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          {job.attention_reasons.map((reason, index) => (
+                            <li key={index}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+
+                    <div style={{ marginBottom: "8px" }}>
+                      <strong>Printer:</strong>{" "}
+                      {job.printer_name || "Unknown"}
+                    </div>
+
+                    {job.status !== "Completed" && (
+                      <p>
+                        <strong>Station Health:</strong>{" "}
+                        <span
+                          style={{
+                            color: job.station_online
+                              ? theme.success
+                              : theme.danger,
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {job.station_status || "unknown"}
+                        </span>
+                      </p>
+                    )}
+
+                    {(job.attempt_count ?? 0) > 0 && (
+                      <p>
+                        <strong>Attempts:</strong> {job.attempt_count}
+                      </p>
+                    )}
+
+                    {job.agent_hostname && (
+                      <p>
+                        <strong>Agent:</strong> {job.agent_hostname}
+                      </p>
+                    )}
+
+                    {job.last_recovery_reason && (
+                      <p style={{ color: theme.textSecondary }}>
+                        <strong>Last Recovery:</strong>{" "}
+                        {job.last_recovery_reason}
+                      </p>
+                    )}
+
+                    {job.error_message && (
+                      <p style={{ color: theme.danger }}>
+                        <strong>Error:</strong> {job.error_message}
+                      </p>
+                    )}
+
+                    <p>
+                      <strong>Created:</strong>{" "}
+                      {new Date(job.created_time).toLocaleString()}
+                    </p>
+
+                    {job.completed_time && (
+                      <p>
+                        <strong>Completed:</strong>{" "}
+                        {new Date(job.completed_time).toLocaleString()}
+                      </p>
+                    )}
+
+                    {job.status === "Pending" && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          marginTop: "12px",
+                        }}
+                      >
+                        <select
+                          style={styles.input}
+                          value={redirectStationByJob[job.id] || ""}
+                          onChange={(event) =>
+                            setRedirectStationByJob((current) => ({
+                              ...current,
+                              [job.id]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Redirect to station…</option>
+                          {printStations
+                            .filter((station) => station.enabled)
+                            .map((station) => (
+                              <option key={station.id} value={station.id}>
+                                {station.name}
+                              </option>
+                            ))}
+                        </select>
+
+                        <button
+                          style={styles.staffActionButton}
+                          onClick={() => handleRedirectPrintJob(job)}
+                        >
+                          Redirect
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
 
-                {(job.attempt_count ?? 0) > 0 && (
-                  <p>
-                    <strong>Attempts:</strong> {job.attempt_count}
-                  </p>
-                )}
-
-                {job.agent_hostname && (
-                  <p>
-                    <strong>Agent:</strong> {job.agent_hostname}
-                  </p>
-                )}
-
-                {job.last_recovery_reason && (
-                  <p style={{ color: theme.textSecondary }}>
-                    <strong>Last Recovery:</strong>{" "}
-                    {job.last_recovery_reason}
-                  </p>
-                )}
-
-                {job.error_message && (
-                  <p style={{ color: theme.danger }}>
-                    <strong>Error:</strong> {job.error_message}
-                  </p>
-                )}
-
-                <p>
-                  <strong>Created:</strong>{" "}
-                  {new Date(job.created_time).toLocaleString()}
-                </p>
-
-                {job.completed_time && (
-                  <p>
-                    <strong>Completed:</strong>{" "}
-                    {new Date(job.completed_time).toLocaleString()}
-                  </p>
-                )}
-
+                {/* Actions — always visible, uniform across all jobs */}
                 <div
                   style={{
                     display: "flex",
@@ -5228,48 +5357,9 @@ const styles = getStyles(theme, isCrtTheme);
                     Delete Job
                   </button>
                 </div>
-
-                {job.status === "Pending" && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      marginTop: "12px",
-                    }}
-                  >
-                    <select
-                      style={styles.input}
-                      value={redirectStationByJob[job.id] || ""}
-                      onChange={(event) =>
-                        setRedirectStationByJob((current) => ({
-                          ...current,
-                          [job.id]: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Redirect to station…</option>
-                      {printStations
-                        .filter((station) => station.enabled)
-                        .map((station) => (
-                          <option key={station.id} value={station.id}>
-                            {station.name}
-                          </option>
-                        ))}
-                    </select>
-
-                    <button
-                      style={styles.staffActionButton}
-                      onClick={() => handleRedirectPrintJob(job)}
-                    >
-                      Redirect
-                    </button>
-                  </div>
-                )}
-
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -5483,37 +5573,6 @@ const styles = getStyles(theme, isCrtTheme);
                           </span>
                         </div>
 
-                        {(station.pending_jobs > 0 ||
-                          station.failed_jobs > 0) && (
-                          <div
-                            style={{
-                              marginTop: "8px",
-                              fontSize: "12px",
-                              color: theme.textSecondary,
-                            }}
-                          >
-                            {station.pending_jobs} pending ·{" "}
-                            {station.failed_jobs} failed
-                          </div>
-                        )}
-
-                        {station.attention &&
-                          Array.isArray(station.attention_reasons) &&
-                          station.attention_reasons.length > 0 && (
-                            <ul
-                              style={{
-                                margin: "8px 0 0 0",
-                                paddingLeft: "18px",
-                                fontSize: "12px",
-                                color: theme.text,
-                              }}
-                            >
-                              {station.attention_reasons.map((reason, idx) => (
-                                <li key={idx}>{reason}</li>
-                              ))}
-                            </ul>
-                          )}
-
                         {station.recommended_action && (
                           <div
                             style={{
@@ -5525,6 +5584,75 @@ const styles = getStyles(theme, isCrtTheme);
                           >
                             → {station.recommended_action}
                           </div>
+                        )}
+
+                        {(station.pending_jobs > 0 ||
+                          station.failed_jobs > 0 ||
+                          (station.attention &&
+                            Array.isArray(station.attention_reasons) &&
+                            station.attention_reasons.length > 0)) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedStationIds((current) => ({
+                                  ...current,
+                                  [station.id]: !current[station.id],
+                                }))
+                              }
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                marginTop: "8px",
+                                cursor: "pointer",
+                                color: theme.primary,
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {expandedStationIds[station.id]
+                                ? "Hide details ▾"
+                                : "Details ▸"}
+                            </button>
+
+                            {expandedStationIds[station.id] && (
+                              <>
+                                {(station.pending_jobs > 0 ||
+                                  station.failed_jobs > 0) && (
+                                  <div
+                                    style={{
+                                      marginTop: "8px",
+                                      fontSize: "12px",
+                                      color: theme.textSecondary,
+                                    }}
+                                  >
+                                    {station.pending_jobs} pending ·{" "}
+                                    {station.failed_jobs} failed
+                                  </div>
+                                )}
+
+                                {station.attention &&
+                                  Array.isArray(station.attention_reasons) &&
+                                  station.attention_reasons.length > 0 && (
+                                    <ul
+                                      style={{
+                                        margin: "8px 0 0 0",
+                                        paddingLeft: "18px",
+                                        fontSize: "12px",
+                                        color: theme.text,
+                                      }}
+                                    >
+                                      {station.attention_reasons.map(
+                                        (reason, idx) => (
+                                          <li key={idx}>{reason}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  )}
+                              </>
+                            )}
+                          </>
                         )}
                       </div>
                     );
@@ -6535,6 +6663,75 @@ const styles = getStyles(theme, isCrtTheme);
           </div>
           {/* End Dashboard Summary Cards */}
 
+          {/* M9.2 Batch 4: summary-first Operational Health card */}
+          {(() => {
+            const health = deriveSystemHealth(dashboardStats);
+            const healthColor =
+              health.state === "critical"
+                ? theme.danger
+                : health.state === "attention"
+                  ? theme.warning || "#b8860b"
+                  : theme.success;
+            return (
+              <div
+                style={{
+                  ...styles.userStats,
+                  textAlign: "left",
+                  marginBottom: "16px",
+                  borderLeft: `4px solid ${healthColor}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      backgroundColor: healthColor,
+                      color: "#fff",
+                      borderRadius: "999px",
+                      padding: "4px 14px",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    {health.label}
+                  </span>
+                  <h2 style={{ color: theme.textSecondary, margin: 0 }}>
+                    Operational Health
+                  </h2>
+                </div>
+                <div
+                  style={{
+                    marginTop: "10px",
+                    fontSize: "0.95rem",
+                    color: theme.text,
+                  }}
+                >
+                  {health.items.length > 0
+                    ? health.items.join(" · ")
+                    : "No issues detected. Stations, agents, and jobs healthy."}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedDiagnostics((v) => !v)}
+                  style={{ ...styles.staffActionButton, marginTop: "14px" }}
+                >
+                  {showAdvancedDiagnostics
+                    ? "Hide advanced diagnostics ▾"
+                    : "Show advanced diagnostics ▸"}
+                </button>
+              </div>
+            );
+          })()}
+
+          {showAdvancedDiagnostics && (
+            <>
           {/* M9.2 Batch 1: operational visibility cards */}
           <div
             style={{
@@ -6668,6 +6865,8 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
           </div>
           {/* End station awareness cards */}
+            </>
+          )}
 
           <div
             style={{
