@@ -11,6 +11,7 @@ from .liveness import (
     agent_is_online,
     station_status,
 )
+from . import queue_diagnostics
 from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta, timezone
@@ -770,12 +771,14 @@ def get_dashboard_stats(
             seens_by_station.setdefault(a.print_station_id, []).append(a.last_seen)
 
     online_stations = offline_stations = stale_stations = maintenance_stations = 0
+    station_status_by_id: dict[int, str] = {}
     for station in db.query(PrintStation).all():
         status = station_status(
             enabled=bool(station.enabled),
             agent_last_seens=seens_by_station.get(station.id, []),
             now=now,
         )
+        station_status_by_id[station.id] = status
         if status == STATION_STATUS_MAINTENANCE:
             maintenance_stations += 1
         elif status == STATION_STATUS_ONLINE:
@@ -807,6 +810,52 @@ def get_dashboard_stats(
         .filter(PrintJob.status == "Failed")
         .count()
     )
+
+    # M9.2 Batch 2 queue visibility metrics. Computed over the jobs that can
+    # still need operator action (not Completed) so the dashboard answers
+    # "should I walk over there now" without reading logs.
+    recovering_jobs = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.status == "Pending",
+            PrintJob.last_recovery_reason.isnot(None),
+        )
+        .count()
+    )
+
+    oldest_pending_created = (
+        db.query(func.min(PrintJob.created_time))
+        .filter(PrintJob.status == "Pending")
+        .scalar()
+    )
+    oldest_pending_age_seconds = queue_diagnostics.age_seconds(
+        oldest_pending_created, now
+    )
+
+    jobs_requiring_attention = 0
+    open_jobs = (
+        db.query(PrintJob)
+        .filter(PrintJob.status != "Completed")
+        .all()
+    )
+    for job in open_jobs:
+        station_online = (
+            station_status_by_id.get(job.print_station_id)
+            == STATION_STATUS_ONLINE
+        )
+        diagnostics = queue_diagnostics.job_diagnostics(
+            status=job.status,
+            created_time=job.created_time,
+            claimed_time=job.claimed_time,
+            attempt_count=job.attempt_count,
+            last_recovery_reason=job.last_recovery_reason,
+            error_message=job.error_message,
+            station_online=station_online,
+            now=now,
+        )
+        if diagnostics["attention"]:
+            jobs_requiring_attention += 1
+
     return DashboardStatsResponse(
         active_visitors=active_visitors,
         checked_in_today=checked_in_today,
@@ -821,6 +870,9 @@ def get_dashboard_stats(
         stale_stations=stale_stations,
         stations_with_pending_jobs=stations_with_pending_jobs,
         stations_with_failed_jobs=stations_with_failed_jobs,
+        oldest_pending_age_seconds=oldest_pending_age_seconds,
+        jobs_requiring_attention=jobs_requiring_attention,
+        recovering_jobs=recovering_jobs,
     )
 
 @app.get("/api/settings",response_model=SettingsResponse,)
@@ -1931,6 +1983,32 @@ def get_print_jobs(
 ):
     jobs = db.query(PrintJob).order_by(PrintJob.created_time.desc()).all()
 
+    now = datetime.now(timezone.utc)
+
+    # Per-station liveness, computed once, so every job can be flagged when its
+    # target station has no live agent (a common "why isn't it printing" cause).
+    agents = db.query(PrintAgent).all()
+    agents_by_id = {a.id: a for a in agents}
+    seens_by_station: dict[int, list] = {}
+    for a in agents:
+        if a.print_station_id is not None and a.enabled:
+            seens_by_station.setdefault(a.print_station_id, []).append(a.last_seen)
+
+    station_status_cache: dict[int, str] = {}
+
+    def _station_status_for(station: PrintStation | None) -> str | None:
+        if station is None:
+            return None
+        cached = station_status_cache.get(station.id)
+        if cached is None:
+            cached = station_status(
+                enabled=bool(station.enabled),
+                agent_last_seens=seens_by_station.get(station.id, []),
+                now=now,
+            )
+            station_status_cache[station.id] = cached
+        return cached
+
     results = []
 
     for job in jobs:
@@ -1944,6 +2022,26 @@ def get_print_jobs(
             db.query(PrintStation)
             .filter(PrintStation.id == job.print_station_id)
             .first()
+        )
+
+        computed_station_status = _station_status_for(print_station)
+        station_online = computed_station_status == STATION_STATUS_ONLINE
+
+        owning_agent = (
+            agents_by_id.get(job.claimed_by_agent_id)
+            if job.claimed_by_agent_id is not None
+            else None
+        )
+
+        diagnostics = queue_diagnostics.job_diagnostics(
+            status=job.status,
+            created_time=job.created_time,
+            claimed_time=job.claimed_time,
+            attempt_count=job.attempt_count,
+            last_recovery_reason=job.last_recovery_reason,
+            error_message=job.error_message,
+            station_online=station_online,
+            now=now,
         )
 
         results.append({
@@ -1969,6 +2067,8 @@ def get_print_jobs(
                 if print_station
                 else None
             ),
+            "station_status": computed_station_status,
+            "station_online": station_online,
             "badge_path": job.badge_path,
             "status": job.status,
             "printer_name": job.printer_name,
@@ -1976,6 +2076,17 @@ def get_print_jobs(
             "created_time": job.created_time,
             "claimed_time": job.claimed_time,
             "completed_time": job.completed_time,
+            # M9.2 Batch 2: operational bookkeeping surfaced to operators.
+            "attempt_count": job.attempt_count or 0,
+            "claim_generation": job.claim_generation or 0,
+            "claim_expires_at": job.claim_expires_at,
+            "last_recovery_reason": job.last_recovery_reason,
+            "agent_hostname": owning_agent.hostname if owning_agent else None,
+            # Derived diagnostics (server-computed, UTC-safe).
+            "age_seconds": diagnostics["age_seconds"],
+            "attention": diagnostics["attention"],
+            "attention_level": diagnostics["attention_level"],
+            "attention_reasons": diagnostics["attention_reasons"],
         })
 
     return results

@@ -44,6 +44,12 @@ class DashboardStatsResponse(BaseModel):
     stations_with_pending_jobs: int = 0
     stations_with_failed_jobs: int = 0
 
+    # M9.2 Batch 2 queue visibility (additive; defaults keep older
+    # callers/tests working).
+    oldest_pending_age_seconds: Optional[float] = None
+    jobs_requiring_attention: int = 0
+    recovering_jobs: int = 0
+
 class LoginRequest(BaseModel):
     username: str
     password: str

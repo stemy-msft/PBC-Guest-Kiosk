@@ -78,6 +78,25 @@ import { themes } from "./constants/themes";
 import { FONT_OPTIONS, THEME_COLOR_FIELDS, CUSTOM_FONT_VALUE } from "./constants/themeEditor";
 
 
+// M9.2 Batch 2: render a server-computed job age (seconds) as a short,
+// human-readable duration for the print queue.
+function formatJobAge(seconds) {
+  if (typeof seconds !== "number" || Number.isNaN(seconds)) {
+    return "unknown";
+  }
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) {
+    return `${total}s`;
+  }
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
+}
+
 
 export default function App() {
 
@@ -5075,22 +5094,108 @@ const styles = getStyles(theme, isCrtTheme);
                   >
                     {job.status}
                   </span>
+                  {job.attention && (
+                    <span
+                      style={{
+                        marginLeft: "8px",
+                        padding: "2px 8px",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: "bold",
+                        color: "#fff",
+                        backgroundColor:
+                          job.attention_level === "critical"
+                            ? theme.danger
+                            : theme.warning || "#b8860b",
+                      }}
+                    >
+                      {job.attention_level === "critical"
+                        ? "Needs attention"
+                        : "Check"}
+                    </span>
+                  )}
                 </div>
+
+                {Array.isArray(job.attention_reasons) &&
+                  job.attention_reasons.length > 0 && (
+                    <ul
+                      style={{
+                        margin: "0 0 8px 0",
+                        paddingLeft: "18px",
+                        color:
+                          job.attention_level === "critical"
+                            ? theme.danger
+                            : theme.textSecondary,
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {job.attention_reasons.map((reason, index) => (
+                        <li key={index}>{reason}</li>
+                      ))}
+                    </ul>
+                  )}
 
                 <div style={{ marginBottom: "8px" }}>
                   <strong>Printer:</strong>{" "}
                   {job.printer_name || "Unknown"}
                 </div>
 
+                {typeof job.age_seconds === "number" && (
+                  <p>
+                    <strong>Age:</strong> {formatJobAge(job.age_seconds)}
+                  </p>
+                )}
+
+                {job.status !== "Completed" && (
+                  <p>
+                    <strong>Station Health:</strong>{" "}
+                    <span
+                      style={{
+                        color: job.station_online
+                          ? theme.success
+                          : theme.danger,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {job.station_status || "unknown"}
+                    </span>
+                  </p>
+                )}
+
+                {(job.attempt_count ?? 0) > 0 && (
+                  <p>
+                    <strong>Attempts:</strong> {job.attempt_count}
+                  </p>
+                )}
+
+                {job.agent_hostname && (
+                  <p>
+                    <strong>Agent:</strong> {job.agent_hostname}
+                  </p>
+                )}
+
+                {job.last_recovery_reason && (
+                  <p style={{ color: theme.textSecondary }}>
+                    <strong>Last Recovery:</strong>{" "}
+                    {job.last_recovery_reason}
+                  </p>
+                )}
+
+                {job.error_message && (
+                  <p style={{ color: theme.danger }}>
+                    <strong>Error:</strong> {job.error_message}
+                  </p>
+                )}
+
                 <p>
                   <strong>Created:</strong>{" "}
                   {new Date(job.created_time).toLocaleString()}
                 </p>
 
-                {job.completed_date && (
+                {job.completed_time && (
                   <p>
                     <strong>Completed:</strong>{" "}
-                    {new Date(job.completed_date).toLocaleString()}
+                    {new Date(job.completed_time).toLocaleString()}
                   </p>
                 )}
 
@@ -6378,6 +6483,52 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
           </div>
           {/* End operational visibility cards */}
+
+          {/* M9.2 Batch 2: queue diagnostics cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(3, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2
+                style={{
+                  color:
+                    (dashboardStats?.jobs_requiring_attention ?? 0) > 0
+                      ? theme.danger
+                      : theme.textSecondary,
+                }}
+              >
+                {dashboardStats?.jobs_requiring_attention ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Jobs</h2>
+              <p>Requiring Attention</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {typeof dashboardStats?.oldest_pending_age_seconds === "number"
+                  ? formatJobAge(dashboardStats.oldest_pending_age_seconds)
+                  : "—"}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Oldest Pending</h2>
+              <p>Job Age</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.recovering_jobs ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Jobs</h2>
+              <p>Auto-Recovered</p>
+            </div>
+          </div>
+          {/* End queue diagnostics cards */}
 
           <div
             style={{
