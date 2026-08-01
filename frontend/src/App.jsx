@@ -144,7 +144,7 @@ export default function App() {
 
   // State variables
 
-  const APP_VERSION = "0.7.9 Beta";
+  const APP_VERSION = "0.9.0 RC1 Preview";
   const APP_NAME = "PBC Guest Kiosk";
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768); 
