@@ -76,5 +76,9 @@ backend/config/user_themes.json
 # Generated repository inventory snapshot (regenerate on demand; do not track)
 repo_files.txt
 
+# Backup snapshots — contain the database and visitor PII (photos). Never track.
+backend/backups/
+backups/
+
 # Internal docs
 docs/reviews

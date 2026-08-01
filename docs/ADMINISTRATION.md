@@ -335,54 +335,41 @@ These values were selected after testing for:
 
 # Backup Recommendations
 
-Recommended backup targets:
+Use the built-in backup tool — it captures the database, uploaded photos,
+generated badges, QR assets, and the live configuration in one verified,
+integrity-checked snapshot. Do not copy the live `.db` file by hand while the
+backend is running; the tool takes a crash-consistent copy for you.
 
-## Database
-
-Backup:
-
-```text
-backend/data/
+```powershell
+# From the repository root (backend virtualenv active or on PATH):
+python scripts/backup.py backup
 ```
 
----
+For creation, verification, restore, and full disaster-recovery steps, see
+[DISASTER-RECOVERY.md](DISASTER-RECOVERY.md).
 
-## Uploaded Photos
+## What a snapshot contains
 
-Backup:
+| Item | Live location |
+| --- | --- |
+| Database | `backend/visitor_kiosk.db` |
+| Visitor photos | `backend/uploads/photos/` |
+| Generated badges | `backend/uploads/badges/` |
+| QR assets | `backend/uploads/qr-codes/` |
+| Theme logos | `backend/uploads/theme-logos/` |
+| Live configuration | `backend/config/system_settings.json` |
 
-```text
-backend/uploads/
-```
+Snapshots are written to `backend/backups/` by default (git-ignored) and pruned
+to the most recent 14. Point `--dest` at removable/off-machine storage for
+off-site copies.
 
----
+## Backed up separately (out of band)
 
-## Configuration Files
-
-Backup:
-
-```text
-.env
-```
-
-Additional configuration:
-
-```text
-print-agent/
-```
-
----
-
-## Documentation
-
-Backup:
+Secrets are **not** copied into snapshots. Back these up securely by hand:
 
 ```text
-README.md
-INSTALL.md
-PRINT-SERVER.md
-TROUBLESHOOTING.md
-ADMINISTRATION.md
+backend/.env
+print-agent/.env
 ```
 
 ---
