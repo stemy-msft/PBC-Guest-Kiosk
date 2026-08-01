@@ -18,14 +18,17 @@ import {
   createUser,
   createVisitor,
   deletePrintJob,
+  reassignPrintJobStation,
   deletePrintStation,
   downloadPrintStationQr,
+  exportActiveVisitors,
   findVisitors,
   generateBadge,
   getActiveVisitors,
   getDashboardStats,
   getPrintAgents,
   getPrintJobs,
+  getPrintJobStatus,
   getPrintStations,
   getReportingSummary,
   getSettings,
@@ -85,6 +88,11 @@ export default function App() {
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768); 
 
+  // Tablet range (e.g. iPad): wide enough to avoid the phone layout but still
+  // narrower than desktop, so the desktop layout should not be shown as-is.
+  const [isTablet, setIsTablet] = useState(
+    window.innerWidth >= 768 && window.innerWidth < 1024
+  );
   const [activeVisitors, setActiveVisitors] = useState([]);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -110,6 +118,8 @@ export default function App() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [assignStationId, setAssignStationId] = useState("");
   const [reprintStationId, setReprintStationId] = useState("");
+  // Per-job destination chosen when redirecting a pending print job, keyed by job id.
+  const [redirectStationByJob, setRedirectStationByJob] = useState({});
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [detailSnapshot, setDetailSnapshot] = useState("");
   const [selectedCamera, setSelectedCamera] = useState("");
@@ -117,6 +127,11 @@ export default function App() {
   const [showPrintStationModal, setShowPrintStationModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [successTitle, setSuccessTitle] = useState("");
+  // Guest print-status experience: after a kiosk check-in we poll the public
+  // print-job status endpoint so the visitor sees real confirmation.
+  const [activePrintJobId, setActivePrintJobId] = useState(null);
+  const [printStatus, setPrintStatus] = useState(null);
+  const [printPollExpired, setPrintPollExpired] = useState(false);
   const [videoDevices, setVideoDevices] = useState([]);
   const videoRef = useRef(null);
 
@@ -191,7 +206,11 @@ export default function App() {
 
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width < 768);
+      setIsTablet(width >= 768 && width < 1024);
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -249,6 +268,92 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [screen, isAuthenticated]);
+
+  // Guest print-status polling. While the visitor is on the "printing" screen
+  // after check-in, poll the public status endpoint until the badge reaches a
+  // terminal state (or we give up after a grace period and point them to the
+  // Welcome Desk). The endpoint returns only { status, station_name }.
+  useEffect(() => {
+    if (screen !== "printing" || !activePrintJobId) {
+      return;
+    }
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    const MAX_POLL_MS = 45000;
+
+    async function poll() {
+      try {
+        const result = await getPrintJobStatus(activePrintJobId);
+        if (cancelled) {
+          return;
+        }
+        setPrintStatus(result);
+        if (["Completed", "Failed", "Cancelled"].includes(result.status)) {
+          clearInterval(interval);
+          return;
+        }
+      } catch {
+        // Transient error: keep the friendly "printing" message and retry.
+      }
+      if (!cancelled && Date.now() - startedAt > MAX_POLL_MS) {
+        setPrintPollExpired(true);
+        clearInterval(interval);
+      }
+    }
+
+    const interval = setInterval(poll, 2500);
+    poll();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [screen, activePrintJobId]);
+
+  // Auto-return the kiosk to home once printing reaches a terminal state (or we
+  // stop polling), so the next guest gets a clean screen without staff action.
+  useEffect(() => {
+    if (screen !== "printing") {
+      return;
+    }
+
+    const status = printStatus?.status;
+    const terminal =
+      status === "Completed" || status === "Failed" || status === "Cancelled";
+
+    if (activePrintJobId && !terminal && !printPollExpired) {
+      return;
+    }
+
+    const delay = terminal || printPollExpired ? 7000 : 5000;
+    const timer = setTimeout(() => {
+      resetGuestCheckIn();
+    }, delay);
+
+    return () => clearTimeout(timer);
+    // resetGuestCheckIn is a stable in-component helper; re-including it would
+    // reset the auto-return timer on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, printStatus, printPollExpired, activePrintJobId]);
+
+  function resetGuestCheckIn() {
+    setFirstName("");
+    setLastName("");
+    setVisitorType(visitorTypes[0] || "");
+    setPurpose(visitPurposes[0] || "");
+    setContactName("");
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setBusy(false);
+    setVehiclePlate("");
+    setEmail("");
+    setPhone("");
+    setActivePrintJobId(null);
+    setPrintStatus(null);
+    setPrintPollExpired(false);
+    setScreen("home");
+  }
 
   // Load authentication state from localStorage on mount
   useEffect(() => {
@@ -1317,6 +1422,28 @@ const styles = getStyles(theme, isCrtTheme);
     }
   }  
 
+  async function handleRedirectPrintJob(job) {
+    const stationId = redirectStationByJob[job.id];
+
+    if (!stationId) {
+      alert("Select a destination station first.");
+      return;
+    }
+
+    try {
+      await reassignPrintJobStation(job.id, Number(stationId));
+      setRedirectStationByJob((current) => {
+        const next = { ...current };
+        delete next[job.id];
+        return next;
+      });
+      await loadPrintJobs();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
   async function handleReprintBadge(visitorId) {
     try {
       await reprintBadge(
@@ -1529,30 +1656,21 @@ const styles = getStyles(theme, isCrtTheme);
       }
 
       console.log("Creating print job...");
-      await createPrintJob(visitor.id);
+      const job = await createPrintJob(visitor.id);
+
+      // Drive the guest print-status screen: capture the job id so we can poll
+      // the public status endpoint, and reset any prior status state.
+      setActivePrintJobId(job?.id ?? null);
+      setPrintStatus(null);
+      setPrintPollExpired(false);
 
       setSuccessTitle("Check-In Complete");
       setSuccessMessage(
         "Your visitor badge is being printed. Please wear it while on campus."
       );
 
-      setScreen("success");
-
-      setTimeout(() => {
-        setFirstName("");
-        setLastName("");
-        setVisitorType(visitorTypes[0] || "");
-        setPurpose(visitPurposes[0] || "");
-        setContactName("");
-        setPhotoFile(null);
-        setPhotoPreview(null);
-        setBusy(false);
-        setVehiclePlate("");
-        setEmail("");
-        setPhone("");
-
-        setScreen("home");
-      }, 5000);
+      setBusy(false);
+      setScreen("printing");
     } catch (error) {
       console.error(error);
       setBusy(false);
@@ -1721,6 +1839,16 @@ const styles = getStyles(theme, isCrtTheme);
 
 
   // Checkout Functions
+  async function handleExportActiveVisitors() {
+    // Emergency roster download for evacuation / roll-call.
+    try {
+      await exportActiveVisitors();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  }
+
   async function handleBulkCheckout() {
   const confirmed = window.confirm(
     "Check out all active visitors?"
@@ -1863,19 +1991,6 @@ const styles = getStyles(theme, isCrtTheme);
     setCameraOpen(false);
   }
 
-  function isMobileCameraDevice() {
-    const userAgent = navigator.userAgent || "";
-    const platform = navigator.platform || "";
-
-    return (
-      /Android|iPhone|iPad|iPod/i.test(userAgent) ||
-      (
-        platform === "MacIntel" &&
-        navigator.maxTouchPoints > 1
-      )
-    );
-  }
-
   async function loadCameras() {
     try {
       // Deprecated?
@@ -1904,14 +2019,10 @@ const styles = getStyles(theme, isCrtTheme);
     try {
       setCameraTarget(target);
 
-      const shouldUseNativeCamera =
-        isMobileCameraDevice();
-
-      if (shouldUseNativeCamera) {
-        document.getElementById(fallbackInputId)?.click();
-        return;
-      }
-
+      // Prefer the in-app camera (getUserMedia) on every device: launching the
+      // OS camera via a native file input can tear down the mobile WebView and
+      // remount the app to the home screen, losing check-in progress. Only fall
+      // back to the native input when getUserMedia is unavailable.
       if (
         !navigator.mediaDevices ||
         typeof navigator.mediaDevices.getUserMedia !== "function"
@@ -3145,7 +3256,7 @@ const styles = getStyles(theme, isCrtTheme);
       );
     }
     return (
-      <div style={styles.page}>
+      <div style={{ ...styles.page, padding: isMobile ? "24px 16px" : styles.page.padding }}>
         {renderVersionFooter()}
         
 
@@ -3175,13 +3286,13 @@ const styles = getStyles(theme, isCrtTheme);
           ← Home
         </button>
 
-        <div style={styles.formContainer}>
-          <h1 style={styles.formTitle}>Visitor Check-In</h1>
+        <div style={{ ...styles.formContainer, padding: isMobile ? "24px 16px" : styles.formContainer.padding }}>
+          <h1 style={{ ...styles.formTitle, fontSize: isMobile ? "1.9rem" : styles.formTitle.fontSize }}>Visitor Check-In</h1>
           <p style={styles.instructions}>
             Complete the form and take a visitor photo before printing a badge.
           </p>
 
-          <div style={styles.checkinContentContainer}>
+          <div style={{ ...styles.checkinContentContainer, gap: isMobile ? "20px" : styles.checkinContentContainer.gap }}>
 
             {/* Data Column */}
             <div style={styles.formColumn}>
@@ -5024,6 +5135,45 @@ const styles = getStyles(theme, isCrtTheme);
                   </button>
                 </div>
 
+                {job.status === "Pending" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      marginTop: "12px",
+                    }}
+                  >
+                    <select
+                      style={styles.input}
+                      value={redirectStationByJob[job.id] || ""}
+                      onChange={(event) =>
+                        setRedirectStationByJob((current) => ({
+                          ...current,
+                          [job.id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Redirect to station…</option>
+                      {printStations
+                        .filter((station) => station.enabled)
+                        .map((station) => (
+                          <option key={station.id} value={station.id}>
+                            {station.name}
+                          </option>
+                        ))}
+                    </select>
+
+                    <button
+                      style={styles.staffActionButton}
+                      onClick={() => handleRedirectPrintJob(job)}
+                    >
+                      Redirect
+                    </button>
+                  </div>
+                )}
+
               </div>
             ))}
           </div>
@@ -5957,7 +6107,16 @@ const styles = getStyles(theme, isCrtTheme);
                 <p
                   style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
                 >
-                  <strong>Theme Definitions:</strong> <code>frontend/src/constants/themes.js</code>
+                  <strong>Built-in Themes:</strong>{" "}
+                  <code>frontend/src/constants/themes.js</code> (read-only)
+                </p>
+
+                <p
+                  style={{paddingBottom: "8px", fontSize: "14px", color: theme.textSecondary}}
+                >
+                  <strong>User-Created Themes:</strong> stored on the server in{" "}
+                  <code>backend/config/user_themes.json</code> and served via the{" "}
+                  <code>/api/themes</code> API
                 </p>
 
 
@@ -6291,6 +6450,20 @@ const styles = getStyles(theme, isCrtTheme);
               onClick={handleBulkCheckout}
             >
               Checkout All Active Visitors
+            </button>
+
+            {/* Emergency roster export (evacuation / roll-call) */}
+            <button
+              type="button"
+              style={{
+                ...styles.staffActionButton,
+                width: "100%",
+                marginTop: "12px",
+                backgroundColor: theme.neutral,
+              }}
+              onClick={handleExportActiveVisitors}
+            >
+              Export On-Property List (CSV)
             </button>
 
           </div>
@@ -7475,10 +7648,89 @@ const styles = getStyles(theme, isCrtTheme);
     );
   }
 
+  if (screen === "printing") {
+    const status = printStatus?.status || "Pending";
+    const stationName = printStatus?.station_name;
+    const isOk = status === "Completed";
+    const isFail = status === "Failed" || status === "Cancelled";
+
+    let statusHeadline = "Sending your badge to the printer\u2026";
+    if (status === "Printing") {
+      statusHeadline = "Your badge is printing now\u2026";
+    } else if (isOk) {
+      statusHeadline = "Your badge is ready!";
+    } else if (isFail) {
+      statusHeadline = "We couldn\u2019t print your badge automatically.";
+    } else if (printPollExpired) {
+      statusHeadline = "Your badge is taking a little longer than usual.";
+    }
+
+    let statusDetail = "This only takes a moment.";
+    if (isOk) {
+      statusDetail = stationName
+        ? `Please take it from ${stationName} and wear it while on campus.`
+        : "Please take it from the printer and wear it while on campus.";
+    } else if (isFail || printPollExpired) {
+      statusDetail = "Please see the Welcome Desk and we'll help you.";
+    } else if (stationName) {
+      statusDetail = `Printing at ${stationName}.`;
+    }
+
+    return (
+      <div style={styles.page}>
+        {theme.logoOverlay && (
+          <img src={theme.logoOverlay} alt="" style={styles.themeOverlay} />
+        )}
+
+        {isCrtTheme && (
+          <>
+            <div style={styles.crtOverlay} />
+            <div style={styles.crtScanline} />
+            <div style={styles.crtFlicker} />
+          </>
+        )}
+
+        <div style={styles.formContainer}>
+          <h1 style={{ color: theme.textPrimary }}>
+            {successTitle || "Check-In Complete"}
+          </h1>
+
+          {successMessage && (
+            <p style={styles.instructions}>{successMessage}</p>
+          )}
+
+          <div
+            style={{
+              marginTop: "24px",
+              padding: "24px",
+              borderRadius: "12px",
+              border: `1px solid ${theme.border || "#d1d5db"}`,
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ color: theme.textPrimary, marginTop: 0 }}>
+              {statusHeadline}
+            </h2>
+            <p style={{ color: theme.textPrimary, marginBottom: 0 }}>
+              {statusDetail}
+            </p>
+          </div>
+
+          <button
+            style={styles.photoButton}
+            onClick={resetGuestCheckIn}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // App() Return
   return (
       
-      <div style={styles.page}>
+      <div style={{ ...styles.page, padding: isMobile ? "24px 16px" : styles.page.padding }}>
 
         {/* Theme Overlay */}
         {theme.logoOverlay && (
@@ -7498,15 +7750,26 @@ const styles = getStyles(theme, isCrtTheme);
           </>
         )}
     
-      <div style={styles.hero}>
-        <h1 style={styles.title}>Palmetto Bible Camp</h1>
+      <div style={{ ...styles.hero, marginBottom: isMobile ? "40px" : styles.hero.marginBottom }}>
+        <h1 style={{ ...styles.title, fontSize: isMobile ? "2.5rem" : isTablet ? "3rem" : styles.title.fontSize }}>Palmetto Bible Camp</h1>
         <p style={styles.subtitle}>Visitor Kiosk</p>
       </div>
 
-      <div style={styles.cardContainer}>
+      <div
+        style={{
+          ...styles.cardContainer,
+          flexDirection: isMobile ? "column" : "row",
+          width: isMobile ? "100%" : "auto",
+          maxWidth: isMobile ? "360px" : "none",
+        }}
+      >
         <button
           type="button"
-          style={styles.primaryCard}
+          style={{
+            ...styles.primaryCard,
+            width: isMobile ? "100%" : isTablet ? "260px" : styles.primaryCard.width,
+            height: isMobile ? "120px" : styles.primaryCard.height,
+          }}
           onClick={() => navigateTo("checkin")}
         >
           Check In
@@ -7514,7 +7777,11 @@ const styles = getStyles(theme, isCrtTheme);
 
         <button
           type="button"
-          style={styles.secondaryCard}
+          style={{
+            ...styles.secondaryCard,
+            width: isMobile ? "100%" : isTablet ? "260px" : styles.secondaryCard.width,
+            height: isMobile ? "120px" : styles.secondaryCard.height,
+          }}
           onClick={() => navigateTo("checkout")}
         >
           Check Out
@@ -7523,7 +7790,11 @@ const styles = getStyles(theme, isCrtTheme);
 
       <button
         type="button"
-        style={styles.staffButton}
+        style={{
+          ...styles.staffButton,
+          width: isMobile ? "100%" : styles.staffButton.width,
+          maxWidth: isMobile ? "360px" : "none",
+        }}
         onClick={() => navigateTo("staff-login")}
       >
         Staff Login

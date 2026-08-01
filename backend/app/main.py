@@ -8,7 +8,7 @@ from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -30,6 +30,7 @@ from .schemas import (
     PrintAgentResponse,
     PrintJobPublicStatusResponse,
     PrintJobResponse,
+    PrintJobStationUpdate,
     PrintJobStatusUpdate,
     PrintStationCreate,
     PrintStationHeartbeat,
@@ -56,6 +57,7 @@ from .schemas import (
 import logging
 import json
 import io
+import csv
 import re
 import shutil
 import qrcode
@@ -2085,6 +2087,71 @@ def delete_print_job(
 
     return {"status": "deleted"}
 
+
+@app.put("/api/print-jobs/{print_job_id}/station", response_model=PrintJobResponse)
+def reassign_print_job_station(
+    print_job_id: int,
+    request: PrintJobStationUpdate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """Redirect a still-queued print job to a different, enabled station.
+
+    Covers the operational case where a job was queued for a station that is
+    offline (for example, a guest used an old URL naming a station that is not
+    currently online). Only ``Pending`` jobs may be redirected — in-flight or
+    terminal jobs are never reassigned — and the destination must be a valid,
+    enabled station. Any stale lease bookkeeping is cleared and the claim
+    generation is bumped so a late update from a prior lease cannot apply.
+    """
+    job = (
+        db.query(PrintJob)
+        .filter(PrintJob.id == print_job_id)
+        .first()
+    )
+
+    if job is None:
+        raise HTTPException(status_code=404, detail="Print job not found")
+
+    if job.status != "Pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Only pending print jobs can be redirected to another station.",
+        )
+
+    station = (
+        db.query(PrintStation)
+        .filter(
+            PrintStation.id == request.station_id,
+            PrintStation.enabled == True,
+        )
+        .first()
+    )
+
+    if station is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected print station not found or unavailable.",
+        )
+
+    previous_station_id = job.print_station_id
+    job.print_station_id = station.id
+    job.claimed_by_agent_id = None
+    job.claim_expires_at = None
+    job.claimed_time = None
+    job.claim_generation = (job.claim_generation or 0) + 1
+
+    db.commit()
+    db.refresh(job)
+
+    audit(
+        current_user,
+        "REDIRECT_PRINT_JOB",
+        f"JobID={job.id}, FromStationID={previous_station_id}, ToStation={station.slug}",
+    )
+
+    return job
+
 @app.get("/api/print-stations",response_model=list[PrintStationResponse])
 def get_print_stations(
     db: Session = Depends(get_db)
@@ -2331,6 +2398,41 @@ def delete_print_station(
         raise HTTPException(
             status_code=400,
             detail="Unassign all print agents before deleting this station",
+        )
+
+    # Jobs belong to their station (PrintJob.print_station_id is NOT NULL) and
+    # visitors record the station they checked in at. Permanently deleting a
+    # referenced station would orphan those rows / break the FK, so block it and
+    # steer the operator toward disabling the station instead.
+    referencing_jobs = (
+        db.query(PrintJob)
+        .filter(PrintJob.print_station_id == station_id)
+        .count()
+    )
+
+    if referencing_jobs > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This station has print job history and can't be permanently "
+                "deleted. Disable the station instead, or clear its print jobs "
+                "first."
+            ),
+        )
+
+    referencing_visitors = (
+        db.query(Visitor)
+        .filter(Visitor.print_station_id == station_id)
+        .count()
+    )
+
+    if referencing_visitors > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This station is referenced by visitor check-in records and "
+                "can't be permanently deleted. Disable the station instead."
+            ),
         )
 
     db.delete(station)
@@ -2840,7 +2942,91 @@ def create_visitor(
     db.commit()
     db.refresh(db_visitor)
 
+    # Unauthenticated kiosk action: attribute to the "kiosk" system actor so the
+    # audit trail records every check-in even though no staff user is logged in.
+    audit(
+        "kiosk",
+        "CHECK_IN",
+        f"VisitorID={db_visitor.id}, "
+        f"Name={db_visitor.first_name} {db_visitor.last_name}, "
+        f"Station={station.slug}",
+    )
+
     return db_visitor
+
+@app.get("/api/visitors/active/export")
+def export_active_visitors(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Emergency roster export (authenticated staff).
+
+    Streams a CSV of everyone currently on property so the office can account
+    for and reach every guest during an evacuation or roll-call. Ordered by
+    arrival time and includes host/camper, contact info, check-in station, and
+    expected departure.
+    """
+    active = (
+        db.query(Visitor)
+        .filter(Visitor.check_out_time.is_(None))
+        .order_by(Visitor.check_in_time.asc())
+        .all()
+    )
+
+    station_names = {
+        s.id: s.name
+        for s in db.query(PrintStation).all()
+    }
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "Visitor Name",
+        "Visitor Type",
+        "Host / Camper",
+        "Purpose",
+        "Phone",
+        "Email",
+        "Vehicle Plate",
+        "Check-In Station",
+        "Check-In Time",
+        "Expected Departure",
+    ])
+
+    for v in active:
+        writer.writerow([
+            f"{v.first_name} {v.last_name}",
+            v.visitor_type or "",
+            v.host_name or "",
+            v.purpose or "",
+            v.phone or "",
+            v.email or "",
+            v.vehicle_plate or "",
+            station_names.get(v.print_station_id, "") if v.print_station_id else "",
+            v.check_in_time.strftime("%Y-%m-%d %H:%M:%S") if v.check_in_time else "",
+            (
+                v.expected_departure_time.strftime("%Y-%m-%d %H:%M:%S")
+                if v.expected_departure_time
+                else ""
+            ),
+        ])
+
+    audit(
+        current_user,
+        "EXPORT_ACTIVE_VISITORS",
+        f"Count={len(active)}",
+    )
+
+    filename = (
+        f"active-visitors-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
+    )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 @app.get("/api/visitors", response_model=list[VisitorResponse])
 def get_visitors(
@@ -2940,6 +3126,14 @@ def checkin_again(
     db.add(new_visitor)
     db.commit()
     db.refresh(new_visitor)
+
+    audit(
+        current_user,
+        "CHECK_IN_RETURNING",
+        f"OriginalVisitorID={original.id}, "
+        f"NewVisitorID={new_visitor.id}, "
+        f"Name={new_visitor.first_name} {new_visitor.last_name}",
+    )
 
     return new_visitor
 
@@ -3179,6 +3373,14 @@ def checkout_visitor(
 
         db.commit()
         db.refresh(visitor)
+
+        audit(
+            "kiosk",
+            "CHECK_OUT",
+            f"VisitorID={visitor.id}, "
+            f"Name={visitor.first_name} {visitor.last_name}, "
+            f"Method=Manual Checkout",
+        )
     return visitor
 
 @app.post("/api/visitors/{visitor_id}/photo", response_model=VisitorResponse)
@@ -3249,6 +3451,12 @@ def generate_badge(
     db.commit()
     db.refresh(visitor)
 
+    audit(
+        "kiosk",
+        "GENERATE_BADGE",
+        f"VisitorID={visitor.id}",
+    )
+
     return visitor
 
 @app.post("/api/visitors/{visitor_id}/print", response_model=PrintJobResponse)
@@ -3313,6 +3521,14 @@ def create_print_job(
     db.add(print_job)
     db.commit()
     db.refresh(print_job)
+
+    audit(
+        "kiosk",
+        "PRINT_BADGE",
+        f"VisitorID={visitor.id}, "
+        f"PrintJobID={print_job.id}, "
+        f"Station={print_station.slug}",
+    )
 
     return print_job
 

@@ -23,6 +23,12 @@ dist-ssr
 *.sln
 *.sw?
 
+# Windows / OneDrive OS artifacts
+Thumbs.db
+ehthumbs.db
+desktop.ini
+Desktop.ini
+
 # Environment files (never commit real secrets; examples are tracked)
 .env
 .env.*

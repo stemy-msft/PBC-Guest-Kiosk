@@ -46,6 +46,9 @@ class PrintAgentAssign(BaseModel):
 class ReprintBadgeRequest(BaseModel):
     station_id: int | None = None
 
+class PrintJobStationUpdate(BaseModel):
+    station_id: int
+
 class PrintAgentRegister(BaseModel):
     agent_key: str | None = None
     hostname: str

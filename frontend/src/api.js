@@ -104,6 +104,21 @@ export async function createPrintJob(visitorId) {
   return await response.json();
 }
 
+export async function getPrintJobStatus(printJobId) {
+  // Public, anonymous status lookup for the guest "is my badge printing?"
+  // experience. The endpoint intentionally returns only { status, station_name }
+  // — no personal data — so it needs no auth header.
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/${printJobId}/status`
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to load print status");
+  }
+
+  return await response.json();
+}
+
 export async function reprintBadge(visitorId, stationId) {
   // Staff-initiated reprint. Unlike check-in printing, staff may direct the
   // reprint to a chosen destination station (or null to use the visitor's
@@ -398,6 +413,26 @@ export async function deletePrintJob(jobId) {
   );
 
   return await handleResponse(response, "Failed to delete print job");
+}
+
+export async function reassignPrintJobStation(jobId, stationId) {
+  // Redirect a still-pending job to a different enabled station (e.g. when the
+  // job's original station is offline). Authenticated staff endpoint.
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(
+    `${API_BASE}/api/print-jobs/${jobId}/station`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ station_id: stationId }),
+    }
+  );
+
+  return await handleResponse(response, "Failed to redirect print job");
 }
 
 export async function clearCompletedPrintJobs() {
@@ -830,8 +865,55 @@ export async function deleteThemeLogo(id) {
     window.URL.revokeObjectURL(url);
   }
 
+  export async function exportActiveVisitors() {
+    // Emergency roster download: CSV of everyone currently on property.
+    // Authenticated staff action used for evacuation / roll-call.
+    const token = localStorage.getItem("access_token");
 
+    const response = await fetch(
+      `${API_BASE}/api/visitors/active/export`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
+    if (response.status === 401 || response.status === 403) {
+      handleUnauthorized();
+      throw new Error("Session expired");
+    }
+
+    if (!response.ok) {
+      throw new Error("Failed to export active visitors");
+    }
+
+    const blob = await response.blob();
+
+    const disposition = response.headers.get("Content-Disposition");
+
+    let filename = "active-visitors.csv";
+
+    if (disposition) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  }
 
   export async function changePassword(data) {
     const token = localStorage.getItem("access_token");
