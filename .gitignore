@@ -55,7 +55,6 @@ coverage.xml
 *.db3
 
 # Generated application artifacts / uploaded visitor data
-backend/tests
 backend/uploads/
 backend/logs/
 print-agent/downloaded-badges/
