@@ -115,6 +115,8 @@ class User(Base):
 
     password_changed_date = Column(DateTime, nullable=True)
     failed_login_count = Column(Integer, nullable=False, default=0)
+    # F-009 (M9.3.1): when set and in the future, authentication is refused.
+    locked_until = Column(DateTime, nullable=True)
     must_change_password = Column(Boolean, nullable=False, default=False)
 
     notes = Column(Text, nullable=True)

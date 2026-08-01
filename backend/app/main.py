@@ -182,6 +182,41 @@ if _migrated_visitor_columns:
     )
 
 
+# ---------------------------------------------------------------------------
+# F-009 Account lockout (M9.3.1): add users.locked_until in place on existing
+# deployments. Same tiny, idempotent, Alembic-free ALTER pattern as above.
+#
+#   ALTER TABLE users ADD COLUMN locked_until DATETIME;
+# ---------------------------------------------------------------------------
+
+def _apply_users_lockout_migration(bind) -> list[str]:
+    """Add the missing users.locked_until column. Returns applied names."""
+    applied: list[str] = []
+    with bind.begin() as conn:
+        existing = {
+            row[1]
+            for row in conn.exec_driver_sql(
+                "PRAGMA table_info(users)"
+            ).fetchall()
+        }
+        if not existing:
+            return applied
+        if "locked_until" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN locked_until DATETIME"
+            )
+            applied.append("locked_until")
+    return applied
+
+
+_migrated_user_columns = _apply_users_lockout_migration(engine)
+if _migrated_user_columns:
+    logging.getLogger("guest-kiosk").warning(
+        "Account-lockout migration added users columns: %s",
+        ", ".join(_migrated_user_columns),
+    )
+
+
 with Session(engine) as db:
     create_default_admin(db)
 
@@ -1380,6 +1415,22 @@ def health(response: Response):
         "checks": checks,
     }
 
+# ---------------------------------------------------------------------------
+# F-009 Account lockout (M9.3.1). Additive, config-driven brute-force control.
+# Thresholds are read once at import with safe defaults and may be overridden
+# per-deployment via environment variables. A threshold of 0 disables lockout.
+# ---------------------------------------------------------------------------
+LOGIN_LOCKOUT_THRESHOLD = int(os.getenv("PBC_LOGIN_LOCKOUT_THRESHOLD", "5"))
+LOGIN_LOCKOUT_MINUTES = int(os.getenv("PBC_LOGIN_LOCKOUT_MINUTES", "15"))
+# User-facing message: clear about the lockout, but does not confirm whether the
+# submitted password was correct (non-enumerating beyond the account the caller
+# already had to know to trip the threshold).
+ACCOUNT_LOCKED_MESSAGE = (
+    "Account temporarily locked due to repeated failed sign-in attempts. "
+    "Please try again later."
+)
+
+
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(
     request: LoginRequest,
@@ -1397,18 +1448,58 @@ def login(
             status_code=401,
             detail="Invalid username or password",
         )
-    password_matches = verify_password(
-        request.password,
-        user.password_hash,
-    )
     if not user.enabled:
         audit(user=user.username, action="LOGIN_FAILED", details="Account disabled")
         raise HTTPException(
             status_code=403,
             detail="Account disabled",
         )
+
+    now = datetime.now()
+
+    # F-009: reject any attempt while an active lock is in effect, before the
+    # password is verified, so a locked account cannot be probed even with the
+    # correct password.
+    if user.locked_until and user.locked_until > now:
+        audit(
+            user=user.username,
+            action="LOGIN_LOCKED",
+            details=f"Attempt blocked; locked until {user.locked_until.isoformat()}",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail=ACCOUNT_LOCKED_MESSAGE,
+        )
+
+    # F-009: a previously-set lock whose window has elapsed auto-unlocks here and
+    # the failure counter is reset before the attempt is evaluated.
+    if user.locked_until and user.locked_until <= now:
+        user.locked_until = None
+        user.failed_login_count = 0
+        audit(user=user.username, action="ACCOUNT_UNLOCKED", details="Lockout window expired")
+        db.commit()
+
+    password_matches = verify_password(
+        request.password,
+        user.password_hash,
+    )
     if not password_matches:
         user.failed_login_count += 1
+        if LOGIN_LOCKOUT_THRESHOLD > 0 and user.failed_login_count >= LOGIN_LOCKOUT_THRESHOLD:
+            user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+            audit(
+                user=user.username,
+                action="ACCOUNT_LOCKED",
+                details=(
+                    f"{user.failed_login_count} consecutive failures; "
+                    f"locked until {user.locked_until.isoformat()}"
+                ),
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=401,
+                detail=ACCOUNT_LOCKED_MESSAGE,
+            )
         audit(user=user.username, action="LOGIN_FAILED", details=f"Invalid password (attempt #{user.failed_login_count})")
         db.commit()
         raise HTTPException(
@@ -1416,8 +1507,12 @@ def login(
             detail="Invalid username or password",
         )
     audit(user=user.username,action="LOGIN",details="Successful login")
+    was_locked = user.locked_until is not None
     user.failed_login_count = 0
-    user.last_login = datetime.now()
+    user.locked_until = None
+    user.last_login = now
+    if was_locked:
+        audit(user=user.username, action="ACCOUNT_UNLOCKED", details="Cleared on successful login")
     db.commit()
     token = create_access_token(user.username)
     return LoginResponse(
