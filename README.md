@@ -1,6 +1,6 @@
 # PBC Visitor Kiosk
 
-A self-service visitor management and badge printing solution designed for camps, churches, conferences, and other organizations that need a simple, secure visitor check-in experience.
+A self-service or staff-driven visitor management and badge printing solution designed for camps, churches, conferences, and other organizations that need a simple, secure visitor check-in experience.
 
 The kiosk allows guests to check in from a touch-friendly interface, capture a photo, generate a visitor badge, and automatically print the badge through a network-connected print server.
 
@@ -298,9 +298,7 @@ This configuration is currently considered the project's validated end-to-end pr
 Current Status: **Milestone 8 Complete — "Beta 2 / Feature Complete"** · **Milestone 9 (RC1) in planning**
 
 M8 was closed on 2026-07-31 after real-device validation (Android phone, iPad Safari/Chrome,
-Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all portrait + landscape PASS). See
-[`docs/reviews/m8-completion-report.md`](docs/reviews/m8-completion-report.md) and the
-[`m9-rc1-work-plan.md`](docs/reviews/m9-rc1-work-plan.md).
+Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all portrait + landscape PASS).
 
 Completed:
 

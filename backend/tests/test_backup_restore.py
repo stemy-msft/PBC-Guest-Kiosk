@@ -10,6 +10,12 @@ Two concerns are covered:
    schema, including a full backup -> restore round-trip proving visitor and
    print records survive and recovery logic still functions on restored data.
 
+The ``TestHardening`` class adds focused regression coverage for the ten
+v1.1.0 correctness/security corrections (config inventory, per-file manifest,
+full verification, exact-reproduce restore, atomic DB swap, label sanitizing,
+failed-backup cleanup, config-aware safety snapshot, manifest normalization,
+and source/destination overlap rejection).
+
 All databases used here live under pytest's ``tmp_path``; none touch the real
 operational database or the conftest in-memory engine.
 """
@@ -61,23 +67,34 @@ def _make_uploads(root):
     return counts
 
 
+def _make_config(config_dir):
+    """Create the two runtime config files; return their names."""
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "system_settings.json").write_text(
+        '{"camp_name": "PBC"}', encoding="utf-8"
+    )
+    (config_dir / "user_themes.json").write_text(
+        '{"themes": [{"name": "Sunset"}]}', encoding="utf-8"
+    )
+    return ("system_settings.json", "user_themes.json")
+
+
 @pytest.fixture
 def live_env(tmp_path):
-    """A simulated live install: db + uploads + config under tmp_path."""
+    """A simulated live install: db + uploads + config dir under tmp_path."""
     db = tmp_path / "visitor_kiosk.db"
     uploads = tmp_path / "uploads"
-    config = tmp_path / "config" / "system_settings.json"
+    config_dir = tmp_path / "config"
     backups = tmp_path / "backups"
 
     _make_sample_db(db)
     _make_uploads(uploads)
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text('{"camp_name": "PBC"}', encoding="utf-8")
+    _make_config(config_dir)
 
     return {
         "db": db,
         "uploads": uploads,
-        "config": config,
+        "config_dir": config_dir,
         "backups": backups,
         "root": tmp_path,
     }
@@ -91,7 +108,7 @@ class TestBackup:
         m = create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         dest = Path(m["path"])
@@ -99,22 +116,24 @@ class TestBackup:
         assert m["database"]["present"] is True
         assert m["database"]["integrity"] == "ok"
         assert m["database"]["sha256"]
-        assert m["uploads"]["photos"]["files"] == 2
-        assert m["uploads"]["badges"]["files"] == 1
-        assert m["uploads"]["theme-logos"]["files"] == 0
-        assert m["config"]["present"] is True
+        assert len(m["uploads"]["photos"]["files"]) == 2
+        assert len(m["uploads"]["badges"]["files"]) == 1
+        assert len(m["uploads"]["theme-logos"]["files"]) == 0
+        assert m["config"]["system_settings.json"]["present"] is True
+        assert m["config"]["user_themes.json"]["present"] is True
 
         # Files physically present in the snapshot directory.
         assert dest.exists()
         assert (dest / "visitor_kiosk.db").exists()
         assert (dest / "manifest.json").exists()
         assert (dest / "config" / "system_settings.json").exists()
+        assert (dest / "config" / "user_themes.json").exists()
 
     def test_backup_uses_consistent_copy_that_passes_integrity(self, live_env):
-        m = create_backup(
+        create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         db_copy = list_backups(live_env["backups"])[0] / "visitor_kiosk.db"
@@ -132,11 +151,12 @@ class TestBackup:
         m = create_backup(
             db_path=tmp_path / "missing.db",
             uploads_dir=tmp_path / "uploads",
-            config_file=tmp_path / "config" / "system_settings.json",
+            config_dir=tmp_path / "config",
             backup_root=tmp_path / "backups",
         )
         assert m["database"]["present"] is False
-        assert m["config"]["present"] is False
+        assert m["config"]["system_settings.json"]["present"] is False
+        assert m["config"]["user_themes.json"]["present"] is False
 
     def test_retention_prunes_oldest_snapshots(self, live_env):
         stamps = [
@@ -149,7 +169,7 @@ class TestBackup:
             create_backup(
                 db_path=live_env["db"],
                 uploads_dir=live_env["uploads"],
-                config_file=live_env["config"],
+                config_dir=live_env["config_dir"],
                 backup_root=live_env["backups"],
                 retention=2,
                 now=ts,
@@ -170,18 +190,20 @@ class TestVerify:
         create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         snap = list_backups(live_env["backups"])[0]
         result = verify_backup(snap)
         assert result["database"] == "ok"
+        assert result["uploads_files"] == 4  # 2 photos + 1 badge + 1 qr
+        assert result["config_files"] == 2
 
     def test_verify_detects_tampered_database(self, live_env):
         create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         snap = list_backups(live_env["backups"])[0]
@@ -205,7 +227,7 @@ class TestRestore:
         create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         snap = list_backups(live_env["backups"])[0]
@@ -213,13 +235,13 @@ class TestRestore:
         clean = tmp_path / "clean"
         target_db = clean / "visitor_kiosk.db"
         target_uploads = clean / "uploads"
-        target_config = clean / "config" / "system_settings.json"
+        target_config = clean / "config"
 
         summary = restore_backup(
             backup_dir=snap,
             db_path=target_db,
             uploads_dir=target_uploads,
-            config_file=target_config,
+            config_dir=target_config,
             make_safety=False,
         )
         assert summary["database_restored"] is True
@@ -227,7 +249,8 @@ class TestRestore:
         assert target_db.exists()
         assert integrity_check(target_db) is True
         assert (target_uploads / "photos" / "photos-0.bin").exists()
-        assert target_config.exists()
+        assert (target_config / "system_settings.json").exists()
+        assert (target_config / "user_themes.json").exists()
         # Data preserved.
         conn = sqlite3.connect(str(target_db))
         try:
@@ -241,7 +264,7 @@ class TestRestore:
         create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         snap = list_backups(live_env["backups"])[0]
@@ -257,7 +280,7 @@ class TestRestore:
             backup_dir=snap,
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             make_safety=True,
             safety_backup_root=safety_root,
         )
@@ -284,7 +307,7 @@ class TestRestore:
         create_backup(
             db_path=live_env["db"],
             uploads_dir=live_env["uploads"],
-            config_file=live_env["config"],
+            config_dir=live_env["config_dir"],
             backup_root=live_env["backups"],
         )
         snap = list_backups(live_env["backups"])[0]
@@ -300,10 +323,285 @@ class TestRestore:
             backup_dir=snap,
             db_path=target_db,
             uploads_dir=clean / "uploads",
-            config_file=clean / "config" / "system_settings.json",
+            config_dir=clean / "config",
             make_safety=False,
         )
         assert not stale_wal.exists()
+
+
+# --------------------------------------------------------------------------- #
+# v1.1.0 hardening corrections (regression coverage, one+ test per correction)
+# --------------------------------------------------------------------------- #
+class TestHardening:
+    # (1) Inventory every runtime config file, incl. user-created themes.
+    def test_c1_user_themes_config_is_captured(self, live_env):
+        m = create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        dest = Path(m["path"])
+        assert m["config"]["user_themes.json"]["present"] is True
+        assert (dest / "config" / "user_themes.json").exists()
+
+    # (2) Manifest records relpath, bytes, sha256 for every captured file.
+    def test_c2_manifest_records_relpath_bytes_sha256(self, live_env):
+        m = create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        for meta in m["uploads"]["photos"]["files"]:
+            assert set(meta) >= {"relpath", "bytes", "sha256"}
+            assert meta["relpath"].startswith("uploads/photos/")
+            assert isinstance(meta["bytes"], int)
+            assert len(meta["sha256"]) == 64
+        cfg = m["config"]["system_settings.json"]
+        assert cfg["relpath"] == "config/system_settings.json"
+        assert isinstance(cfg["bytes"], int)
+        assert len(cfg["sha256"]) == 64
+
+    # (3) verify_backup validates every manifested file (uploads + config).
+    def test_c3_verify_detects_tampered_upload(self, live_env):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+        (snap / "uploads" / "photos" / "photos-0.bin").write_bytes(b"tampered!")
+        with pytest.raises(BackupError):
+            verify_backup(snap)
+
+    def test_c3_verify_detects_tampered_config(self, live_env):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+        (snap / "config" / "user_themes.json").write_text("EVIL", encoding="utf-8")
+        with pytest.raises(BackupError):
+            verify_backup(snap)
+
+    # (4) Restore reproduces the snapshot exactly; stale live content removed.
+    def test_c4_restore_removes_stale_upload_and_config(self, live_env, tmp_path):
+        # Snapshot has NO theme-logos files and NO user_themes.json.
+        (live_env["config_dir"] / "user_themes.json").unlink()
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+
+        # Live target has stale content the snapshot does not contain.
+        target_uploads = tmp_path / "restored" / "uploads"
+        target_config = tmp_path / "restored" / "config"
+        (target_uploads / "badges").mkdir(parents=True)
+        (target_uploads / "badges" / "stale-badge.bin").write_bytes(b"old")
+        target_config.mkdir(parents=True)
+        (target_config / "system_settings.json").write_text("{}", encoding="utf-8")
+        (target_config / "user_themes.json").write_text("STALE", encoding="utf-8")
+
+        summary = restore_backup(
+            backup_dir=snap,
+            db_path=tmp_path / "restored" / "visitor_kiosk.db",
+            uploads_dir=target_uploads,
+            config_dir=target_config,
+            make_safety=False,
+        )
+        # Badge category IS in the snapshot -> replaced (stale badge gone).
+        assert not (target_uploads / "badges" / "stale-badge.bin").exists()
+        assert (target_uploads / "badges" / "badges-0.bin").exists()
+        # user_themes.json recorded absent -> removed from live.
+        assert not (target_config / "user_themes.json").exists()
+        assert "user_themes.json" in summary["config_removed"]
+
+    # (5) Atomic DB restore: temp sibling, integrity_check, os.replace.
+    def test_c5_restore_leaves_no_temp_file(self, live_env, tmp_path):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+        target_db = tmp_path / "restored" / "visitor_kiosk.db"
+        restore_backup(
+            backup_dir=snap,
+            db_path=target_db,
+            uploads_dir=tmp_path / "restored" / "uploads",
+            config_dir=tmp_path / "restored" / "config",
+            make_safety=False,
+        )
+        assert not target_db.with_name(target_db.name + ".restore-tmp").exists()
+        assert integrity_check(target_db) is True
+
+    def test_c5_failed_integrity_does_not_clobber_live_db(self, live_env, tmp_path):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+
+        # Existing, valid live DB with distinctive data.
+        live_db = tmp_path / "live" / "visitor_kiosk.db"
+        live_db.parent.mkdir(parents=True)
+        conn = sqlite3.connect(str(live_db))
+        conn.execute("CREATE TABLE keep (id INTEGER)")
+        conn.execute("INSERT INTO keep VALUES (99)")
+        conn.commit()
+        conn.close()
+
+        # Corrupt the snapshot's DB copy so the restored temp fails integrity.
+        (snap / "visitor_kiosk.db").write_bytes(b"corrupt")
+        # verify_backup runs first and should already reject this snapshot.
+        with pytest.raises(BackupError):
+            restore_backup(
+                backup_dir=snap,
+                db_path=live_db,
+                uploads_dir=tmp_path / "live" / "uploads",
+                config_dir=tmp_path / "live" / "config",
+                make_safety=False,
+            )
+        # Live DB untouched.
+        conn = sqlite3.connect(str(live_db))
+        try:
+            val = conn.execute("SELECT id FROM keep").fetchone()[0]
+        finally:
+            conn.close()
+        assert val == 99
+        assert not live_db.with_name(live_db.name + ".restore-tmp").exists()
+
+    # (6) Sanitize/reject unsafe backup labels.
+    @pytest.mark.parametrize(
+        "bad_label",
+        ["../evil", "a/b", "a\\b", "with:colon", "ctrl\x01char", "..", "  "],
+    )
+    def test_c6_unsafe_labels_rejected(self, live_env, bad_label):
+        with pytest.raises(BackupError):
+            create_backup(
+                db_path=live_env["db"],
+                uploads_dir=live_env["uploads"],
+                config_dir=live_env["config_dir"],
+                backup_root=live_env["backups"],
+                label=bad_label,
+            )
+
+    def test_c6_safe_label_is_accepted(self, live_env):
+        m = create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+            label="pre-upgrade_2026",
+        )
+        assert "pre-upgrade_2026" in Path(m["path"]).name
+
+    # (7) Remove incomplete snapshot directory after any backup failure.
+    def test_c7_failed_backup_removes_incomplete_dir(self, live_env):
+        # A directory (not a file) at the config path makes copy2 raise.
+        bad_config = live_env["config_dir"] / "system_settings.json"
+        bad_config.unlink()
+        bad_config.mkdir()  # now a directory where a file is expected
+        with pytest.raises(Exception):
+            create_backup(
+                db_path=live_env["db"],
+                uploads_dir=live_env["uploads"],
+                config_dir=live_env["config_dir"],
+                backup_root=live_env["backups"],
+            )
+        # No half-written snapshot left behind.
+        assert list_backups(live_env["backups"]) == []
+
+    # (8) Config-only live state still triggers a safety snapshot.
+    def test_c8_config_only_live_state_triggers_safety(self, live_env, tmp_path):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+
+        # Target: NO db, NO uploads, but a live config file exists.
+        target = tmp_path / "cfgonly"
+        target_config = target / "config"
+        target_config.mkdir(parents=True)
+        (target_config / "system_settings.json").write_text(
+            '{"live": true}', encoding="utf-8"
+        )
+        safety_root = target / "safety"
+
+        summary = restore_backup(
+            backup_dir=snap,
+            db_path=target / "visitor_kiosk.db",
+            uploads_dir=target / "uploads",
+            config_dir=target_config,
+            make_safety=True,
+            safety_backup_root=safety_root,
+        )
+        assert summary["safety_backup"] is not None
+        assert list_backups(safety_root)  # a safety snapshot was written
+
+    # (9) Missing/unreadable/malformed manifests normalize to BackupError.
+    def test_c9_missing_manifest_raises(self, tmp_path):
+        d = tmp_path / "no-manifest"
+        d.mkdir()
+        with pytest.raises(BackupError):
+            verify_backup(d)
+
+    def test_c9_malformed_manifest_raises(self, tmp_path):
+        d = tmp_path / "bad-manifest"
+        d.mkdir()
+        (d / "manifest.json").write_text("{not valid json", encoding="utf-8")
+        with pytest.raises(BackupError):
+            verify_backup(d)
+
+    def test_c9_non_object_manifest_raises(self, tmp_path):
+        d = tmp_path / "list-manifest"
+        d.mkdir()
+        (d / "manifest.json").write_text("[1, 2, 3]", encoding="utf-8")
+        with pytest.raises(BackupError):
+            verify_backup(d)
+
+    # (10) Reject source/destination path overlap.
+    def test_c10_backup_root_inside_uploads_rejected(self, live_env):
+        with pytest.raises(BackupError):
+            create_backup(
+                db_path=live_env["db"],
+                uploads_dir=live_env["uploads"],
+                config_dir=live_env["config_dir"],
+                backup_root=live_env["uploads"] / "nested-backups",
+            )
+
+    def test_c10_restore_backup_dir_inside_uploads_rejected(self, live_env, tmp_path):
+        create_backup(
+            db_path=live_env["db"],
+            uploads_dir=live_env["uploads"],
+            config_dir=live_env["config_dir"],
+            backup_root=live_env["backups"],
+        )
+        snap = list_backups(live_env["backups"])[0]
+
+        # Restore target uploads dir that CONTAINS the snapshot.
+        target_uploads = snap.parent  # backups root holds the snapshot dir
+        with pytest.raises(BackupError):
+            restore_backup(
+                backup_dir=snap,
+                db_path=tmp_path / "r" / "visitor_kiosk.db",
+                uploads_dir=target_uploads,
+                config_dir=tmp_path / "r" / "config",
+                make_safety=False,
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -470,7 +768,7 @@ class TestPrintRecovery:
         create_backup(
             db_path=orm_db["path"],
             uploads_dir=tmp_path / "no-uploads",
-            config_file=tmp_path / "no-config.json",
+            config_dir=tmp_path / "no-config",
             backup_root=backup_root,
         )
         snap = list_backups(backup_root)[0]
@@ -480,7 +778,7 @@ class TestPrintRecovery:
             backup_dir=snap,
             db_path=restored_db,
             uploads_dir=tmp_path / "restored" / "uploads",
-            config_file=tmp_path / "restored" / "config.json",
+            config_dir=tmp_path / "restored" / "config",
             make_safety=False,
         )
 

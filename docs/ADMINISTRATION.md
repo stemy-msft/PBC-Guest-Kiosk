@@ -357,7 +357,8 @@ For creation, verification, restore, and full disaster-recovery steps, see
 | Generated badges | `backend/uploads/badges/` |
 | QR assets | `backend/uploads/qr-codes/` |
 | Theme logos | `backend/uploads/theme-logos/` |
-| Live configuration | `backend/config/system_settings.json` |
+| System settings | `backend/config/system_settings.json` |
+| Theme Editor themes | `backend/config/user_themes.json` |
 
 Snapshots are written to `backend/backups/` by default (git-ignored) and pruned
 to the most recent 14. Point `--dest` at removable/off-machine storage for

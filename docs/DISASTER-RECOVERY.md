@@ -23,15 +23,21 @@ resume operations:
 | Generated badges | `backend/uploads/badges/` |
 | QR assets | `backend/uploads/qr-codes/` |
 | Theme logos | `backend/uploads/theme-logos/` |
-| Live configuration | `backend/config/system_settings.json` |
+| System settings | `backend/config/system_settings.json` |
+| Theme Editor themes | `backend/config/user_themes.json` |
 
 **Not** in a snapshot (back these up by hand, securely): `backend/.env` and
 `print-agent/.env` — they hold secrets and are deliberately excluded.
+`backend/config/system_settings.template.json` is tracked in git and is not a
+runtime file, so it is not captured.
 
 The database is copied with SQLite's online backup API, so a snapshot taken
 while the backend is running is transactionally consistent. Every snapshot's
 database copy is validated with `PRAGMA integrity_check`; a copy that fails is
-discarded rather than kept.
+discarded rather than kept. The manifest records the relative path, byte size,
+and SHA-256 of **every** captured file, and `verify` re-checks each of them, so
+silent corruption in any uploaded file or config file is detected — not just in
+the database.
 
 ---
 
@@ -77,9 +83,18 @@ one immediately before week-7 shutdown.
    ```
 
    - The tool verifies the snapshot's integrity before touching anything.
-   - If live data is present, it first takes a **pre-restore safety snapshot**
-     of the current state (labelled `pre-restore`), so the restore is itself
-     reversible. Use `--no-safety` only for a truly empty target.
+   - If live data is present — a database, uploads, **or** a config file — it
+     first takes a **pre-restore safety snapshot** of the current state
+     (labelled `pre-restore`), so the restore is itself reversible. Use
+     `--no-safety` only for a truly empty target.
+   - A restore **reproduces the snapshot exactly**. Upload categories and
+     config files that the snapshot recorded as absent are *removed* from the
+     live install rather than left behind, so the result matches the snapshot
+     instead of a merge of old and new state.
+   - The database is restored **atomically**: it is rebuilt into a temporary
+     sibling file, integrity-checked, and only then swapped into place. A
+     restore that fails its integrity check leaves the existing live database
+     untouched.
 3. Start the backend. Confirm it starts and the visitor list loads.
 4. Power the Raspberry Pi print agents back on. They re-register automatically
    (their credentials are part of the restored database) and resume polling.
