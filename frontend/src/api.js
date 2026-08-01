@@ -282,19 +282,6 @@ export async function getUsers() {
   return await handleResponse(response, "Failed to load users");
 }
 
-// Deprecated?
-export async function getUser(id) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(`${API_BASE}/api/users/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  return await handleResponse(response, "Failed to load user");
-}
-
 export async function createUser(data) {
   const token = localStorage.getItem("access_token");
 
@@ -381,22 +368,6 @@ export async function getPrintJobs() {
   );
 
   return await handleResponse(response, "Failed to load print jobs");
-}
-
-// Deprecated?
-export async function getPendingPrintJobs() {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-jobs/pending`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  return await handleResponse(response, "Failed to load pending print jobs");
 }
 
 export async function deletePrintJob(jobId) {
@@ -558,27 +529,6 @@ export async function deletePrintStation(stationId) {
   );
 
   return await handleResponse(response, "Failed to delete print station");
-}
-
-// Deprecated?
-export async function disablePrintStation(id) {
-  const token = localStorage.getItem("access_token");
-
-  const response = await fetch(
-    `${API_BASE}/api/print-stations/${id}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to disable print station");
-  }
-
-  return await response.json();
 }
 
 export async function getPrintStations() {

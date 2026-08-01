@@ -205,36 +205,6 @@ def resolve_print_agent_credential(token: str, db: Session):
     return agent, credential
 
 
-def get_optional_print_agent(
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Grace-period print-agent auth dependency.
-
-    Returns the authenticated ``PrintAgent`` when a valid bearer credential is
-    presented, otherwise ``None``. It never raises: tokenless requests (existing
-    deployed agents) and requests with invalid/revoked tokens both resolve to
-    ``None`` so callers remain non-enforcing until Batch 5D wires enforcement.
-    """
-    header = request.headers.get("Authorization", "")
-
-    if not header.lower().startswith("bearer "):
-        return None
-
-    token = header[len("bearer ") :].strip()
-
-    resolved = resolve_print_agent_credential(token, db)
-
-    if resolved is None:
-        return None
-
-    agent, credential = resolved
-    credential.last_used_at = datetime.now(timezone.utc)
-    db.commit()
-
-    return agent
-
-
 def require_print_agent(
     request: Request,
     db: Session = Depends(get_db),

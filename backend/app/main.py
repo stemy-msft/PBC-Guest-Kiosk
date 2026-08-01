@@ -1,4 +1,3 @@
-from urllib3 import request
 from .auth import (create_access_token, generate_agent_token, get_current_user, hash_agent_verifier, require_admin, require_print_agent, verify_password, hash_password)
 from .bootstrap import create_default_admin
 from .database import Base, engine, SessionLocal
