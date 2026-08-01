@@ -55,6 +55,7 @@ coverage.xml
 *.db3
 
 # Generated application artifacts / uploaded visitor data
+backend/tests
 backend/uploads/
 backend/logs/
 print-agent/downloaded-badges/
@@ -69,3 +70,6 @@ backend/config/user_themes.json
 
 # Generated repository inventory snapshot (regenerate on demand; do not track)
 repo_files.txt
+
+# Internal docs
+docs/reviews
