@@ -1,11 +1,19 @@
 from urllib3 import request
 from .auth import (create_access_token, generate_agent_token, get_current_user, hash_agent_verifier, require_admin, require_print_agent, verify_password, hash_password)
 from .bootstrap import create_default_admin
-from .database import Base, engine
+from .database import Base, engine, SessionLocal
 from .dependencies import get_db
+from .liveness import (
+    AGENT_ONLINE_SECONDS,
+    STATION_STATUS_MAINTENANCE,
+    STATION_STATUS_ONLINE,
+    STATION_STATUS_STALE,
+    agent_is_online,
+    station_status,
+)
 from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -58,6 +66,7 @@ import logging
 import json
 import io
 import csv
+import os
 import re
 import shutil
 import qrcode
@@ -728,6 +737,7 @@ def get_dashboard_stats(
     current_user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    now = datetime.now(timezone.utc)
     today = datetime.now().date()
     active_visitors = (
         db.query(Visitor)
@@ -741,31 +751,52 @@ def get_dashboard_stats(
         )
         .count()
     )
-    maintenance_stations = (
-        db.query(PrintStation)
-        .filter(PrintStation.enabled == False)
-        .count()
+
+    # Agent liveness (canonical): an agent is online only if it reported within
+    # the staleness window. This replaces the previous last_seen-not-null test,
+    # which reported a station online forever after an agent's first
+    # registration even if that agent had since died.
+    agents = db.query(PrintAgent).all()
+    online_agents = sum(
+        1 for a in agents if a.enabled and agent_is_online(a.last_seen, now)
     )
-    enabled_stations = (
-        db.query(PrintStation)
-        .filter(PrintStation.enabled == True)
-        .all()
-    )
-    online_stations = 0
-    offline_stations = 0
-    for station in enabled_stations:
-        online_agent = (
-            db.query(PrintAgent)
-            .filter(
-                PrintAgent.print_station_id == station.id,
-                PrintAgent.last_seen.is_not(None),
-            )
-            .first()
+    total_agents = len(agents)
+    offline_agents = total_agents - online_agents
+
+    # Enabled agents' last_seen grouped by station, for station status.
+    seens_by_station: dict[int, list] = {}
+    for a in agents:
+        if a.print_station_id is not None and a.enabled:
+            seens_by_station.setdefault(a.print_station_id, []).append(a.last_seen)
+
+    online_stations = offline_stations = stale_stations = maintenance_stations = 0
+    for station in db.query(PrintStation).all():
+        status = station_status(
+            enabled=bool(station.enabled),
+            agent_last_seens=seens_by_station.get(station.id, []),
+            now=now,
         )
-        if online_agent:
+        if status == STATION_STATUS_MAINTENANCE:
+            maintenance_stations += 1
+        elif status == STATION_STATUS_ONLINE:
             online_stations += 1
+        elif status == STATION_STATUS_STALE:
+            stale_stations += 1
         else:
             offline_stations += 1
+
+    stations_with_pending_jobs = (
+        db.query(PrintJob.print_station_id)
+        .filter(PrintJob.status == "Pending")
+        .distinct()
+        .count()
+    )
+    stations_with_failed_jobs = (
+        db.query(PrintJob.print_station_id)
+        .filter(PrintJob.status == "Failed")
+        .distinct()
+        .count()
+    )
     pending_jobs = (
         db.query(PrintJob)
         .filter(PrintJob.status == "Pending")
@@ -784,6 +815,12 @@ def get_dashboard_stats(
         maintenance_stations=maintenance_stations,
         pending_jobs=pending_jobs,
         failed_jobs=failed_jobs,
+        online_agents=online_agents,
+        offline_agents=offline_agents,
+        total_agents=total_agents,
+        stale_stations=stale_stations,
+        stations_with_pending_jobs=stations_with_pending_jobs,
+        stations_with_failed_jobs=stations_with_failed_jobs,
     )
 
 @app.get("/api/settings",response_model=SettingsResponse,)
@@ -1080,11 +1117,121 @@ def delete_theme_logo(
     audit(current_user, "DELETE_THEME_LOGO", f"Theme={theme_id}")
     return {theme_id: themes[theme_id]}
 
+@app.get("/health/live")
+def health_live():
+    """Liveness probe: the process is up and serving. Deliberately cheap and
+    dependency-free - it never touches the database or filesystem."""
+    return {"status": "alive"}
+
+
+def _health_check_database() -> tuple[bool, str | None]:
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True, None
+    except Exception as exc:  # pragma: no cover - exercised via monkeypatch
+        return False, str(exc)
+
+
+def _health_check_directories() -> tuple[bool, list[str]]:
+    problems: list[str] = []
+    for label, directory in (
+        ("photos", PHOTO_DIR),
+        ("badges", BADGE_DIR),
+        ("qr-codes", QR_DIR),
+        ("theme-logos", LOGO_DIR),
+        ("config", CONFIG_DIR),
+    ):
+        if not directory.exists() or not directory.is_dir():
+            problems.append(f"{label}: missing")
+        elif not os.access(directory, os.W_OK):
+            problems.append(f"{label}: not writable")
+    return (not problems), problems
+
+
+def _health_check_configuration() -> tuple[bool, str | None]:
+    if not SETTINGS_FILE.exists():
+        return False, "system_settings.json is missing"
+    try:
+        json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return False, f"system_settings.json is unreadable/invalid: {exc}"
+    return True, None
+
+
+def _health_check_backup_subsystem() -> tuple[bool, str | None]:
+    """Confirm the backup tool is importable and its destination is writable.
+
+    Read-only validation - it never creates a backup or mutates any file, so it
+    does not touch M9.1 backup behaviour.
+    """
+    try:
+        from .backup import DEFAULT_BACKUP_ROOT
+
+        destination = DEFAULT_BACKUP_ROOT if DEFAULT_BACKUP_ROOT.exists() else DEFAULT_BACKUP_ROOT.parent
+        if not destination.exists() or not os.access(destination, os.W_OK):
+            return False, f"backup destination not writable: {destination}"
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 @app.get("/health")
-def health():
+def health(response: Response):
+    """Readiness probe: reports healthy ONLY when every critical dependency is
+    available. Returns HTTP 503 when any critical check fails so an uptime
+    monitor (or a staff glance) can distinguish "process up" from "able to
+    serve check-in".
+    """
+    db_ok, db_detail = _health_check_database()
+    dirs_ok, dir_problems = _health_check_directories()
+    cfg_ok, cfg_detail = _health_check_configuration()
+    backup_ok, backup_detail = _health_check_backup_subsystem()
+
+    checks = {
+        "database": {"ok": db_ok, "detail": db_detail},
+        "directories": {"ok": dirs_ok, "detail": dir_problems or None},
+        "configuration": {"ok": cfg_ok, "detail": cfg_detail},
+        "backup": {"ok": backup_ok, "detail": backup_detail},
+    }
+
+    # Print-infrastructure readiness is informational (reported, never fatal):
+    # having zero online agents is an operational condition, not a broken
+    # dependency, so it must not flip the process to "unhealthy".
+    if db_ok:
+        try:
+            now = datetime.now(timezone.utc)
+            infra_db = SessionLocal()
+            try:
+                agents = infra_db.query(PrintAgent).all()
+                online_agents = sum(
+                    1 for a in agents if a.enabled and agent_is_online(a.last_seen, now)
+                )
+                enabled_stations = (
+                    infra_db.query(PrintStation)
+                    .filter(PrintStation.enabled == True)
+                    .count()
+                )
+            finally:
+                infra_db.close()
+            checks["print_infrastructure"] = {
+                "ok": True,
+                "detail": {
+                    "online_agents": online_agents,
+                    "enabled_stations": enabled_stations,
+                },
+            }
+        except Exception as exc:
+            checks["print_infrastructure"] = {"ok": True, "detail": str(exc)}
+
+    critical_ok = db_ok and dirs_ok and cfg_ok and backup_ok
+    if not critical_ok:
+        response.status_code = 503
+
     return {
-        "status": "healthy",
+        "status": "healthy" if critical_ok else "unhealthy",
         "authentication": "database",
+        "checks": checks,
     }
 
 @app.post("/api/auth/login", response_model=LoginResponse)
@@ -1215,6 +1362,7 @@ def get_print_agents(
         .all()
     )
 
+    now = datetime.now(timezone.utc)
     results = []
 
     for agent in agents:
@@ -1239,6 +1387,7 @@ def get_print_agents(
                 "last_seen": agent.last_seen,
                 "last_ip": agent.last_ip,
                 "enabled": agent.enabled,
+                "online": agent.enabled and agent_is_online(agent.last_seen, now),
                 "station_id": station.id if station else None,
                 "station_name": station.name if station else None,
                 "station_slug": station.slug if station else None,
@@ -1464,6 +1613,7 @@ def register_print_agent(
         "last_seen": agent.last_seen,
         "last_ip": agent.last_ip,
         "enabled": agent.enabled,
+        "online": agent.enabled and agent_is_online(agent.last_seen),
         "station_id": assigned_station.id if assigned_station else None,
         "station_name": assigned_station.name if assigned_station else None,
         "station_slug": assigned_station.slug if assigned_station else None,
@@ -2156,11 +2306,41 @@ def reassign_print_job_station(
 def get_print_stations(
     db: Session = Depends(get_db)
 ):
-    return (
+    stations = (
         db.query(PrintStation)
         .order_by(PrintStation.name.asc())
         .all()
     )
+
+    now = datetime.now(timezone.utc)
+    agents = db.query(PrintAgent).all()
+    seens_by_station: dict[int, list] = {}
+    for a in agents:
+        if a.print_station_id is not None and a.enabled:
+            seens_by_station.setdefault(a.print_station_id, []).append(a.last_seen)
+
+    results = []
+    for station in stations:
+        status = station_status(
+            enabled=bool(station.enabled),
+            agent_last_seens=seens_by_station.get(station.id, []),
+            now=now,
+        )
+        results.append(
+            {
+                "id": station.id,
+                "name": station.name,
+                "slug": station.slug,
+                "print_server_host": station.print_server_host,
+                "enabled": station.enabled,
+                "last_seen": station.last_seen,
+                "agent_version": station.agent_version,
+                "last_ip": station.last_ip,
+                "status": status,
+                "online": status == STATION_STATUS_ONLINE,
+            }
+        )
+    return results
 
 @app.post("/api/print-stations",response_model=PrintStationResponse,)
 def create_print_station(

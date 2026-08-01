@@ -2,7 +2,7 @@
 
 A self-service or staff-driven visitor management and badge printing solution designed for camps, churches, conferences, and other organizations that need a simple, secure visitor check-in experience.
 
-The kiosk allows guests to check in from a touch-friendly interface, capture a photo, generate a visitor badge, and automatically print the badge through a network-connected print server.
+The kiosk allows guests to check in from a staffed desktop, a self-service kiosk, or their own personal mobile device, capture a photo, generate a visitor badge, and automatically print the badge through a network-connected print server.
 
 ## Features
 

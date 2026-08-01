@@ -1304,14 +1304,6 @@ const styles = getStyles(theme, isCrtTheme);
 
   // Badge Functions
 
-  function getAssignedAgentForStation(station) {
-    return (
-      printAgents.find(
-        (agent) => agent.station_id === station.id
-      ) || null
-    );
-  }
-
   function getAssignedAgentsForStation(station) {
     return printAgents.filter(
       (agent) => agent.station_id === station.id
@@ -1327,22 +1319,28 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   function getPrintStationStatus(station) {
-    if (!station.enabled) {
+    // M9.2 Batch 1: trust the backend's authoritative station status rather than
+    // recomputing it (and re-deriving agent liveness) on the client.
+    const status = station && station.status;
+
+    if (status === "maintenance" || (station && !station.enabled)) {
       return {
         label: "MAINTENANCE",
         color: "#f59e0b",
       };
     }
 
-    const assignedAgents = getAssignedAgentsForStation(station);
-    const onlineAgents = assignedAgents.filter((agent) =>
-      isAgentOnline(agent)
-    );
-
-    if (onlineAgents.length > 0) {
+    if (status === "online") {
       return {
         label: "ONLINE",
         color: theme.success,
+      };
+    }
+
+    if (status === "stale") {
+      return {
+        label: "STALE",
+        color: "#f59e0b",
       };
     }
 
@@ -1496,20 +1494,11 @@ const styles = getStyles(theme, isCrtTheme);
   }
 
   function isAgentOnline(agent) {
-    if (!agent || !agent.last_seen) {
-      return false;
-    }
-
-    const lastSeenTime = new Date(agent.last_seen).getTime();
-    const ageInSeconds = (Date.now() - lastSeenTime) / 1000;
-
-    return ageInSeconds < 60;
+    // M9.2 Batch 1: the backend is the single source of truth for liveness.
+    // Consuming the server-computed flag removes the previous timezone-dependent
+    // client calculation (which skewed by the browser's UTC offset).
+    return Boolean(agent && agent.online);
   }
-
-  function isStationOnline(station) {
-    const assignedAgent = getAssignedAgentForStation(station);
-    return isAgentOnline(assignedAgent);
-  }  
 
   async function loadPrintJobs() {
     try {
@@ -6344,6 +6333,51 @@ const styles = getStyles(theme, isCrtTheme);
             </div>
           </div>
           {/* End Dashboard Summary Cards */}
+
+          {/* M9.2 Batch 1: operational visibility cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+              ? "repeat(2, 1fr)"
+              : "repeat(4, 1fr)",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.online_agents ?? 0} / {dashboardStats?.offline_agents ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Print Agents</h2>
+              <p>Online / Offline</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.stale_stations ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Stations</h2>
+              <p>Stale (investigate)</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.stations_with_pending_jobs ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Stations</h2>
+              <p>With Pending Jobs</p>
+            </div>
+
+            <div style={styles.userStats}>
+              <h2 style={{ color: theme.textSecondary }}>
+                {dashboardStats?.stations_with_failed_jobs ?? 0}
+              </h2>
+              <h2 style={{ color: theme.textSecondary }}>Stations</h2>
+              <p>With Failed Jobs</p>
+            </div>
+          </div>
+          {/* End operational visibility cards */}
 
           <div
             style={{

@@ -237,18 +237,12 @@ def parse_cups_request_id(lp_output):
 
     return None
 
-def send_heartbeat():
-    response = requests.post(
-        f"{API_BASE}/api/print-stations/heartbeat",
-        json={
-            "station_slug": PRINT_STATION_SLUG,
-            "agent_version": AGENT_VERSION,
-        },
-        headers=auth_headers(),
-        timeout=10,
-    )
-
-    response.raise_for_status()
+# NOTE (M9.2 Batch 1): a station-level heartbeat was removed here. Agent
+# liveness is reported by register_agent() (called every poll below), which
+# updates PrintAgent.last_seen; station status is derived from its agents'
+# last_seen on the backend. A separate send_heartbeat() to
+# /api/print-stations/heartbeat was dead code (never called) and is intentionally
+# not reintroduced, so there is a single source of liveness truth.
 
 def wait_for_cups_job_to_finish(request_id):
     deadline = time.time() + PRINT_TIMEOUT_SECONDS

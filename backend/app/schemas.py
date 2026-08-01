@@ -1,11 +1,27 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 
 
 class Config:
         from_attributes = True
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    """Serialize a datetime as UTC-aware ISO-8601 so browsers parse it as UTC.
+
+    ``last_seen`` is stored naive (``datetime.utcnow()``); without an explicit
+    offset a browser's ``new Date()`` treats it as LOCAL time and skews
+    liveness by the browser's UTC offset. Emitting a UTC offset removes that
+    ambiguity for any consumer.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
 
 class DashboardStatsResponse(BaseModel):
     active_visitors: int
@@ -18,6 +34,15 @@ class DashboardStatsResponse(BaseModel):
 
     pending_jobs: int
     failed_jobs: int
+
+    # M9.2 Batch 1 operational visibility (additive; default 0 so older
+    # callers/tests that omit them keep working).
+    online_agents: int = 0
+    offline_agents: int = 0
+    total_agents: int = 0
+    stale_stations: int = 0
+    stations_with_pending_jobs: int = 0
+    stations_with_failed_jobs: int = 0
 
 class LoginRequest(BaseModel):
     username: str
@@ -66,9 +91,17 @@ class PrintAgentResponse(BaseModel):
     last_ip: str | None = None
     enabled: bool
 
+    # M9.2 Batch 1: authoritative, server-computed liveness. The frontend
+    # consumes this instead of recomputing an online/offline verdict.
+    online: bool = False
+
     station_id: int | None = None
     station_name: str | None = None
     station_slug: str | None = None
+
+    @field_serializer("last_seen")
+    def _serialize_last_seen(self, value: datetime | None):
+        return _utc_iso(value)
 
 class PrintAgentRegisterResponse(PrintAgentResponse):
     # ``agent_token`` carries the freshly issued plaintext credential and is
@@ -148,8 +181,18 @@ class PrintStationResponse(BaseModel):
     agent_version: str | None = None
     last_ip: str | None = None
 
+    # M9.2 Batch 1: server-derived operational status
+    # ("online"/"stale"/"offline"/"maintenance") and a convenience boolean.
+    # Defaults keep endpoints that return a bare station (create/update) valid.
+    status: str = "offline"
+    online: bool = False
+
     class Config:
         from_attributes = True
+
+    @field_serializer("last_seen")
+    def _serialize_last_seen(self, value: datetime | None):
+        return _utc_iso(value)
 
 class PrintStationStatsResponse(BaseModel):
     pending_jobs: int
