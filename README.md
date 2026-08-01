@@ -295,7 +295,12 @@ This configuration is currently considered the project's validated end-to-end pr
 
 ## Project Status
 
-Current Status: **Milestone 8 In Progress**
+Current Status: **Milestone 8 Complete — "Beta 2 / Feature Complete"** · **Milestone 9 (RC1) in planning**
+
+M8 was closed on 2026-07-31 after real-device validation (Android phone, iPad Safari/Chrome,
+Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all portrait + landscape PASS). See
+[`docs/reviews/m8-completion-report.md`](docs/reviews/m8-completion-report.md) and the
+[`m9-rc1-work-plan.md`](docs/reviews/m9-rc1-work-plan.md).
 
 Completed:
 
@@ -305,13 +310,20 @@ Completed:
 - Raspberry Pi print agent
 - Brother QL-800 integration
 - End-to-end badge printing
+- Visitor notes, history, returning-visitor workflow, badge reprint
+- Station ownership + agent lease model; multi-agent per station; multi-station routing
+- Print-job redirection between stations
+- Guest print-status workflow; emergency active-visitor export; expanded audit coverage
+- Responsive mobile + tablet layouts; Android camera workflow
 
-In Progress:
+In Progress (Milestone 9 — RC1):
 
-- Documentation
-- Deployment automation
+- Reliability and error recovery
+- Monitoring and observability
+- Backup / restore
 - Operational hardening
-- Production readiness improvements
+- Security hardening
+- Regression fixes
 
 ---
 
