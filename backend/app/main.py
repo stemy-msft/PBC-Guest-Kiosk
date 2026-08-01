@@ -3,6 +3,7 @@ from .auth import (create_access_token, generate_agent_token, get_current_user, 
 from .bootstrap import create_default_admin
 from .database import Base, engine, SessionLocal
 from .dependencies import get_db
+from .version import APP_VERSION, APP_VERSION_DISPLAY
 from .liveness import (
     AGENT_ONLINE_SECONDS,
     STATION_STATUS_MAINTENANCE,
@@ -223,7 +224,7 @@ with Session(engine) as db:
 
 app = FastAPI(
     title="PBC Visitor Kiosk",
-    version="0.7",
+    version=APP_VERSION,
 )
 
 # F-008: bearer-token auth needs no credentialed CORS, so the allowlist stays
@@ -1435,6 +1436,8 @@ def health(response: Response):
 
     return {
         "status": "healthy" if critical_ok else "unhealthy",
+        "version": APP_VERSION,
+        "release": APP_VERSION_DISPLAY,
         "authentication": "database",
         "checks": checks,
     }

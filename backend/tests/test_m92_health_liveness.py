@@ -125,6 +125,8 @@ def test_health_healthy_when_all_dependencies_ok(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
+    assert body["version"] == "1.0.0-rc.1"
+    assert body["release"] == "1.0.0 RC1"
     assert body["checks"]["database"]["ok"] is True
     assert body["checks"]["configuration"]["ok"] is True
 

@@ -190,6 +190,58 @@ Behavior:
 
 ---
 
+# Account Lockout
+
+The login endpoint has brute-force protection. System Settings (in the admin UI)
+is the runtime source of truth; the environment variables below provide the
+startup default when a settings value is unset.
+
+```env
+PBC_LOGIN_LOCKOUT_THRESHOLD=5    # consecutive failures before lock; 0 disables
+PBC_LOGIN_LOCKOUT_MINUTES=15     # lock duration before automatic unlock
+```
+
+Behavior:
+
+- After `THRESHOLD` consecutive failed logins, the account is locked for
+  `MINUTES`, after which it auto-unlocks on the next attempt.
+- A threshold of `0` disables lockout entirely.
+- Disabled accounts and unknown users are rejected regardless of lockout state.
+
+---
+
+# Badge Rendering
+
+Visitor badges are generated using a named theme:
+
+```env
+PBC_BADGE_THEME=PBC_standard   # optional; default shown
+```
+
+Set this only to select a different badge layout known to the badge service.
+
+---
+
+# Health & Monitoring
+
+The backend exposes two probes for uptime monitoring:
+
+```text
+GET /health/live   # liveness: always 200 {"status":"alive"}; no dependencies
+GET /health        # readiness: 200 when healthy, 503 when a critical
+                   #   dependency (database, upload dirs, config, backup) fails
+```
+
+- Point a load balancer / process supervisor at `/health/live` — it is cheap
+  and never touches the database or filesystem.
+- Point uptime/alerting at `/health` — it verifies real dependencies and
+  returns **503** when the service cannot serve check-in, so it distinguishes
+  "process up" from "able to serve".
+- `/health` also reports the running product `version`/`release` and print
+  infrastructure status (informational; never flips the result to unhealthy).
+
+---
+
 # System Settings File
 
 The backend also loads site-specific runtime settings (theme, check-in URL,

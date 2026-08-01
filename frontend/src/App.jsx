@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { version as APP_VERSION_RAW } from "../package.json";
 import {
   mapReportingSummary,
   resolveRequiredReturningCheckinFields,
@@ -144,7 +145,9 @@ export default function App() {
 
   // State variables
 
-  const APP_VERSION = "0.9.0 RC1 Preview";
+  // Single source of truth: package.json version. The SemVer prerelease
+  // "1.0.0-rc.1" is shown human-facing as "1.0.0 RC1".
+  const APP_VERSION = APP_VERSION_RAW.replace("-rc.", " RC");
   const APP_NAME = "PBC Guest Kiosk";
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768); 

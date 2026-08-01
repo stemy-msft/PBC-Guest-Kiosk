@@ -295,10 +295,11 @@ This configuration is currently considered the project's validated end-to-end pr
 
 ## Project Status
 
-Current Status: **Milestone 8 Complete — "Beta 2 / Feature Complete"** · **Milestone 9 (RC1) in planning**
+Current Status: **Release Candidate 1 (`1.0.0-rc.1`) — RC1 ready** · **Milestone 10 (RTM) next**
 
-M8 was closed on 2026-07-31 after real-device validation (Android phone, iPad Safari/Chrome,
-Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all portrait + landscape PASS).
+M8 ("Beta 2 / Feature Complete") was closed on 2026-07-31 after real-device validation
+(Android phone, iPad Safari/Chrome, Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all
+portrait + landscape PASS). Milestone 9 (RC1 hardening) is complete.
 
 Completed:
 
@@ -314,14 +315,17 @@ Completed:
 - Guest print-status workflow; emergency active-visitor export; expanded audit coverage
 - Responsive mobile + tablet layouts; Android camera workflow
 
-In Progress (Milestone 9 — RC1):
+Milestone 9 (RC1) — complete:
 
-- Reliability and error recovery
-- Monitoring and observability
-- Backup / restore
-- Operational hardening
-- Security hardening
-- Regression fixes
+- M9.1 Recovery & backup (backup/restore tooling, disaster-recovery runbook)
+- M9.2 Monitoring & operational visibility (`/health`, `/health/live`, dashboard)
+- M9.3 Security hardening (F-008 CORS, F-009 account lockout, F-010 upload boundaries)
+- M9.4 RC1 stabilization and release-identity reconciliation
+
+Next (Milestone 10 — RTM):
+
+- Deployment / containerization
+- Production release-to-manufacturing work
 
 ---
 
