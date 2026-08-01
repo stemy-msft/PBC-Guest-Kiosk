@@ -128,6 +128,37 @@ the backend and have been removed from the examples.
 
 ---
 
+# CORS Configuration
+
+The backend restricts which browser origins may call the API. Authentication
+uses bearer tokens (not cookies), so credentialed CORS is disabled and the
+allowlist never uses a wildcard.
+
+Two variables control this:
+
+```env
+# "development" (default) or "production"
+PBC_ENV=production
+
+# Comma-separated exact origins (scheme://host[:port], no trailing slash/path)
+PBC_CORS_ALLOWED_ORIGINS=https://kiosk.example.org,https://admin.example.org
+```
+
+Behavior:
+
+- **development** — if `PBC_CORS_ALLOWED_ORIGINS` is unset, safe localhost
+  defaults (`http://localhost:5173`, `http://127.0.0.1:5173`) are applied so a
+  fresh checkout runs without extra configuration.
+- **production** — `PBC_CORS_ALLOWED_ORIGINS` is **required**. The backend
+  fails fast and refuses to start if it is empty.
+- List every browser origin that serves the kiosk or admin UI. If the UI and
+  API are served **same-origin** behind a reverse proxy, that path needs no
+  CORS entry.
+- Malformed origins and any wildcard/explicit-origin mix are rejected at
+  startup rather than silently broadening access.
+
+---
+
 # System Settings File
 
 The backend also loads site-specific runtime settings (theme, check-in URL,

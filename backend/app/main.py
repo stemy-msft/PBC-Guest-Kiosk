@@ -14,6 +14,7 @@ from .liveness import (
 )
 from . import queue_diagnostics
 from . import station_diagnostics
+from .cors_config import resolve_cors_origins
 from .models import PrintAgent, PrintAgentCredential, PrintJob, PrintStation, Visitor, User
 from .services.badge_service import generate_visitor_badge
 from datetime import datetime, timedelta, timezone
@@ -225,12 +226,22 @@ app = FastAPI(
     version="0.7",
 )
 
+# F-008: bearer-token auth needs no credentialed CORS, so the allowlist stays
+# strict and never pairs "*" with credentials. Origins come from the
+# environment; an empty allowlist fails fast in production (see cors_config).
+CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOWED_ORIGINS = resolve_cors_origins(
+    os.getenv("PBC_CORS_ALLOWED_ORIGINS"),
+    environment=os.getenv("PBC_ENV", "development"),
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
     expose_headers=["Content-Disposition"],
 )
 
