@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 
 
@@ -256,6 +256,11 @@ class SettingsResponse(BaseModel):
     visit_purposes: list[str]
     required_checkin_fields: list[str]
     required_returning_checkin_fields: list[str]
+    # F-009 account lockout policy. Defaults match the PBC_LOGIN_LOCKOUT_* env
+    # fallbacks so settings files written before these fields existed still
+    # validate on read.
+    login_lockout_threshold: int = 5
+    login_lockout_minutes: int = 15
 
 
 class SettingsUpdate(BaseModel):
@@ -266,6 +271,9 @@ class SettingsUpdate(BaseModel):
     visit_purposes: list[str]
     required_checkin_fields: list[str]
     required_returning_checkin_fields: list[str]
+    # 0 threshold disables lockout; minutes must be at least 1.
+    login_lockout_threshold: int = Field(default=5, ge=0)
+    login_lockout_minutes: int = Field(default=15, ge=1)
 
 
 class ThemeCreate(BaseModel):

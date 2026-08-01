@@ -36,5 +36,7 @@
     "host_name",
     "visitor_type",
     "purpose"
-  ]
+  ],
+  "login_lockout_threshold": 5,
+  "login_lockout_minutes": 15
 }

@@ -3741,6 +3741,68 @@ const styles = getStyles(theme, isCrtTheme);
 
             <div style={styles.resultCard}>
               <h2 style={styles.settingsSectionTitle}>
+                Security
+              </h2>
+
+              {/* Account lockout threshold */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>
+                  Failed Logins Before Lockout
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  style={styles.input}
+                  value={editingSettings.login_lockout_threshold ?? 5}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      login_lockout_threshold: Number(e.target.value),
+                    })
+                  }
+                />
+                <p
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "13px",
+                    color: theme.textSecondary,
+                  }}
+                >
+                  Consecutive failed sign-ins before an account is locked. Set
+                  to 0 to disable lockout.
+                </p>
+              </div>
+
+              {/* Account lockout duration */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Lockout Duration (Minutes)</label>
+                <input
+                  type="number"
+                  min="1"
+                  style={styles.input}
+                  value={editingSettings.login_lockout_minutes ?? 15}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      login_lockout_minutes: Number(e.target.value),
+                    })
+                  }
+                />
+                <p
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "13px",
+                    color: theme.textSecondary,
+                  }}
+                >
+                  How long a locked account stays locked before it can sign in
+                  again.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.resultCard}>
+              <h2 style={styles.settingsSectionTitle}>
                 Visitor
               </h2>
 

@@ -1026,7 +1026,11 @@ def update_settings(request: SettingsUpdate,current_user: str = Depends(get_curr
     audit(
         current_user,
         "UPDATE_SETTINGS",
-        f"Theme={request.theme}, AutoRefresh={request.auto_refresh_seconds}",
+        (
+            f"Theme={request.theme}, AutoRefresh={request.auto_refresh_seconds}, "
+            f"LockoutThreshold={request.login_lockout_threshold}, "
+            f"LockoutMinutes={request.login_lockout_minutes}"
+        ),
     )
 
     with open(
@@ -1417,8 +1421,10 @@ def health(response: Response):
 
 # ---------------------------------------------------------------------------
 # F-009 Account lockout (M9.3.1). Additive, config-driven brute-force control.
-# Thresholds are read once at import with safe defaults and may be overridden
-# per-deployment via environment variables. A threshold of 0 disables lockout.
+# The System Settings screen (system_settings.json) is the source of truth; the
+# PBC_LOGIN_LOCKOUT_* env vars, read once at import, provide the default that
+# applies when a settings value is unset or the file is missing/unreadable.
+# A threshold of 0 disables lockout.
 # ---------------------------------------------------------------------------
 LOGIN_LOCKOUT_THRESHOLD = int(os.getenv("PBC_LOGIN_LOCKOUT_THRESHOLD", "5"))
 LOGIN_LOCKOUT_MINUTES = int(os.getenv("PBC_LOGIN_LOCKOUT_MINUTES", "15"))
@@ -1429,6 +1435,28 @@ ACCOUNT_LOCKED_MESSAGE = (
     "Account temporarily locked due to repeated failed sign-in attempts. "
     "Please try again later."
 )
+
+
+def _load_lockout_policy() -> tuple[int, int]:
+    """Return the effective (threshold, minutes) for account lockout.
+
+    Admin-editable values in system_settings.json win; the env-derived
+    constants above are the fallback default when a value is absent/invalid or
+    the settings file cannot be read.
+    """
+    threshold, minutes = LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_MINUTES
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        candidate_threshold = data.get("login_lockout_threshold")
+        candidate_minutes = data.get("login_lockout_minutes")
+        if isinstance(candidate_threshold, int) and candidate_threshold >= 0:
+            threshold = candidate_threshold
+        if isinstance(candidate_minutes, int) and candidate_minutes >= 1:
+            minutes = candidate_minutes
+    except (OSError, json.JSONDecodeError):
+        pass
+    return threshold, minutes
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
@@ -1456,6 +1484,7 @@ def login(
         )
 
     now = datetime.now()
+    lockout_threshold, lockout_minutes = _load_lockout_policy()
 
     # F-009: reject any attempt while an active lock is in effect, before the
     # password is verified, so a locked account cannot be probed even with the
@@ -1485,8 +1514,8 @@ def login(
     )
     if not password_matches:
         user.failed_login_count += 1
-        if LOGIN_LOCKOUT_THRESHOLD > 0 and user.failed_login_count >= LOGIN_LOCKOUT_THRESHOLD:
-            user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+        if lockout_threshold > 0 and user.failed_login_count >= lockout_threshold:
+            user.locked_until = now + timedelta(minutes=lockout_minutes)
             audit(
                 user=user.username,
                 action="ACCOUNT_LOCKED",
