@@ -252,6 +252,9 @@ class SettingsResponse(BaseModel):
     theme: str
     auto_refresh_seconds: int
     base_checkin_url: str
+    # Browser tab / page title. Defaulted so settings files written before this
+    # field existed still validate on read.
+    site_title: str = "PBC Guest Kiosk"
     visitor_types: list[str]
     visit_purposes: list[str]
     required_checkin_fields: list[str]
@@ -267,6 +270,7 @@ class SettingsUpdate(BaseModel):
     theme: str
     auto_refresh_seconds: int
     base_checkin_url: str
+    site_title: str = "PBC Guest Kiosk"
     visitor_types: list[str]
     visit_purposes: list[str]
     required_checkin_fields: list[str]

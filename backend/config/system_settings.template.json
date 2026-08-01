@@ -2,6 +2,7 @@
   "theme": "defaultLight",
   "auto_refresh_seconds": 5,
   "base_checkin_url": "http://your-kiosk-host.example.com",
+  "site_title": "PBC Guest Kiosk",
   "visitor_types": [
     "Parent",
     "Grandparent",

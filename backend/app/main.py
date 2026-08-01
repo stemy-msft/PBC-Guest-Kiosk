@@ -1043,6 +1043,7 @@ def update_settings(request: SettingsUpdate,current_user: str = Depends(get_curr
         "UPDATE_SETTINGS",
         (
             f"Theme={request.theme}, AutoRefresh={request.auto_refresh_seconds}, "
+            f"SiteTitle={request.site_title}, "
             f"LockoutThreshold={request.login_lockout_threshold}, "
             f"LockoutMinutes={request.login_lockout_minutes}"
         ),

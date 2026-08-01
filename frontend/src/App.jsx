@@ -299,6 +299,13 @@ export default function App() {
     loadSettings();
   }, []);
 
+  // Keep the browser tab title in sync with the configurable Site Title
+  // setting, falling back to the app name when it is unset.
+  useEffect(() => {
+    const title = systemSettings?.site_title?.trim();
+    document.title = title || APP_NAME;
+  }, [systemSettings?.site_title, APP_NAME]);
+
   // Load Camera devices on mount
   useEffect(() => {
     loadCameras();
@@ -3680,6 +3687,30 @@ const styles = getStyles(theme, isCrtTheme);
                 General Settings
               </h2>
 
+              {/* Site Title */}
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Site Title</label>
+                <input
+                  style={styles.input}
+                  value={editingSettings.site_title ?? ""}
+                  onChange={(e) =>
+                    setEditingSettings({
+                      ...editingSettings,
+                      site_title: e.target.value,
+                    })
+                  }
+                />
+                <p
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "13px",
+                    color: theme.textSecondary,
+                  }}
+                >
+                  Shown in the browser tab. Example: PBC Guest Kiosk
+                </p>
+              </div>
+
               {/* Theme */}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Theme</label>
@@ -6502,6 +6533,11 @@ const styles = getStyles(theme, isCrtTheme);
                   <code>/api/themes</code> API
                 </p>
 
+
+                <p>
+                  <strong>Site Title:</strong>{" "}
+                  {systemSettings?.site_title ?? "PBC Guest Kiosk"}
+                </p>
 
                 <p>
                   <strong>Theme:</strong> {systemSettings?.theme ?? "Unknown"}
