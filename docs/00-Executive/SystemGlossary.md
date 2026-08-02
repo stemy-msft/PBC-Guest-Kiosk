@@ -4,7 +4,7 @@
 developers. This is the *canonical vocabulary source* for the PBC Guest Kiosk. When
 another document uses one of these terms, it means what is written here.
 
-**Status:** Describes the system as it exists at `v1.0.0-rc.1`. Every definition is
+**Status:** Describes the system as it exists at `v1.0.0-rc.2`. Every definition is
 grounded in the current source code. Where a term is commonly confused or where the
 implementation has a deliberate limitation, that is called out explicitly.
 
@@ -64,7 +64,7 @@ on-disk path is recorded on the visitor as `badge_path`.
 
 ### Badge Theme
 The **colors and text styling** applied when a badge is rendered — background,
-foreground, border, and header colors. At `v1.0.0-rc.1` badge appearance is **fixed in
+foreground, border, and header colors. At `v1.0.0-rc.2` badge appearance is **fixed in
 code** with **no** UI or working environment control. A `PBC_BADGE_THEME` variable
 (default `PBC_standard`) exists in the code as **post-RTM scaffolding only** — no
 alternative theme has been built or tested, so it does not change the badge today. Not
@@ -75,7 +75,7 @@ See [Environment Variables](../06-Reference/EnvironmentVariables.md).
 ### Badge Layout
 The **dimensions and geometry** of a badge — its pixel width, height, and where each
 element is placed. The layout is fixed to `PBC_standard` in the badge renderer and is
-**not** configurable by environment variable at `v1.0.0-rc.1`. Layout (geometry) and
+**not** configurable by environment variable at `v1.0.0-rc.2`. Layout (geometry) and
 Theme (color) are separate concepts and are defined in separate code modules.
 
 ### Print Job

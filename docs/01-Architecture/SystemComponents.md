@@ -3,7 +3,7 @@
 **Audience:** Developers and volunteer IT who need to know what each subsystem does and
 how the pieces depend on one another.
 
-**Status:** Grounded in the source at `v1.0.0-rc.1`. For the wider picture see the
+**Status:** Grounded in the source at `v1.0.0-rc.2`. For the wider picture see the
 [Architecture Overview](Overview.md); for vocabulary see the
 [System Glossary](../00-Executive/SystemGlossary.md).
 
@@ -78,7 +78,7 @@ migrations for ownership, station-routing, and lockout columns are applied at st
 
 **Dependencies.** The local filesystem. It is a single SQLite database file
 (`visitor_kiosk.db`); the connection string is fixed in code and there is **no**
-environment-variable override for the database location at `v1.0.0-rc.1`. See
+environment-variable override for the database location at `v1.0.0-rc.2`. See
 [Data Flow](DataFlow.md) for what each table holds.
 
 **Inputs.** SQLAlchemy sessions opened by the Backend API.
@@ -133,7 +133,7 @@ and write it to disk as a PNG.
 **Dependencies.** Pillow, the badge theme and badge layout definitions, and system fonts
 (it tries Windows Arial, then common Linux fonts, then a built-in fallback). Internally the
 renderer reads `PBC_BADGE_THEME` (default `PBC_standard`) to pick a colour set, but this is
-**not an operator control at `v1.0.0-rc.1`**: the only named theme is `PBC_standard` (no
+**not an operator control at `v1.0.0-rc.2`**: the only named theme is `PBC_standard` (no
 alternative has been built or tested) and the **layout (geometry) is fixed** in code. Badge
 appearance is effectively fixed for this release.
 

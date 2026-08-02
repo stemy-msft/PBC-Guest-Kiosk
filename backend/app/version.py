@@ -6,7 +6,7 @@ the /health readiness response both read from here so they can never drift.
 """
 
 # SemVer prerelease identifier for the v1.0.0 release-candidate phase (M9).
-APP_VERSION = "1.0.0-rc.1"
+APP_VERSION = "1.0.0-rc.2"
 
 # Human-facing equivalent for display surfaces (UI footer, operator glance).
-APP_VERSION_DISPLAY = "1.0.0 RC1"
+APP_VERSION_DISPLAY = "1.0.0 RC2"

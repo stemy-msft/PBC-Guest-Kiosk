@@ -1,6 +1,6 @@
 # Backend Deployment
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Scope:** Installing and running only the FastAPI backend. For the full
 single-host path see [QuickStart.md](QuickStart.md); for Linux specifics see
 [LinuxDeployment.md](LinuxDeployment.md).
@@ -172,7 +172,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | --- | --- | --- |
 | `GET /` | Identity banner | `{"application":"PBC Visitor Kiosk","version":"1.0"}` (the `1.0` string is hard-coded here). |
 | `GET /health/live` | Liveness (no DB touch) | `{"status":"alive"}` |
-| `GET /health` | Readiness | JSON reporting `database`, `directories`, `configuration`, and `backup` subsystems plus `version` (`1.0.0-rc.1`) and `release` (`1.0.0 RC1`). Returns HTTP **503** if a critical subsystem fails. |
+| `GET /health` | Readiness | JSON reporting `database`, `directories`, `configuration`, and `backup` subsystems plus `version` (`1.0.0-rc.2`) and `release` (`1.0.0 RC2`). Returns HTTP **503** if a critical subsystem fails. |
 
 Operational use of these endpoints is covered in
 [Troubleshooting.md § 2](../03-Operations/Troubleshooting.md#2-system-health-checks)
@@ -234,7 +234,7 @@ guidance for support: [Troubleshooting.md § 13](../03-Operations/Troubleshootin
 - [ ] Backend started **from `backend/`**; `backend/visitor_kiosk.db` was created.
 - [ ] Console printed `Created default administrator account: <username>` on first run.
 - [ ] `GET /health/live` returns `{"status":"alive"}`.
-- [ ] `GET /health` returns HTTP `200` with all subsystems `ok` and `version` `1.0.0-rc.1`.
+- [ ] `GET /health` returns HTTP `200` with all subsystems `ok` and `version` `1.0.0-rc.2`.
 - [ ] `backend/logs/`, `backend/uploads/`, `backend/config/`, `backend/backups/` exist and are writable.
 
 ---

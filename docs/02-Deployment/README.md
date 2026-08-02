@@ -1,7 +1,7 @@
 # 02 — Deployment
 
 **Status:** Authoritative deployment documentation (Documentation Wave 4).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 
 This folder is the canonical, source-verified guide to installing and running the
 PBC Guest Kiosk. Every command, path, environment variable, and port in these

@@ -1,6 +1,6 @@
 # Quick-Start Deployment
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Audience:** A technically competent volunteer standing the system up for the
 first time on a single clean host.
 
@@ -195,7 +195,7 @@ With the backend running, confirm it is healthy:
 | Check | Command | Expected |
 | --- | --- | --- |
 | Liveness | `curl http://localhost:8000/health/live` | `{"status":"alive"}` |
-| Readiness | `curl http://localhost:8000/health` | JSON with `"version": "1.0.0-rc.1"` and each subsystem `ok`; HTTP `200`. |
+| Readiness | `curl http://localhost:8000/health` | JSON with `"version": "1.0.0-rc.2"` and each subsystem `ok`; HTTP `200`. |
 | Root | `curl http://localhost:8000/` | `{"application":"PBC Visitor Kiosk","version":"1.0"}` |
 
 If `/health` returns HTTP `503`, a critical subsystem (database, directories,

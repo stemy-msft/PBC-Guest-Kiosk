@@ -1,7 +1,7 @@
 # What Is the PBC Guest Kiosk?
 
 **Status:** Authoritative executive overview (Documentation Wave 2, P0).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 **Audience:** Camp directors, administrators, volunteer IT, and future
 maintainers. This is a plain-language orientation, not a setup guide — it links to
 the detailed references rather than repeating them.
@@ -21,7 +21,7 @@ user interface, and a small print agent on a Raspberry Pi. There is **no cloud
 service, subscription, or internet dependency at runtime**, so visitor photos and
 data stay on hardware you control.
 
-The current release is **`v1.0.0-rc.1`** — a release candidate that has been
+The current release is **`v1.0.0-rc.2`** — a release candidate that has been
 validated end-to-end on real hardware.
 
 ---
@@ -158,7 +158,7 @@ At a glance (full classification and evidence in
 
 ## 9. Current release status
 
-- **Release:** `v1.0.0-rc.1` (Release Candidate 1). The running backend reports
+- **Release:** `v1.0.0-rc.2` (Release Candidate 2). The running backend reports
   this via its `/health` endpoint.
 - **Validation:** End-to-end flow (check-in → photo → badge → print) validated on
   the [known-good build](../KNOWN_GOOD_BUILD.md); real-device browser validation

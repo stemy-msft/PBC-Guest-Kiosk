@@ -162,8 +162,10 @@ Carry these forward — they are real and currently open:
   `python-dotenv` but the manifest declares only `requests`; clean installs fail
   until a temporary local `pip install python-dotenv`. **Not fixed**; see
   [DependencyMaintenance.md](DependencyMaintenance.md#13-known-manifest-defects).
-- **Version/tag mismatch** — tag `v1.0.0-rc.2` exists while the code reads
-  `1.0.0-rc.1`; unresolved and factual. See
+- **Version alignment (resolved)** — the in-code version sources now read
+  `1.0.0-rc.2` (`1.0.0 RC2`), matching the `v1.0.0-rc.2` candidate; the earlier
+  rc.1/rc.2 version mismatch is aligned. Tag creation remains a separate,
+  deliberate human action. See
   [ReleaseManagement.md](ReleaseManagement.md#8-version-consistency-review).
 - **Production-readiness gaps** — service supervision, reverse proxy/TLS, and
   related hardening are future work; see
@@ -260,7 +262,7 @@ Accept the handoff only when all of the following are true:
 - [ ] You understand the database/migration model and its working-directory
   sensitivity.
 - [ ] You understand the dependency layout and the open `python-dotenv` defect.
-- [ ] You understand the release/versioning model and the rc.1/rc.2 mismatch.
+- [ ] You understand the release/versioning model and the `1.0.0-rc.2` version alignment.
 - [ ] You know the location of every canonical operational, deployment, and
   security document.
 - [ ] You know what must be preserved (§13) and where it lives.

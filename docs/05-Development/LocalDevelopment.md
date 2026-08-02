@@ -292,7 +292,7 @@ Safety points, all verified against `print_agent.py`:
 | --- | --- | --- |
 | `http://localhost:8000/` | Backend liveness banner | `{"application":"PBC Visitor Kiosk","version":"1.0"}` (the `"1.0"` here is a static banner string) |
 | `http://localhost:8000/health/live` | Liveness probe (no database) | `{"status":"alive"}` |
-| `http://localhost:8000/health` | Readiness probe (DB, directories, config, backup) | Returns `503` if a critical check fails; includes `version` `1.0.0-rc.1` and `release` `1.0.0 RC1` |
+| `http://localhost:8000/health` | Readiness probe (DB, directories, config, backup) | Returns `503` if a critical check fails; includes `version` `1.0.0-rc.2` and `release` `1.0.0 RC2` |
 | `http://localhost:8000/docs` | FastAPI interactive API docs (Swagger UI) | Served by FastAPI default; app is `FastAPI(title="PBC Visitor Kiosk", version=<APP_VERSION>)` with no docs override |
 | `http://localhost:8000/redoc` | ReDoc API docs | FastAPI default |
 | `http://localhost:5173/` | Frontend dev server | Vite default port |

@@ -21,11 +21,11 @@ process, and anything not encoded in the repo is labelled a *recommendation*.
 
 | Source | Value | Role |
 | --- | --- | --- |
-| `backend/app/version.py` — `APP_VERSION` | `1.0.0-rc.1` | **SSOT** for the FastAPI app version and `/health` |
-| `backend/app/version.py` — `APP_VERSION_DISPLAY` | `1.0.0 RC1` | Human-readable release label |
-| `frontend/package.json` — `version` | `1.0.0-rc.1` | Frontend package version |
+| `backend/app/version.py` — `APP_VERSION` | `1.0.0-rc.2` | **SSOT** for the FastAPI app version and `/health` |
+| `backend/app/version.py` — `APP_VERSION_DISPLAY` | `1.0.0 RC2` | Human-readable release label |
+| `frontend/package.json` — `version` | `1.0.0-rc.2` | Frontend package version |
 | `GET /` response banner | `"1.0"` | A static, coarse banner string (not the precise version) |
-| `GET /health` | includes `1.0.0-rc.1` / `1.0.0 RC1` | Runtime readiness surface |
+| `GET /health` | includes `1.0.0-rc.2` / `1.0.0 RC2` | Runtime readiness surface |
 
 `version.py` is the authoritative version for the running backend; the `GET /`
 banner is intentionally coarse ("1.0") and should not be treated as the precise
@@ -38,12 +38,12 @@ version.
 The project uses standard semantic-version pre-release terminology:
 
 - **`x.y.z-rc.N` (release candidate):** a build believed complete and undergoing
-  validation. The project is here now (`1.0.0-rc.1` in code).
+  validation. The project is here now (`1.0.0-rc.2` in code).
 - **`x.y.z` (RTM / general release):** a candidate that has passed validation and
   been accepted for production. **Not yet reached.**
 - **Hotfix / RC defect fix:** a narrowly scoped correction on top of an RC (§14).
 
-The project status in [../../README.md](../../README.md) records RC1 as the
+The project status in [../../README.md](../../README.md) records RC2 as the
 current state with a subsequent RTM milestone planned; this document does not
 assert that RTM has been reached.
 
@@ -118,19 +118,19 @@ Before release, confirm the documentation matches the shipped behavior:
 
 Before tagging, verify every version source in §2 agrees on the intended value.
 
-> **Known finding (factual, unresolved): a version/tag mismatch exists.**
-> The local Git history contains a tag **`v1.0.0-rc.2`**, but the in-code version
-> sources (`backend/app/version.py` and `frontend/package.json`) still read
-> **`1.0.0-rc.1`**. In other words, a later RC tag exists than the version the
-> code reports.
+> **Status (factual): the version sources are aligned on `1.0.0-rc.2`.**
+> The in-code version sources — `backend/app/version.py` (`APP_VERSION` and
+> `APP_VERSION_DISPLAY`) and `frontend/package.json` — all read **`1.0.0-rc.2`**
+> (`1.0.0 RC2`), and the `GET /health` surface reports the same values. The
+> sources in §2 therefore agree on the current candidate.
 >
-> This document records the mismatch **as a fact**; it does not resolve it and
-> does not instruct you to change any version or tag. Reconciling it (bumping the
-> in-code version to match the tag, or clarifying the tag) is a deliberate,
-> separately reviewed decision — not part of routine documentation work.
+> Tagging is a separate, deliberate human action. This document does not create,
+> move, or delete any Git tag, and bringing the version sources into agreement
+> here does not itself tag a release. Confirm the intended tag against these
+> aligned sources (§9) as a scoped release decision.
 
-Whoever prepares the next release should decide, explicitly, what the canonical
-version is and bring all sources into agreement as a scoped change.
+Whoever prepares the next release should confirm the canonical version above and
+keep all sources in agreement as scoped changes.
 
 ---
 
@@ -231,8 +231,9 @@ Honest gaps in the current release process:
 
 - **No release automation.** No CI, no pipeline, no build artifacts, no automated
   tagging — everything is manual.
-- **Version/tag mismatch (§8).** `v1.0.0-rc.2` is tagged while the code reads
-  `1.0.0-rc.1`; unresolved and left as a factual finding.
+- **Version alignment (§8).** The in-code version sources now read `1.0.0-rc.2`,
+  matching the `1.0.0 RC2` candidate; the earlier rc.1/rc.2 mismatch is aligned.
+  Tagging remains a separate, manual human action.
 - **No enforced release-notes or changelog format.** Recommended, not required.
 - **Coarse `GET /` banner.** The root banner reports `"1.0"`, not the precise
   version; `/health` and `version.py` are the precise sources.

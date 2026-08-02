@@ -2,7 +2,7 @@
 
 **Audience:** Developers and volunteer IT responsible for keeping badges printing.
 
-**Status:** Grounded in the source at `v1.0.0-rc.1`. Terms are defined in the
+**Status:** Grounded in the source at `v1.0.0-rc.2`. Terms are defined in the
 [System Glossary](../00-Executive/SystemGlossary.md). For the operational runbook of setting
 up a print host, see the [Print Server guide](../PRINT-SERVER.md) — this document explains
 the *design*, not the setup.

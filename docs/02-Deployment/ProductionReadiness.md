@@ -1,6 +1,6 @@
 # Production Readiness
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Purpose:** State plainly what is production-ready, what is technically possible
 but unsupported, and what is not implemented — so no one relies on capabilities
 this repository does not provide.

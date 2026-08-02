@@ -3,7 +3,7 @@
 **Audience:** New developers, volunteer IT, and camp administrators who need to
 understand how the PBC Guest Kiosk is put together without reading the source code.
 
-**Status:** Describes the system as it exists at `v1.0.0-rc.1`. Every statement is
+**Status:** Describes the system as it exists at `v1.0.0-rc.2`. Every statement is
 grounded in the current repository. This document is a map; each section links to the
 deeper document that owns the detail.
 

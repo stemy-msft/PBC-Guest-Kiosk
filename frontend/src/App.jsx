@@ -148,7 +148,7 @@ export default function App() {
   // State variables
 
   // Single source of truth: package.json version. The SemVer prerelease
-  // "1.0.0-rc.1" is shown human-facing as "1.0.0 RC1".
+  // "1.0.0-rc.2" is shown human-facing as "1.0.0 RC2".
   const APP_VERSION = APP_VERSION_RAW.replace("-rc.", " RC");
   const APP_NAME = "PBC Guest Kiosk";
 

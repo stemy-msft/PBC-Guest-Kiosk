@@ -1,7 +1,7 @@
 # Security Controls — Reference
 
 **Status:** Authoritative reference (Documentation Wave 2, P0).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 **Scope of this document:** **Implemented** controls only. Every control below was
 verified against current code with its implementation location cited. Planned or
 proposed controls are **not** described here; genuine gaps are listed under

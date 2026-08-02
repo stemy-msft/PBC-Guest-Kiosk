@@ -1,6 +1,6 @@
 # Linux Deployment
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Scope:** Deploying the backend and frontend together on a single Linux host,
 with the writable paths, startup, and reboot realities made explicit. For the
 fastest evaluation path use [QuickStart.md](QuickStart.md); for component depth
@@ -184,8 +184,8 @@ must-change-password set. Sign in and change the password immediately. Detail:
 
 - [ ] `curl http://localhost:8000/health/live` → `{"status":"alive"}`.
 - [ ] `curl http://localhost:8000/health` → HTTP `200`, all subsystems `ok`,
-      `version` `1.0.0-rc.1`.
-- [ ] Frontend loads at `http://<host-ip>:5173` and shows `1.0.0 RC1`.
+      `version` `1.0.0-rc.2`.
+- [ ] Frontend loads at `http://<host-ip>:5173` and shows `1.0.0 RC2`.
 - [ ] Admin sign-in succeeds and forces a password change.
 - [ ] A test check-in with photo completes and writes files under
       `backend/uploads/`.

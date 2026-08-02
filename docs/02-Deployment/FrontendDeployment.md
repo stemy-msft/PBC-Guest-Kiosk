@@ -1,6 +1,6 @@
 # Frontend Deployment
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Scope:** Installing, configuring, building, and serving the React/Vite
 frontend. For the full single-host path see [QuickStart.md](QuickStart.md).
 
@@ -175,7 +175,7 @@ There are two verified options, and one important gap:
 - [ ] `npm install` completed without error.
 - [ ] `frontend/.env` exists with `VITE_API_BASE` pointing at a browser-reachable backend URL.
 - [ ] `npm run dev` serves the UI on port `5173`; the page loads in a browser.
-- [ ] The footer shows the version (`1.0.0 RC1`).
+- [ ] The footer shows the version (`1.0.0 RC2`).
 - [ ] Staff sign-in reaches the backend (no CORS or network errors in the browser console).
 - [ ] Camera permission can be granted and a photo captured on the target device.
 - [ ] *(If building)* `npm run build` completes and writes `frontend/dist/`.

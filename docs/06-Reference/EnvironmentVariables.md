@@ -1,7 +1,7 @@
 # Environment Variables — Reference
 
 **Status:** Authoritative reference (Documentation Wave 2, P0).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 **Rule:** This document is the single source of truth for configuration. Other
 documents link here rather than restate variables. Every entry below was verified
 against the code that reads it; the reading location is cited so the value can be

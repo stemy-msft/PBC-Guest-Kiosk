@@ -3,7 +3,7 @@
 **Audience:** Anyone who needs to follow a guest from arrival to departure and understand
 what the system records at each step.
 
-**Status:** Grounded in the source at `v1.0.0-rc.1`. Terms used here are defined in the
+**Status:** Grounded in the source at `v1.0.0-rc.2`. Terms used here are defined in the
 [System Glossary](../00-Executive/SystemGlossary.md). The printing steps are summarized
 here and fully explained in [Print Architecture](PrintArchitecture.md).
 

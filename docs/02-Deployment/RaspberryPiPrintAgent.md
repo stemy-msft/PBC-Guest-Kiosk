@@ -1,6 +1,6 @@
 # Raspberry Pi Print Agent Deployment
 
-**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.1`.
+**Status:** Authoritative (Documentation Wave 4). **Release:** `v1.0.0-rc.2`.
 **Scope:** Installing the print agent that drives the Brother QL-800 label
 printer. Printing is **optional**; visitors can be checked in without it.
 

@@ -296,7 +296,7 @@ This configuration is currently considered the project's validated end-to-end pr
 
 ## Project Status
 
-Current Status: **Release Candidate 1 (`1.0.0-rc.1`) — RC1 ready** · **Milestone 10 (RTM) next**
+Current Status: **Release Candidate 2 (`1.0.0-rc.2`) — RC2 ready** · **Milestone 10 (RTM) next**
 
 M8 ("Beta 2 / Feature Complete") was closed on 2026-07-31 after real-device validation
 (Android phone, iPad Safari/Chrome, Amazon Fire tablet, Pixel 9 Pro XL, Desktop — all

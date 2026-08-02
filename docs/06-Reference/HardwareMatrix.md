@@ -1,7 +1,7 @@
 # Hardware Matrix — Reference
 
 **Status:** Authoritative reference (Documentation Wave 2, P0).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 **Purpose:** Set clear support expectations for every hardware platform. Each row
 is classified and backed by repository evidence — no assumptions.
 

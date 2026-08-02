@@ -3,7 +3,7 @@
 **Audience:** Developers, volunteer IT, and administrators who need to know what data the
 system holds, where it lives, how it changes, and how long it stays.
 
-**Status:** Grounded in the source at `v1.0.0-rc.1`. Terms are defined in the
+**Status:** Grounded in the source at `v1.0.0-rc.2`. Terms are defined in the
 [System Glossary](../00-Executive/SystemGlossary.md). Storage locations here are the code's
 actual paths.
 
@@ -52,7 +52,7 @@ the `badge_printed` flag (set when a print job completes), and finally `check_ou
 **Storage.** The `visitors` table in the single SQLite database. This is **PII** — names,
 contact information, and a reference to a facial photo.
 
-**Retention.** Visitor rows are **kept indefinitely**. At `v1.0.0-rc.1` there is **no
+**Retention.** Visitor rows are **kept indefinitely**. At `v1.0.0-rc.2` there is **no
 automatic expiry and no in-application endpoint to delete a visitor**. Check-out ends a visit
 but does not remove the record. This is current behavior, stated as a known data-retention
 characteristic — not a recommendation. (Rows are removed only if the underlying row is deleted
@@ -72,7 +72,7 @@ original visit's photo rather than capturing a new one.
 **PII** (a facial image).
 
 **Retention.** Photo files are **kept indefinitely** alongside their visitor row; there is no
-automatic cleanup at `v1.0.0-rc.1`.
+automatic cleanup at `v1.0.0-rc.2`.
 
 ## 4. Badges
 

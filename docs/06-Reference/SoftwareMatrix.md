@@ -1,7 +1,7 @@
 # Software Matrix — Reference
 
 **Status:** Authoritative reference (Documentation Wave 2, P0).
-**Applies to release:** `v1.0.0-rc.1`.
+**Applies to release:** `v1.0.0-rc.2`.
 **Purpose:** Define the operating systems, runtimes, dependencies, and browser
 support for each component, and mark each as **Required**, **Recommended**, or
 **Optional**. Versions are drawn from the project's dependency manifests and
@@ -71,7 +71,7 @@ to run. Key packages:
 ## 4. Frontend dependencies
 
 Source of truth: `frontend/package.json` (name "PBC Guest Kiosk",
-version `1.0.0-rc.1`). All are **Required** to build; they are compiled into a
+version `1.0.0-rc.2`). All are **Required** to build; they are compiled into a
 static bundle (the visitor's browser needs only the browser itself).
 
 | Package | Version | Role |

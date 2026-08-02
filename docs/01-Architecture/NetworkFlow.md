@@ -3,7 +3,7 @@
 **Audience:** Volunteer IT and developers who need to understand what talks to what, in
 which direction, and with what authentication.
 
-**Status:** Grounded in the source at `v1.0.0-rc.1`. This document describes the network
+**Status:** Grounded in the source at `v1.0.0-rc.2`. This document describes the network
 *shape* of the running system. It is not a deployment or firewall guide; supported hardware
 and deployment shapes live in the [Hardware Matrix](../06-Reference/HardwareMatrix.md) and
 [What Is the PBC Guest Kiosk? §7](../00-Executive/WhatIsGuestKiosk.md#7-supported-deployment-models).
