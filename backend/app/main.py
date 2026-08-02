@@ -271,9 +271,27 @@ LOGO_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 # App logging configuration
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that tolerates a locked log file on Windows.
+
+    When the log lives on OneDrive (or is held open by another process such as
+    uvicorn's --reload worker), os.rename during rollover raises
+    PermissionError (WinError 32). Swallow it and keep appending to the current
+    file instead of crashing the logging subsystem on every emit.
+    """
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except (PermissionError, OSError):
+            # Rotation is blocked; reopen so logging keeps appending in place.
+            if self.stream is None:
+                self.stream = self._open()
+
+
 app_logger = logging.getLogger("guest-kiosk")
 app_logger.setLevel(logging.WARNING)
-app_handler = RotatingFileHandler(
+app_handler = SafeRotatingFileHandler(
     LOG_DIR / "guest-kiosk.log",
     maxBytes=10 * 1024 * 1024,  # 10 MB
     backupCount=5,
@@ -290,7 +308,7 @@ app_logger.addHandler(app_handler)
 # Audit logging configuration
 audit_logger = logging.getLogger("audit")
 audit_logger.setLevel(logging.INFO)
-audit_handler = RotatingFileHandler(
+audit_handler = SafeRotatingFileHandler(
     LOG_DIR / "audit.log",
     maxBytes=5 * 1024 * 1024,  # 5 MB
     backupCount=10,

@@ -93,6 +93,41 @@ export function getStyles(theme, isCrtTheme) {
             justifyContent: "center",
         },
 
+        cameraOverlay: {
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            boxSizing: "border-box",
+            zIndex: 2000,
+        },
+
+        cameraPanel: {
+            backgroundColor: theme.surface,
+            color: theme.textPrimary,
+            borderRadius: "24px",
+            padding: "24px",
+            width: "100%",
+            maxWidth: "640px",
+            maxHeight: "100%",
+            overflowY: "auto",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+        },
+
+        cameraVideo: {
+            width: "100%",
+            maxHeight: "60vh",
+            borderRadius: "16px",
+            backgroundColor: "#000",
+            objectFit: "cover",
+        },
+
         checkinContentContainer: {
             alignItems: "flex-start",
             display: "flex",
@@ -182,6 +217,7 @@ export function getStyles(theme, isCrtTheme) {
             backgroundColor: theme.surface,
             borderRadius: "24px",
             boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+            boxSizing: "border-box",
             maxWidth: "900px",
             padding: "40px",
             width: "100%",
@@ -236,10 +272,12 @@ export function getStyles(theme, isCrtTheme) {
             backgroundColor: theme.surfaceSecondary,
             border: `1px solid ${theme.border}`,
             borderRadius: "14px",
+            boxSizing: "border-box",
             color: theme.textPrimary,
             fontSize: "1.2rem",
             height: "64px",
             padding: "0 20px",
+            width: "100%",
             caretColor: theme.textPrimary,
         },
 

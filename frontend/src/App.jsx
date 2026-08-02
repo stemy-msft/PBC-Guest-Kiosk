@@ -3,6 +3,8 @@ import { version as APP_VERSION_RAW } from "../package.json";
 import {
   mapReportingSummary,
   resolveRequiredReturningCheckinFields,
+  buildVisitorUpdatePayload,
+  formatCameraLabel,
 } from "./lib/viewModel";
 import {
   assignPrintAgent,
@@ -1045,20 +1047,12 @@ const styles = getStyles(theme, isCrtTheme);
   async function handleUpdateVisitorDetails() {
     try {
       setBusy(true);
+      // Persist the values the form actually edits (selectedVisitor). Reading a
+      // separate returningVisitor state here previously discarded edits such as
+      // Notes without warning.
       const updatedVisitor = await updateVisitor(
         selectedVisitor.id,
-        {
-          first_name: returningVisitor.first_name,
-          last_name: returningVisitor.last_name,
-          visitor_type: returningVisitor.visitor_type,
-          purpose: returningVisitor.purpose,
-          host_name: returningVisitor.host_name,
-          vehicle_plate: returningVisitor.vehicle_plate,
-          phone: returningVisitor.phone,
-          email: returningVisitor.email,
-          notes: returningVisitor.notes,
-          expected_departure_time: returningVisitor.expected_departure_time,
-        }
+        buildVisitorUpdatePayload(selectedVisitor)
       );
 
       setSelectedVisitor(updatedVisitor);
@@ -1743,17 +1737,36 @@ const styles = getStyles(theme, isCrtTheme);
     }
   }
 
-  function handleCheckInAgain(visitor) {
-    console.log("handleCheckInAgain called with visitor:", visitor);
-    populateReturningVisitor(visitor);
+  async function handleCheckInAgain(visitor) {
+    // Persist any unsaved detail edits (e.g. Notes) before entering check-in so
+    // aborting the check-in can't silently discard them.
+    let visitorForCheckin = visitor;
+    if (
+      visitor?.id &&
+      detailSnapshot &&
+      visitorFingerprint(visitor) !== detailSnapshot
+    ) {
+      try {
+        setBusy(true);
+        const saved = await updateVisitor(
+          visitor.id,
+          buildVisitorUpdatePayload(visitor)
+        );
+        visitorForCheckin = saved;
+        setSelectedVisitor(saved);
+        setDetailSnapshot(visitorFingerprint(saved));
+      } catch (error) {
+        console.error(error);
+        alert(error.message);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
 
-    console.log("Returning visitor state set to:", returningVisitor);
+    populateReturningVisitor(visitorForCheckin);
     setReturningPhotoFile(null);
-
-    console.log("Returning photo file state set to null");
     setReturningPhotoPreview(null);
-
-    console.log("Returning photo preview state set to null");
     setCheckedInVisitorId(null);
 
     setScreen("returning-checkin");
@@ -2004,6 +2017,19 @@ const styles = getStyles(theme, isCrtTheme);
       return;
     }
 
+    // The stream needs a real frame before capture; until then videoWidth is 0
+    // and readyState is below HAVE_CURRENT_DATA, which would save a black image.
+    if (
+      !video.videoWidth ||
+      !video.videoHeight ||
+      video.readyState < 2
+    ) {
+      alert(
+        "The camera is still starting. Please wait a moment, then take the photo."
+      );
+      return;
+    }
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
@@ -2111,6 +2137,30 @@ const styles = getStyles(theme, isCrtTheme);
 
       setCameraStream(stream);
       setCameraOpen(true);
+
+      // Browsers only expose device labels (and, on iOS/iPadOS, the back
+      // camera) AFTER camera permission is granted. Re-enumerate now so the
+      // selector shows real names instead of generic "Camera" and both cameras
+      // are available; sync the selection to the track that actually started.
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter(
+          (device) => device.kind === "videoinput"
+        );
+        if (cameras.length > 0) {
+          setVideoDevices(cameras);
+          const activeId = stream
+            .getVideoTracks()[0]
+            ?.getSettings?.().deviceId;
+          if (activeId) {
+            setSelectedCamera(activeId);
+          } else if (!selectedCamera) {
+            setSelectedCamera(cameras[0].deviceId);
+          }
+        }
+      } catch (enumError) {
+        console.error("Camera enumeration failed:", enumError);
+      }
     } catch (error) {
       console.error("Camera failed:", error);
       console.error("Error name:", error?.name);
@@ -2147,7 +2197,7 @@ const styles = getStyles(theme, isCrtTheme);
                   key={device.deviceId}
                   value={device.deviceId}
                 >
-                  {device.label || "Camera"}
+                  {formatCameraLabel(device.label)}
                 </option>
               ))}
             </select>
@@ -4707,7 +4757,13 @@ const styles = getStyles(theme, isCrtTheme);
   // My Profile Screen
   if (screen === "my-profile") {
     return (
-      <div style={styles.page}>
+      <div
+        style={
+          isMobile || isTablet
+            ? { ...styles.page, justifyContent: "flex-start" }
+            : styles.page
+        }
+      >
         {renderVersionFooter()}
         {renderAccountMenu()}
 

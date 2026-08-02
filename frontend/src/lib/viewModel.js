@@ -45,3 +45,60 @@ export function resolveRequiredReturningCheckinFields(systemSettings, fallback) 
     ? systemSettings.required_returning_checkin_fields
     : fallback;
 }
+
+/**
+ * Build the payload sent to PUT /api/visitors/{id} from the visitor object the
+ * "Update Visitor Details" form actually edits. Previously the handler read a
+ * separate `returningVisitor` state that the form never wrote to, so edits
+ * (notably Notes) were silently dropped. The payload must be derived from the
+ * same object the form binds to so no field is lost.
+ *
+ * @param {object|null|undefined} visitor
+ * @returns {{
+ *   first_name: string, last_name: string, visitor_type: string,
+ *   purpose: string, host_name: string, vehicle_plate: string,
+ *   phone: string, email: string, notes: string,
+ *   expected_departure_time: any,
+ * }}
+ */
+export function buildVisitorUpdatePayload(visitor) {
+  return {
+    first_name: visitor?.first_name ?? "",
+    last_name: visitor?.last_name ?? "",
+    visitor_type: visitor?.visitor_type ?? "",
+    purpose: visitor?.purpose ?? "",
+    host_name: visitor?.host_name ?? "",
+    vehicle_plate: visitor?.vehicle_plate ?? "",
+    phone: visitor?.phone ?? "",
+    email: visitor?.email ?? "",
+    notes: visitor?.notes ?? "",
+    expected_departure_time: visitor?.expected_departure_time ?? null,
+  };
+}
+
+/**
+ * Produce a human-friendly camera name for the photo-capture selector. Android
+ * reports raw labels like "camera2 0, facing back" / "camera 1, facing front";
+ * normalize those to "Back Camera" / "Front Camera". iPad and desktop already
+ * report friendly names (e.g. "Back Camera", "Front Ultra Wide Camera",
+ * "Surface Camera Front"), which contain no "facing" hint and pass through
+ * unchanged.
+ *
+ * @param {string|null|undefined} rawLabel
+ * @returns {string}
+ */
+export function formatCameraLabel(rawLabel) {
+  const label = (rawLabel ?? "").trim();
+  if (!label) {
+    return "Camera";
+  }
+  const lower = label.toLowerCase();
+  if (lower.includes("facing back")) {
+    return "Back Camera";
+  }
+  if (lower.includes("facing front")) {
+    return "Front Camera";
+  }
+  return label;
+}
+
