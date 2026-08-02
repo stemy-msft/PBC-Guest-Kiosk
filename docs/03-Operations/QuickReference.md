@@ -91,15 +91,24 @@ agent.
 | Pi/agent died | Automatic recovery; replace per [Print Operations §10](PrintOperations.md#10-print-agent-replacement-procedure) |
 | System looks unhealthy | Check `GET /health`, then [Recovery Decision Tree](Troubleshooting.md#12-recovery-decision-tree) |
 
+## Website (UX) Appearance
+
+- **Theme (colors / logo / font):** select on the Settings page, or build one in the
+  **Theme Editor** ([Administration §8](Administration.md#8-theme-selection)).
+
 ## Badge Appearance
 
-- **Theme (colors/logo):** `PBC_BADGE_THEME` env var / **Theme Editor**
-  ([Administration §8](Administration.md#8-theme-selection)).
+Badge appearance is **fixed in code** for this release -- there is no badge theme
+control in the UI or environment.
+
+- **Colors / styling:** fixed in code (`backend/app/services/badge_service.py`).
 - **Layout (size/placement):** fixed in code for this release (badge `1100 × 696`);
   changing it is a code edit in `backend/app/services/badge_layouts.py`, not a setting.
 - **Photo brightness/contrast:** `backend/app/services/badge_service.py`.
 - **Printer quality/size:** `PageSize=62x100`, `BrPriority=BrQuality`, `BrBrightness=15`
   ([Print Server guide](../PRINT-SERVER.md#brother-driver-recommended-settings)).
+- `PBC_BADGE_THEME` is post-RTM scaffolding only -- leave at `PBC_standard`
+  ([Administration §8](Administration.md#8-theme-selection)).
 
 ---
 

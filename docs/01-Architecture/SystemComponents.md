@@ -131,9 +131,11 @@ print agent does not exist and is listed **not supported** in the
 and write it to disk as a PNG.
 
 **Dependencies.** Pillow, the badge theme and badge layout definitions, and system fonts
-(it tries Windows Arial, then common Linux fonts, then a built-in fallback). Colors come
-from the theme selected by `PBC_BADGE_THEME` (default `PBC_standard`); the **layout
-(geometry) is fixed to `PBC_standard`** and is not environment-configurable.
+(it tries Windows Arial, then common Linux fonts, then a built-in fallback). Internally the
+renderer reads `PBC_BADGE_THEME` (default `PBC_standard`) to pick a colour set, but this is
+**not an operator control at `v1.0.0-rc.1`**: the only named theme is `PBC_standard` (no
+alternative has been built or tested) and the **layout (geometry) is fixed** in code. Badge
+appearance is effectively fixed for this release.
 
 **Inputs.** A visitor record plus the visitor's uploaded photo file (a photo must exist
 first).

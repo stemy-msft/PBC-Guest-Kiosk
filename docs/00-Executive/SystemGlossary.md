@@ -64,9 +64,12 @@ on-disk path is recorded on the visitor as `badge_path`.
 
 ### Badge Theme
 The **colors and text styling** applied when a badge is rendered — background,
-foreground, border, and header colors. The active theme is selected by the
-`PBC_BADGE_THEME` environment variable and defaults to `PBC_standard`. Themes control
-appearance only; they do **not** change the badge's size or field positions.
+foreground, border, and header colors. At `v1.0.0-rc.1` badge appearance is **fixed in
+code** with **no** UI or working environment control. A `PBC_BADGE_THEME` variable
+(default `PBC_standard`) exists in the code as **post-RTM scaffolding only** — no
+alternative theme has been built or tested, so it does not change the badge today. Not
+to be confused with the selectable **website (UX) theme**
+([Administration §8](../03-Operations/Administration.md#8-theme-selection)).
 See [Environment Variables](../06-Reference/EnvironmentVariables.md).
 
 ### Badge Layout

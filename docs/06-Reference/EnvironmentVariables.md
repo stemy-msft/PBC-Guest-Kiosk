@@ -142,10 +142,12 @@ See [SecurityControls.md](SecurityControls.md#5-upload-boundaries-f-010).
 | --- | --- | --- | --- |
 | `PBC_BADGE_THEME` | Optional | `PBC_standard` | `backend/app/services/badge_service.py` |
 
-- **`PBC_BADGE_THEME`** — Named badge **theme** (colors/styling) used when
-  generating visitor badges. Must match a theme known to the badge service. The
-  badge **layout** (dimensions/positions) is fixed to `PBC_standard` in v1;
-  theme/layout selection is planned future scaffolding, not a v1 control.
+- **`PBC_BADGE_THEME`** — Post-RTM scaffolding for selectable badge themes; **not an
+  operational control in v1.** There is no UI to choose or create badge themes, and no
+  alternative theme has been built or tested — the only other named theme is identical
+  to `PBC_standard`, so changing the value does not change the badge. Badge colors,
+  styling, and **layout** (dimensions/positions) are fixed in code for v1. **Leave at
+  the default.**
   - *Security implications:* None directly. An unrecognized value produces
     incorrect or failed badge rendering. *Example:* `PBC_BADGE_THEME=PBC_standard`
 

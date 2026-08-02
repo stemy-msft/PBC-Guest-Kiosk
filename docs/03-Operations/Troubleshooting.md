@@ -127,7 +127,7 @@ A badge cannot be generated until a **photo** has been captured for that visitor
 | --- | --- | --- |
 | "Badge not ready" / no badge to print | No photo captured yet | Capture the photo first ([Camera Problems](#5-camera-problems)). |
 | Photo upload rejected | Over the size limit or unreadable image | Retake the photo; uploads are capped and must decode as an image. See [Security Controls §5](../06-Reference/SecurityControls.md#5-upload-boundaries-f-010). |
-| Badge colors/logo look wrong | Wrong active theme | Check `PBC_BADGE_THEME` / Theme Editor ([Administration §8](Administration.md#8-theme-selection)). |
+| Badge colors/styling look wrong | Badge appearance is fixed in code -- there is no badge theme control in v1 | Change-managed code edit, not a setting ([Administration §8](Administration.md#8-theme-selection)). For *printed* color/quality, check the [Brother driver settings](../PRINT-SERVER.md#brother-driver-recommended-settings). |
 | Badge size/placement wrong | Layout is fixed in code | This is a change-managed code edit, not a setting ([Quick Reference](QuickReference.md#badge-appearance)). |
 
 ## 8. Print Agent Problems

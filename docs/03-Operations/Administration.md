@@ -66,8 +66,6 @@ password policy in local notes — point people at those documents.
 
 ## 3. Role Management
 
-**Read this carefully — it is a common source of confusion.**
-
 The software enforces exactly **one** role check: whether an account is an
 `Administrator`. Administrators can reach Users, Print Stations, Print Agents, the
 Theme Editor, and system settings. Every other signed-in account can do everything
@@ -142,17 +140,30 @@ station is available the reprint is refused rather than sent somewhere unexpecte
 
 ## 8. Theme Selection
 
-Badge appearance is controlled by a **theme** (the colors and logo treatment of the
-badge). The active theme is selected by the `PBC_BADGE_THEME` environment variable
-(default `PBC_standard`); custom themes built in the **Theme Editor** are stored in
-the runtime configuration and captured by backups. See the `PBC_BADGE_THEME` entry in
-[Environment Variables](../06-Reference/EnvironmentVariables.md).
+PBC Guest Kiosk has **one** theme control in this release: the **website (UX) theme**
+that sets the on-screen appearance of the kiosk and staff screens. The visitor
+**badge** does not have a theme control in v1 -- its appearance is fixed in code (see
+*Badge appearance* below).
 
-Note the current boundary: the theme changes **colors and logo**, but the badge
-**layout** (dimensions and element placement) is fixed in code for this release and
-is not selectable from the UI or environment. Badge sizing changes are a code change,
-covered by [Quick Reference](QuickReference.md#badge-appearance) and
+The website theme can be changed by an administrator editing the Settings page.  A theme can then be selected from the drop list of themes.  The dropdown is populated by a combination of built-in themes and custom themes.  Custom themes can be built using the **Theme Editor** and are stored in
+the runtime configuration (`backend/config/user_themes.json`) and captured by
+[backups](BackupAndRecovery.md).  The **Theme Editor** allows for the creation of a new theme or the copying of themes for modification, but the built-in themes cannot be edited in the **Theme Editor.**  In addition to colors, the **Theme Editor** allows for the addition of a PNG overlay on the page and a change in the font.  Themes can be set as **CRT** to enforce a monotype font with moving scan lines for that cool retro look. 
+
+**Badge appearance.** The visitor badge does not have a user-selectable theme in this
+release. Badge colors, styling, and **layout** (dimensions and element placement) are
+**fixed in code** -- they are not set from the Settings page, the Theme Editor, or the
+environment. Changing badge appearance is a change-managed code edit; see
+[Quick Reference](QuickReference.md#badge-appearance) and
 [Change Management](#13-common-administrative-tasks).
+
+> **Post-RTM scaffolding.** A `PBC_BADGE_THEME` environment variable exists in code
+> (default `PBC_standard`) as groundwork for selectable badge themes in a future
+> release. It is **not** an operational control today: there is no UI to choose or
+> create badge themes, and no alternative theme has been built or tested (the only
+> other named theme is identical to `PBC_standard`), so changing the value does not
+> change the badge. **Leave it at the default.** See the `PBC_BADGE_THEME` entry in
+> [Environment Variables](../06-Reference/EnvironmentVariables.md).
+
 
 ## 9. Print Station Management
 
@@ -232,7 +243,7 @@ At the end of each day:
 | Add / disable a check-in location, get its QR | Administration → Print Stations ([§9](#9-print-station-management)) |
 | Approve a new Raspberry Pi print agent | Administration → Print Agents ([§10](#10-print-agent-monitoring)) |
 | Set the base check-in URL | Settings |
-| Build or edit a badge theme | Administration → Theme Editor ([§8](#8-theme-selection)) |
+| Build or edit the website (UX) theme | Administration → Theme Editor ([§8](#8-theme-selection)) |
 | Take / restore a backup | [Backup & Recovery](BackupAndRecovery.md) |
 
 **Change management.** Before changing anything that affects printing or data —

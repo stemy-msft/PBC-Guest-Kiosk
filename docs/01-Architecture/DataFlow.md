@@ -149,7 +149,7 @@ protected is an operational matter covered by
 
 Two runtime configuration files round out the picture: `config/system_settings.json` (operator
 settings, including the check-in base URL and lockout policy source of truth) and
-`config/user_themes.json` (custom badge themes). They are created/updated through staff and
+`config/user_themes.json` (custom **website/UX** themes built in the Theme Editor). They are created/updated through staff and
 administrator settings endpoints, stored under `config/`, kept until changed, and included in
 every backup. Tunable inputs (environment variables) are catalogued in
 [Environment Variables](../06-Reference/EnvironmentVariables.md).
