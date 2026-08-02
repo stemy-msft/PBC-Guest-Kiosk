@@ -216,6 +216,11 @@ as the single source of truth for printer configuration.
 > the backend as an auto-starting Windows service (unattended production
 > hosting) is a Milestone 10 (RTM) task and is not yet documented.
 
+> **Developing or maintaining the kiosk?** See
+> **[docs/05-Development/](docs/05-Development/README.md)** for local development
+> setup, repository structure, the change workflow, testing, database and
+> dependency maintenance, release management, and maintainer handoff.
+
 ### Backend
 
 ```powershell
