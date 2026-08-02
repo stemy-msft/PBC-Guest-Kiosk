@@ -111,8 +111,11 @@ pip install -r requirements.txt
 > pip install python-dotenv
 > ```
 >
-> This is a manifest defect to be corrected in code (see § 16). The stop-gap
-> above is derived directly from the agent's own imports, not invented.
+> This is an **open RC defect**: the fix belongs in the application/manifest
+> (declare `python-dotenv` in `print-agent/requirements.txt`) and requires
+> clean-install validation before RC sign-off (see § 16). The manual install
+> above is a temporary stop-gap, derived directly from the agent's own imports,
+> not a substitute for the manifest correction.
 
 ---
 
@@ -248,9 +251,11 @@ improvise it — follow:
 
 ## 16. Known limitations
 
-- **Incomplete dependency manifest:** `print-agent/requirements.txt` omits
-  `python-dotenv`, which the agent imports (§ 6). Until corrected in code, it
-  must be installed manually.
+- **Incomplete dependency manifest (open RC defect):** `print-agent/requirements.txt`
+  declares only `requests`, but the agent imports `python-dotenv` (§ 6).
+  Resolution requires an application/manifest correction plus clean-install
+  validation before RC sign-off — it is not a routine install step. Until
+  corrected, `python-dotenv` must be installed manually.
 - **Linux/CUPS only:** no Windows support; the agent depends on `lp`/`lpstat`.
 - **No auto-start:** foreground process only; a reboot requires a manual restart
   (§ 14).

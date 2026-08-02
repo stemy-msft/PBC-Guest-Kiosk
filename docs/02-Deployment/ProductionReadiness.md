@@ -6,7 +6,7 @@ but unsupported, and what is not implemented — so no one relies on capabilitie
 this repository does not provide.
 
 This page is grounded in the current code and shipped assets. Read it **before**
-deploying the kiosk anywhere beyond a controlled evaluation.
+deploying the kiosk for any real activity.
 
 Throughout, capabilities are bucketed as:
 
@@ -158,10 +158,13 @@ Operational use: [Troubleshooting.md § 2](../03-Operations/Troubleshooting.md#2
   on the validated Pi + QL-800 build.
 - ❌ No auto-start for the agent (foreground process; manual restart after
   reboot).
-- 🟡 **Dependency manifest defect:** `print-agent/requirements.txt` omits
-  `python-dotenv`, which the agent imports. On a clean host the agent will not
-  start until `python-dotenv` is installed. This should be fixed in the manifest
-  (a code change, out of scope for documentation). See
+- 🟡 **Dependency-manifest defect (open RC defect):** `print-agent/requirements.txt`
+  declares only `requests`, but `print_agent.py` imports `python-dotenv`
+  (`from dotenv import load_dotenv`). On a clean host the agent will not start
+  until `python-dotenv` is installed. Resolution requires an application/manifest
+  correction (a code change, out of scope for this documentation) **plus
+  clean-install validation** before RC sign-off; it is not a routine install
+  step. See
   [RaspberryPiPrintAgent.md § 6](RaspberryPiPrintAgent.md#6-repository-and-agent-installation).
 - ❌ No Windows print agent (CUPS-only).
 
@@ -217,9 +220,24 @@ Before relying on the system for a real event:
 
 ## 15. Verdict: READY / NOT READY
 
-**NOT production-ready as an unattended service.** The kiosk is **ready for
-controlled, attended, single-camp evaluation and event use on a trusted LAN**,
-where a human starts and monitors the processes.
+This verdict separates documentation completeness from system and operational
+readiness. They are not the same, and operational approval cannot be inferred
+from documentation alone.
+
+- **Documentation readiness:** READY. The supported manual deployment paths in
+  this folder are complete and source-verified.
+- **Deployment documentation scope:** Complete for the currently supported manual
+  deployment paths (single-host, Linux backend + frontend, backend-only,
+  frontend build/serve, and the Raspberry Pi + CUPS print agent). It does not
+  cover production packaging, which is not implemented.
+- **Production readiness:** NOT READY. Process supervision / auto-start (§ 5),
+  production frontend hosting (§ 6), TLS / reverse proxy (§ 7), and scheduled
+  backups (§ 8) are not implemented, and the print-agent dependency-manifest
+  defect (§ 10) is an open RC defect.
+- **Operational readiness:** Not established by this documentation. Whether the
+  system may be used for any real activity depends on completing or confirming
+  the RC validation campaign (§ 14). Do not infer operational approval from these
+  documents.
 
 The blocking gaps for unattended production are, in priority order:
 
@@ -230,6 +248,6 @@ The blocking gaps for unattended production are, in priority order:
 5. Print-agent dependency-manifest defect (§ 10).
 
 These align with the project's own roadmap, which places production packaging and
-containerisation at Milestone 10 (RTM) — not yet started. Until those are
-delivered and validated, operate the kiosk **attended**, on an **isolated LAN**,
-with **frequent manual backups**.
+containerisation at Milestone 10 (RTM) — not yet started. Any deployment carried
+out from these documents must be treated as unvalidated until the § 14 checks
+have been completed on the target hardware, and must not be run unattended.

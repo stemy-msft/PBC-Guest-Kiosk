@@ -9,19 +9,20 @@ documents is verified against the current application code — not against older
 planning notes. Where the code and older documentation disagree, **the code
 wins**.
 
-> **Read this first:** The kiosk is currently an **evaluation / single-camp
-> deployment**, not a hardened production service. It runs as a foreground
-> backend process plus a foreground frontend dev server. There is **no**
-> Docker image, **no** service/`systemd` unit, **no** reverse proxy, **no**
-> TLS termination, and **no** production static-frontend host shipped in this
-> repository. See [ProductionReadiness.md](ProductionReadiness.md) for the full,
-> honest gap list before relying on this system unattended.
+> **Read this first:** As shipped, the kiosk runs as a **foreground backend
+> process plus a foreground frontend dev server**. There is **no** Docker image,
+> **no** service/`systemd` unit, **no** reverse proxy, **no** TLS termination,
+> and **no** production static-frontend host in this repository. It is **not
+> production-ready**, and this documentation does **not** certify it for any
+> particular operational use. See [ProductionReadiness.md](ProductionReadiness.md)
+> for the full gap list and the documentation-versus-operational readiness
+> distinction before deploying.
 
 ## Documents in this folder
 
 | Document | Use it when you want to… |
 | --- | --- |
-| [QuickStart.md](QuickStart.md) | Stand up the whole system on one host by the shortest verified path (evaluation / first run). |
+| [QuickStart.md](QuickStart.md) | Stand up the whole system on one host by the shortest verified path (first run). |
 | [LinuxDeployment.md](LinuxDeployment.md) | Deploy backend + frontend on a Linux host, with the writable paths, startup, and reboot realities spelled out. |
 | [BackendDeployment.md](BackendDeployment.md) | Install and run only the FastAPI backend (API + SQLite + uploads + logs + backups). |
 | [FrontendDeployment.md](FrontendDeployment.md) | Install, configure, build, and serve the React/Vite frontend. |

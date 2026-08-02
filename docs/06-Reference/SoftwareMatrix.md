@@ -48,7 +48,7 @@ to run. Key packages:
 | Package | Version | Role |
 | --- | --- | --- |
 | `fastapi` | 0.139.0 | Web framework / API. |
-| `uvicorn[standard]` | 0.51.0 | ASGI server. |
+| `uvicorn` | 0.51.0 | ASGI server (plain; the `[standard]` extra is **not** declared in the manifest). |
 | `starlette` | 1.3.1 | ASGI toolkit (FastAPI dependency, pinned). |
 | `sqlalchemy` | 2.0.51 | ORM over SQLite. |
 | `pydantic` | 2.13.4 | Request/response validation. |

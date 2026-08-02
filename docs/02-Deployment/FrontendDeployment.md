@@ -132,7 +132,7 @@ There are two verified options, and one important gap:
 
 | Option | Command | Suitable for |
 | --- | --- | --- |
-| Vite dev server | `npm run dev` | The **validated** kiosk runtime; evaluation and single-camp use. |
+| Vite dev server | `npm run dev` | The kiosk runtime used in the validated reference build ([KNOWN_GOOD_BUILD.md](../KNOWN_GOOD_BUILD.md)). |
 | Vite preview server | `npm run preview` | Local verification of a production build only. |
 | Dedicated static host for `dist/` | *(not shipped)* | Production — **you must supply your own** static host/CDN/web server. |
 
