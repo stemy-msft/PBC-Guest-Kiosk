@@ -1,17 +1,35 @@
 # Installation Guide
 
+> **⚠️ Superseded — see [docs/02-Deployment/](02-Deployment/README.md).**
+> The canonical, source-verified installation and deployment documentation now
+> lives in **[docs/02-Deployment/](02-Deployment/README.md)**. Start with
+> [QuickStart.md](02-Deployment/QuickStart.md) (fastest path),
+> [LinuxDeployment.md](02-Deployment/LinuxDeployment.md), or the component guides
+> for the [backend](02-Deployment/BackendDeployment.md),
+> [frontend](02-Deployment/FrontendDeployment.md), and the
+> [Raspberry Pi print agent](02-Deployment/RaspberryPiPrintAgent.md). Before any
+> production use, read
+> [ProductionReadiness.md](02-Deployment/ProductionReadiness.md).
+>
+> This page is retained for historical reference. Where it differs from the
+> `02-Deployment/` guides or the current code, **those sources win**.
+
 This document walks through deploying the PBC Visitor Kiosk from a fresh clone of the repository.
 
 ---
 
 # Deployment Order
 
-For complete deployment instructions, review the documentation in the following order:
+> **The canonical deployment order now lives in [docs/02-Deployment/](02-Deployment/README.md).**
+> The list below is historical; the operational guides it referenced have moved
+> to [docs/03-Operations/](03-Operations/Administration.md).
 
-1. INSTALL.md
-2. PRINT-SERVER.md
-3. ADMINISTRATION.md
-4. TROUBLESHOOTING.md
+For reference, the original deployment order was:
+
+1. INSTALL.md — now [02-Deployment/QuickStart.md](02-Deployment/QuickStart.md)
+2. PRINT-SERVER.md — now [02-Deployment/RaspberryPiPrintAgent.md](02-Deployment/RaspberryPiPrintAgent.md)
+3. ADMINISTRATION.md — now [03-Operations/Administration.md](03-Operations/Administration.md)
+4. TROUBLESHOOTING.md — now [03-Operations/Troubleshooting.md](03-Operations/Troubleshooting.md)
 
 ---
 

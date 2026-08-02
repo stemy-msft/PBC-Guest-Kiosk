@@ -161,8 +161,8 @@ cp .env.example .env          # macOS/Linux
 
 `.env.example` is the authoritative, fully commented list of backend variables
 (JWT signing, administrator bootstrap, account lockout, CORS, upload limits, and
-badge theme). See [docs/INSTALL.md](docs/INSTALL.md) for step-by-step setup.
-Never commit the real `.env`.
+badge theme). See [docs/02-Deployment/QuickStart.md](docs/02-Deployment/QuickStart.md)
+for step-by-step setup. Never commit the real `.env`.
 
 ---
 
@@ -206,6 +206,12 @@ as the single source of truth for printer configuration.
 
 ## Deployment Overview
 
+> **Canonical deployment docs:** see **[docs/02-Deployment/](docs/02-Deployment/README.md)**
+> — start with [QuickStart.md](docs/02-Deployment/QuickStart.md), and read
+> [ProductionReadiness.md](docs/02-Deployment/ProductionReadiness.md) before any
+> production use. The commands below are a quick foreground reference for
+> evaluation.
+>
 > These commands run each service in the foreground for evaluation. Packaging
 > the backend as an auto-starting Windows service (unattended production
 > hosting) is a Milestone 10 (RTM) task and is not yet documented.
