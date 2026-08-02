@@ -26,7 +26,7 @@ Expected:
 ```json
 {
   "application": "PBC Visitor Kiosk",
-  "version": "0.1"
+  "version": "1.0"
 }
 ```
 
@@ -177,11 +177,18 @@ TCP 0.0.0.0:8000 LISTENING
 
 ---
 
-# Database issues/cleanup
+# Database Issues
 
-## Background
+The backend stores all data in a single SQLite database file at
+`backend/visitor_kiosk.db`.
 
-App is currently using SQLite as the backend database
+- **Do not** edit, move, or delete the live database file while the backend is
+  running — stop the backend first.
+- To recover, roll back, or relocate data, use the backup/restore tooling rather
+  than hand-copying the `.db` file. See
+  [DISASTER-RECOVERY.md](DISASTER-RECOVERY.md) for the full procedure.
+- After any manual database change, restart the backend and confirm
+  `GET /health` returns `200` (it verifies database connectivity).
 
 
 

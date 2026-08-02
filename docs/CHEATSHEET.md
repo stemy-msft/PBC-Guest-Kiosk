@@ -33,13 +33,20 @@ PBC_API_BASE=http://kiosk-backend.domain.local:8000         <-- name/ip of backe
 PBC_PRINTER_NAME=QL800_BROTHER                              <-- name of print queue on Raspberry Pi
 PBC_PRINT_AGENT_POLL_SECONDS=2                              <-- frequency print-agent polls backend
 
-# .\backend\apps\services\badge_service.py
+# .\backend\app\services\badge_service.py
 
 ## This controls the creation of the PNG for the badge that might need modified if a different printer is used
 
-BADGE_WIDTH = 1100                                          <-- Badge width
-BADGE_HEIGHT = 696                                          <-- Badge height
 photo = ImageEnhance.Brightness(photo).enhance(1.0)         <-- Brightness
 photo = ImageEnhance.Contrast(photo).enhance(0.85)          <-- Contrast
 photo = ImageOps.grayscale(photo).convert("RGB")            <-- Greyscale conversion
+
+## Badge width/height are read from the active layout, not from constants here:
+##   LAYOUT = BADGE_LAYOUTS["PBC_standard"]
+## To change badge dimensions, edit the PBC_standard entry in badge_layouts.py:
+
+# .\backend\app\services\badge_layouts.py
+
+"width": 1100                                               <-- Badge width
+"height": 696                                              <-- Badge height
 

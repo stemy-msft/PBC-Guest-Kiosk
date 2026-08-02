@@ -1,16 +1,40 @@
-# React + Vite
+# PBC Visitor Kiosk — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite single-page app for the PBC Visitor Kiosk: visitor check-in and
+check-out, photo capture, badge preview, and the administrative screens.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 20+ and npm
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+```
 
-## Expanding the ESLint configuration
+Create `frontend/.env` from the tracked example and point it at your backend:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cp .env.example .env         # macOS/Linux
+Copy-Item .env.example .env  # Windows PowerShell
+```
+
+```env
+VITE_API_BASE=http://your-backend-host:8000
+```
+
+## Common Commands
+
+```bash
+npm run dev      # start the Vite dev server (binds 0.0.0.0)
+npm run build    # production build
+npm run preview  # preview the production build
+npm run test     # unit tests (Vitest)
+npm run lint     # ESLint
+```
+
+## Documentation
+
+- Project overview and architecture: [../README.md](../README.md)
+- Full installation and deployment: [../docs/INSTALL.md](../docs/INSTALL.md)

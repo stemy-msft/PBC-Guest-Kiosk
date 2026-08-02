@@ -22,7 +22,7 @@ For complete deployment instructions, review the documentation in the following 
 Recommended:
 
 - Windows 11
-- Python 3.12+
+- Python 3.12+ (3.13 tested)
 - Git
 
 ## Frontend
@@ -32,8 +32,8 @@ Recommended:
 
 ## Print Server
 
-- Raspberry Pi OS
-- Python 3.12+
+- Raspberry Pi OS Lite (64-bit)
+- Python 3.12+ (3.13 tested)
 - Git
 - CUPS
 
@@ -218,7 +218,10 @@ Visitor badges are generated using a named theme:
 PBC_BADGE_THEME=PBC_standard   # optional; default shown
 ```
 
-Set this only to select a different badge layout known to the badge service.
+Set this only to select a different named **theme** (badge colors and styling)
+known to the badge service. The badge **layout** (dimensions and element
+placement) is fixed to the supported `PBC_standard` layout in v1; additional
+layout selection and management are planned v2 capabilities.
 
 ---
 
@@ -283,12 +286,13 @@ Verify:
 curl http://kiosk-backend.domain.local:8000
 ```
 
-Expected response:
+Expected response (the root endpoint reports a coarse `"1.0"`; the precise
+running version and release are available from `GET /health`):
 
 ```json
 {
   "application": "PBC Visitor Kiosk",
-  "version": "0.1"
+  "version": "1.0"
 }
 ```
 
@@ -320,14 +324,19 @@ Build production version:
 npm run build
 ```
 
-# Backend Configuration
+# Frontend Configuration
 
-Create the file if it does not exist.
+The frontend reads its backend URL from a git-ignored `frontend/.env`. Create it
+by copying the tracked example, then set the backend host/IP the kiosk browser
+can reach:
 
-Example:
+```bash
+cp frontend/.env.example frontend/.env         # macOS/Linux
+Copy-Item frontend/.env.example frontend/.env  # Windows PowerShell
+```
 
 ```env
-VITE_API_BASE=http://192.168.0.210:8000
+VITE_API_BASE=http://your-backend-host:8000
 ```
 
 ---
@@ -362,15 +371,20 @@ pip install -r requirements.txt
 
 # Print Agent Configuration
 
-Recommended environment variables:
+Create `print-agent/.env` by copying `print-agent/.env.example` (the
+authoritative, fully commented list). The core variables:
 
 ```env
-PBC_API_BASE=http://kiosk-backend.domain.local:8000
+PBC_API_BASE=http://your-backend-host:8000
 PBC_PRINTER_NAME=QL800_BROTHER
 PBC_PRINT_AGENT_POLL_SECONDS=2
 PBC_PRINT_TIMEOUT_SECONDS=60
 PBC_PRINT_DOWNLOAD_DIR=./downloaded-badges
 ```
+
+`PBC_PRINT_AGENT_KEY`, `PBC_PRINT_STATION_SLUG`, and `PBC_PRINT_AGENT_TOKEN` are
+written back to this file automatically when the agent registers and is assigned
+to a station — you do not set them by hand.
 
 ---
 

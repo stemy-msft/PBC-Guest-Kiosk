@@ -1,3 +1,10 @@
+> **ARCHIVED — HISTORICAL DOCUMENT.** This is the original v0.1 requirements
+> draft, retained for historical context only. It captures the initial intended
+> scope and does **not** reflect the current implementation (`v1.0.0-rc.1`). For
+> the current system, see the root [README.md](../../README.md) and
+> [docs/INSTALL.md](../INSTALL.md). Do not use this file as an operational or
+> requirements reference.
+
 # PBC Visitor Kiosk System
 ## Version 0.1 Requirements
 

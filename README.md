@@ -131,12 +131,12 @@ Technology:
 #### Backend Server
 
 - Windows 11
-- Python 3.x
+- Python 3.12+ (3.13 tested)
 
 #### Print Server
 
-- Raspberry Pi OS
-- Raspberry Pi 4 or newer recommended
+- Raspberry Pi OS Lite (64-bit)
+- Raspberry Pi 3B tested; Pi 4 or newer recommended
 
 #### Printer
 
@@ -148,95 +148,85 @@ Technology:
 
 ### Backend Configuration
 
-The backend loads configuration from:
+The backend loads configuration from a git-ignored `.env` in the repository
+root. Create it by copying the tracked example:
 
-```text
-/.env
+```powershell
+Copy-Item .env.example .env   # Windows PowerShell (tested backend host)
 ```
 
-Create it by copying the tracked example: `cp .env.example .env`. The real
-`.env` is git-ignored and must never be committed.
-
-Example:
-
-```env
-# REQUIRED — changing this signing key invalidates all existing sessions
-JWT_SECRET_KEY=replace-with-a-long-random-secret
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=480
-
-# Initial administrator bootstrap (created only if no admin exists yet)
-PBC_DEFAULT_ADMIN_USERNAME=admin
-PBC_DEFAULT_ADMIN_PASSWORD=replace-with-a-strong-password
-PBC_DEFAULT_ADMIN_DISPLAY_NAME=Administrator
+```bash
+cp .env.example .env          # macOS/Linux
 ```
+
+`.env.example` is the authoritative, fully commented list of backend variables
+(JWT signing, administrator bootstrap, account lockout, CORS, upload limits, and
+badge theme). See [docs/INSTALL.md](docs/INSTALL.md) for step-by-step setup.
+Never commit the real `.env`.
 
 ---
 
 ### Print Agent Configuration
 
-Environment variables supported by the print agent:
+Environment variables supported by the print agent. The authoritative, fully
+commented list is `print-agent/.env.example`:
 
 | Variable | Description |
 |-----------|-------------|
 | PBC_API_BASE | Backend API URL |
 | PBC_PRINTER_NAME | CUPS printer queue name |
-| PBC_PRINT_AGENT_POLL_SECONDS | Poll interval |
+| PBC_PRINT_AGENT_POLL_SECONDS | Poll interval (seconds); default `2` |
 | PBC_PRINT_TIMEOUT_SECONDS | Per-job print timeout |
 | PBC_PRINT_DOWNLOAD_DIR | Temporary badge download location |
-| PBC_PRINT_AGENT_TOKEN | Optional agent authentication token |
+| PBC_PRINT_AGENT_TOKEN | Agent bearer token (self-populated on first registration) |
+| PBC_PRINT_AGENT_KEY | Agent identity key (self-populated on first registration) |
+| PBC_PRINT_STATION_SLUG | Print station this agent serves (self-populated on assignment) |
 
 Example:
 
 ```env
-PBC_API_BASE=http://192.168.0.210:8000
+PBC_API_BASE=http://your-backend-host:8000
 PBC_PRINTER_NAME=QL800_BROTHER
-PBC_POLL_SECONDS=3
+PBC_PRINT_AGENT_POLL_SECONDS=2
 ```
 
 ---
 
 ## Printer Configuration
 
-### Tested Production Queue
+The tested production queue is `QL800_BROTHER`, configured with
+`PageSize=62x100`, `BrPriority=BrQuality`, and `BrBrightness=15` (correct badge
+sizing, improved grayscale quality, and reliable printing).
 
-The current recommended production queue is:
-
-```text
-QL800_BROTHER
-```
-
-### Important Settings
-
-The Brother queue must be configured as:
-
-```text
-PageSize       = 62x100
-BrPriority     = BrQuality
-BrBrightness   = 15
-```
-
-These settings were determined through testing and provide:
-
-- Correct badge sizing
-- Improved image quality
-- Elimination of visible halftone artifacts
-- Reliable badge printing
+The full, authoritative print-server setup — driver options, queue creation, and
+these settings — lives in [docs/PRINT-SERVER.md](docs/PRINT-SERVER.md). Treat it
+as the single source of truth for printer configuration.
 
 ---
 
 ## Deployment Overview
 
+> These commands run each service in the foreground for evaluation. Packaging
+> the backend as an auto-starting Windows service (unattended production
+> hosting) is a Milestone 10 (RTM) task and is not yet documented.
+
 ### Backend
 
-```bash
+```powershell
+# Windows PowerShell (tested backend host)
 cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
+```bash
+# macOS/Linux
+cd backend
 python -m venv .venv
 source .venv/bin/activate
-
 pip install -r requirements.txt
-
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -249,7 +239,7 @@ npm install
 npm run dev
 ```
 
-### Print Agent
+### Print Agent (Raspberry Pi / Linux)
 
 ```bash
 cd print-agent

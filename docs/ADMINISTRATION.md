@@ -56,7 +56,9 @@ After installation:
 
 ## Adding Staff Accounts
 
-Note: At milestone6, there is a limitation of a single staff account controlled in the .env
+Staff accounts are created and managed from the admin interface (Users screen)
+by an administrator. The system supports multiple staff accounts, each with its
+own credentials and role — there is no single-account limitation.
 
 Staff accounts should be created only for authorized camp personnel.
 
@@ -129,7 +131,9 @@ Historical records should remain intact.
 
 # Roles and Permissions
 
-Suggested role model:
+Each account is assigned a role. Administrator access is enforced by the backend
+(administrative endpoints reject non-administrators). The operational role model
+is:
 
 ## Administrator
 
@@ -200,7 +204,8 @@ Expected result:
 
 ```json
 {
-  "application": "PBC Visitor Kiosk"
+  "application": "PBC Visitor Kiosk",
+  "version": "1.0"
 }
 ```
 
@@ -308,28 +313,12 @@ lp -d QL800_BROTHER test.png
 
 # Known Good Printer Configuration
 
-Production printing relies on the following printer configuration:
+Production printing relies on the `QL800_BROTHER` queue configured with
+`PageSize=62x100`, `BrPriority=BrQuality`, and `BrBrightness=15` (correct badge
+dimensions, reduced halftoning, improved photo quality, and reliable operation).
 
-Queue:
-
-```text
-QL800_BROTHER
-```
-
-Print Settings:
-
-```text
-PageSize = 62x100
-BrPriority = BrQuality
-BrBrightness = 15
-```
-
-These values were selected after testing for:
-
-- Correct badge dimensions
-- Reduced halftoning
-- Improved photo quality
-- Reliable printer operation
+The authoritative print-server setup and these settings are documented in
+[PRINT-SERVER.md](PRINT-SERVER.md); this section is a quick reference only.
 
 ---
 

@@ -318,26 +318,27 @@ Version: 2.1.4-0
 
 Verify the Brother CUPS filter is installed:
  
-```
-bashls -l /usr/lib/cups/filter/brother_lpdwrapper_ql800
+```bash
+ls -l /usr/lib/cups/filter/brother_lpdwrapper_ql800
 ```
  
 Expected output similar to:
  
-```
-text-rwxr-xr-x 1 root root ###### /usr/lib/cups/filter/brother_lpdwrapper_ql800
+```text
+-rwxr-xr-x 1 root root ###### /usr/lib/cups/filter/brother_lpdwrapper_ql800
 ```
  
 Verify the Brother PPD is installed:
  
-```
-bashfind /usr/share -iname "*ql800*.ppd"
+```bash
+find /usr/share -iname "*ql800*.ppd"
 ```
  
 Expected output:
  
-```
-text/usr/share/ppd/Brother/brother_ql800_printer_en.ppd/usr/share/cups/model/Brother/brother_ql800_printer_en.ppd
+```text
+/usr/share/ppd/Brother/brother_ql800_printer_en.ppd
+/usr/share/cups/model/Brother/brother_ql800_printer_en.ppd
 ```
 
 ### Printer Device URI

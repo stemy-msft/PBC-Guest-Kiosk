@@ -7,7 +7,7 @@ Validated: July 2026
 ### Host
 
 - Windows 11
-- Python Virtual Environment
+- Python 3.13 (virtual environment)
 - FastAPI Backend
 
 ### Network
