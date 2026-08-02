@@ -1,5 +1,9 @@
 # Troubleshooting
 
+> **Superseded — see [docs/03-Operations/Troubleshooting.md](03-Operations/Troubleshooting.md).**
+> Operational troubleshooting now lives in the operations guide set. This file is
+> retained for its historical development/deployment notes and inbound links.
+
 This document captures issues encountered during development and deployment.
 
 ---

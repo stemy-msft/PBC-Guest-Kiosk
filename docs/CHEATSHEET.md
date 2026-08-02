@@ -2,6 +2,10 @@
 
 # PBC Visitor Kiosk Settings Cheat Sheet
 
+> **Superseded — see [docs/03-Operations/QuickReference.md](03-Operations/QuickReference.md).**
+> The printable operational cheat sheet now lives in the operations guide set. This
+> file is retained for its detailed settings-location notes and inbound links.
+
 This document provides a cheat sheet for where to make changes.
 In some cases, only a portion of the settings are shown below. 
 

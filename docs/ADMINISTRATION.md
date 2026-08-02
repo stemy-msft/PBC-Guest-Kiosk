@@ -2,6 +2,16 @@
 
 # PBC Visitor Kiosk Administration Guide
 
+> **Superseded — see [docs/03-Operations/Administration.md](03-Operations/Administration.md).**
+> Day-to-day administration now lives in the operations guide set
+> ([Administration](03-Operations/Administration.md) ·
+> [Troubleshooting](03-Operations/Troubleshooting.md) ·
+> [Print Operations](03-Operations/PrintOperations.md) ·
+> [Backup & Recovery](03-Operations/BackupAndRecovery.md) ·
+> [Quick Reference](03-Operations/QuickReference.md)). This file is retained for
+> historical reference and its inbound links; new readers should start with the
+> operations guide.
+
 This document provides administrative guidance for operating, maintaining, and supporting the PBC Visitor Kiosk system.
 
 ---
