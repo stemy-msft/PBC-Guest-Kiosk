@@ -59,7 +59,7 @@ python scripts/backup.py list                                     # list snapsho
 python scripts/backup.py verify --from backend\backups\20260801-153000Z      # confirm integrity
 ```
 
-Secrets (`backend/.env`, `print-agent/.env`) are **not** in backups — copy them by hand.
+Secrets (the repository-root `.env`, `print-agent/.env`) are **not** in backups — copy them by hand.
 
 ## Restore Commands (stop backend + agents first)
 

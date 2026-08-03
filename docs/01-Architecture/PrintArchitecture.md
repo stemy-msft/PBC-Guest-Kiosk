@@ -114,7 +114,7 @@ couple of seconds:
    `last_seen` — registration *is* the liveness heartbeat (see [§6](#6-heartbeat-and-liveness)).
 2. **Ask for pending jobs** for its station (`GET /api/print-jobs/pending`). The station is
    determined server-side from the authenticated agent; the agent sends no station parameter.
-3. For each job: **claim → download → print → report** (see [§7](#7-claim-leases-and-exactly-once-printing)).
+3. For each job: **claim → download → print → report** (see [§7](#7-claim-leases-and-duplicate-resistant-printing)).
 
 The agent authenticates every call with its own **bearer token** and may only act on jobs
 belonging to its own station. It shells out to **CUPS** (`lp` to print, `lpstat` to wait for
@@ -141,10 +141,11 @@ The 60-second visibility window is intentionally **separate** from the recovery 
 guard (300 seconds, see [§10](#10-retries-and-recovery)), so operators can tune how quickly a
 station *looks* offline without affecting when work is *recovered*.
 
-## 7. Claim leases and exactly-once printing
+## 7. Claim leases and duplicate-resistant printing
 
-Correctness — a badge printing once and only once — rests on a **single atomic claim**, not
-on the recovery sweep. When an agent claims a job (`PUT /api/print-jobs/{id}/claim`):
+A Print Job has a **single active claimant** at any moment, and that guarantee — not the
+recovery sweep — is what makes printing **duplicate-resistant**. It rests on a **single
+atomic claim**. When an agent claims a job (`PUT /api/print-jobs/{id}/claim`):
 
 - The agent must own the job's station, or the claim is refused (403).
 - The claim is a **single conditional UPDATE**: a job is claimable only when it is `Pending`,
@@ -184,6 +185,19 @@ sequenceDiagram
 When a job reaches a terminal status (`Completed` or `Failed`), its lease is released so
 recovery never touches it again. A `Completed` job also sets the visitor's `badge_printed`
 flag and time.
+
+**What this guarantees — and what it does not.** The atomic claim guarantees a job has only
+**one active owner at a time** and that a stale report from a superseded lease is rejected
+(a 409). It does **not** guarantee a single *physical* badge. There is a real failure
+window: an agent can hand a job to CUPS (`lp`) and then crash — or lose power or its
+network — **before** it reports `Completed`. Its lease eventually expires and, once the
+agent is also stale, recovery requeues the job (see [§10](#10-retries-and-recovery)); a
+healthy agent then claims and prints it. If the first badge had already emerged from the
+printer, the guest receives **two** physical badges. The database still converges to a
+single, consistent `Completed` state, but the paper is duplicated. The system does **not**
+detect or reconcile this automatically — recognizing and discarding a duplicate badge is an
+operator action (see
+[Print Operations §7](../03-Operations/PrintOperations.md#7-failover-behavior)).
 
 ## 8. Reprint workflow
 
@@ -240,7 +254,7 @@ The design behaves predictably when things go wrong:
 | Scenario | What happens |
 | --- | --- |
 | **Station has no live agent** | The station shows **offline/stale**; its jobs stay `Pending` because nothing claims them. Staff can **redirect** a pending job to an online station. |
-| **Agent dies mid-print** | The lease expires after 120 s. Once the agent is also stale (>300 s), recovery **requeues** the job (or **fails** it at the retry cap). The bumped generation makes any late "Completed" from the dead lease a rejected stale update. |
+| **Agent dies mid-print** | The lease expires after 120 s. Once the agent is also stale (>300 s), recovery **requeues** the job (or **fails** it at the retry cap). The bumped generation makes any late "Completed" from the dead lease a rejected stale update. If the badge had already printed before the crash, the requeued job can produce a **second physical badge** — an operator discards the duplicate ([Print Operations §7](../03-Operations/PrintOperations.md#7-failover-behavior)). |
 | **Printer error (`lp` fails)** | The agent reports **Failed** with its claim generation; the job becomes `Failed` and the lease is released. |
 | **Two agents claim at once** | The atomic claim lets exactly one win; the other receives **409** and moves on. |
 | **Stale message after recovery** | Rejected with **409** because its claim generation no longer matches. |

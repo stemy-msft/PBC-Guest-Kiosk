@@ -2,8 +2,10 @@
 
 **Audience:** Camp IT / operations staff.
 **Scope:** Recovering visitor operations after a component failure — a dead
-Raspberry Pi print agent, a crashed workstation, or a corrupted database — with
-no loss of visitor records.
+Raspberry Pi print agent, a crashed workstation, or a corrupted database. A restore
+returns the system to the state captured by the selected snapshot; changes made after
+that snapshot are not recovered, so how much you can lose depends on how recently you
+backed up.
 
 This runbook covers the built-in backup tool (`scripts/backup.py` /
 `scripts/restore.py`, implemented in `backend/app/backup.py`) and the automatic
@@ -26,8 +28,8 @@ resume operations:
 | System settings | `backend/config/system_settings.json` |
 | Theme Editor themes | `backend/config/user_themes.json` |
 
-**Not** in a snapshot (back these up by hand, securely): `backend/.env` and
-`print-agent/.env` — they hold secrets and are deliberately excluded.
+**Not** in a snapshot (back these up by hand, securely): the repository-root `.env`
+and `print-agent/.env` — they hold secrets and are deliberately excluded.
 `backend/config/system_settings.template.json` is tracked in git and is not a
 runtime file, so it is not captured.
 
@@ -104,7 +106,7 @@ one immediately before week-7 shutdown.
 | Failure | Action |
 | --- | --- |
 | **Corrupted database** | Restore the most recent snapshot that passes `verify` (§3). |
-| **Workstation failure** | Reinstall per `INSTALL.md`, restore the latest off-machine snapshot, start backend. |
+| **Workstation failure** | Reinstall per the [Deployment guide](02-Deployment/README.md), restore the latest off-machine snapshot, start backend. |
 | **Fresh/clean rebuild** | Restore into the new install; `--no-safety` is fine when the target is empty. |
 
 ---
@@ -112,7 +114,7 @@ one immediately before week-7 shutdown.
 ## 4. Print-agent / print-job recovery (automatic)
 
 The backend recovers print jobs abandoned by a failed agent **without operator
-action** — no data loss, no manual database editing.
+action** and without losing the queued job or hand-editing the database.
 
 **How it works:** a print job is leased to an agent for a bounded time. If a job
 stays "Printing" past its lease **and** its owning agent has stopped checking in
@@ -135,6 +137,11 @@ is claimed. Practical guidance:
 
 Recovery re-fences each job (its claim generation is bumped) so a late response
 from the dead agent's old lease can never overwrite the requeued job.
+
+> **Duplicate badge caveat.** Recovery favors reprinting over dropping a job. If the
+> dead agent had already sent the badge to the printer before it stopped reporting, the
+> requeued job prints a **second physical badge**. The system does not detect this
+> automatically — an operator should check the printer and discard any duplicate.
 
 ---
 

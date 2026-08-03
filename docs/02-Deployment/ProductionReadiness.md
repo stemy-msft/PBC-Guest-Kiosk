@@ -117,9 +117,12 @@ unsupported step. See [FrontendDeployment.md § 8](FrontendDeployment.md#8-servi
   backend serves plain HTTP; the dev server serves plain HTTP.
 - The reference deployment operates on a **trusted LAN** rather than using TLS.
 
-**Consequence:** there is no shipped HTTPS. Because some browsers restrict camera
-access to secure contexts, camera behaviour off `localhost`/trusted-LAN may
-require you to add TLS yourself (unsupported). Related:
+**Consequence:** there is no shipped HTTPS. Browsers expose the camera only in a **secure
+context** (`localhost` or HTTPS), so a **remote** kiosk reaching the server over plain HTTP
+— even on a trusted LAN — **may have its camera blocked**, depending on the browser. Camera
+capture is guaranteed only from a `localhost` browser or an HTTPS origin you provide;
+enabling it on remote kiosk devices over the network is an **unresolved production-readiness
+gap**, not a supported configuration. Related:
 [FrontendDeployment.md § 9](FrontendDeployment.md#9-browser-and-camera-requirements).
 
 ---
@@ -195,7 +198,7 @@ that has not been started. Do not document or assume a container deployment path
 | Downtime after reboot/crash | No process supervision (§ 5) | Manual restart; add your own supervision. |
 | Data loss | Single SQLite file; manual backups (§ 4, § 8) | Frequent manual backups + off-host copies. |
 | No transport encryption | No TLS (§ 7) | Trusted, isolated LAN only. |
-| Camera blocked off secure origin | No HTTPS (§ 7) | Use `localhost`/trusted LAN, or add TLS yourself. |
+| Camera blocked off secure origin | No HTTPS (§ 7) | Serve via `localhost`/`127.0.0.1`, or add HTTPS/TLS yourself; a plain-HTTP trusted LAN is **not** a secure context (§ 7). |
 | Print agent won't start on clean host | Missing `python-dotenv` (§ 10) | Install `python-dotenv` manually. |
 | Indefinite PII retention | No retention/purge feature | Operational policy; see [SecurityControls.md](../06-Reference/SecurityControls.md). |
 | Concurrency limits | Single-process SQLite | Single backend process only; do not run multiple workers. |

@@ -220,13 +220,13 @@ docs/
 ├── 06-Reference/       Environment variables, security, hardware/software matrices
 ├── history/            Archived historical material (tracked)
 ├── reviews/            Internal review reports (git-ignored)
-├── INSTALL.md          Superseded → points to 02-Deployment
+├── INSTALL.md          Retired stub → points to 02-Deployment
 ├── KNOWN_GOOD_BUILD.md Authoritative validated build record
 ├── PRINT-SERVER.md     Authoritative CUPS/print-server setup
 ├── DISASTER-RECOVERY.md Authoritative disaster-recovery runbook
-├── ADMINISTRATION.md   Superseded → points to 03-Operations
-├── TROUBLESHOOTING.md  Superseded → points to 03-Operations
-└── CHEATSHEET.md       Superseded → points to 03-Operations
+├── ADMINISTRATION.md   Retired stub → points to 03-Operations
+├── TROUBLESHOOTING.md  Retired stub → points to 03-Operations
+└── CHEATSHEET.md       Retired stub → points to 03-Operations
 ```
 
 The numbered folders are the canonical, maintained documentation. Several

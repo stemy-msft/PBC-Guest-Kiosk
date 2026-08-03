@@ -29,12 +29,12 @@ separate host — see [RaspberryPiPrintAgent.md](RaspberryPiPrintAgent.md).
 
 | Aspect | Status |
 | --- | --- |
-| Backend on Linux (x86-64) | **Supported but not the validated host.** The backend is portable Python; the reference build ran on Windows 11. See [SoftwareMatrix.md § 1](../06-Reference/SoftwareMatrix.md#1-operating-systems). |
-| Frontend on Linux | Supported — any OS with Node 20+ can build/serve. |
+| Backend on Linux (x86-64) | **EXPECTED GOOD — not the validated host.** The backend is portable Python; the reference build ran on Windows 11, so a Linux backend is not field-validated. See [SoftwareMatrix.md § 1](../06-Reference/SoftwareMatrix.md#1-operating-systems) and [HardwareMatrix.md](../06-Reference/HardwareMatrix.md). |
+| Frontend on Linux | **EXPECTED GOOD** — any OS with Node 20+ can build/serve; not explicitly validated on Linux. |
 | Print agent | Linux/CUPS is the **required** platform (separate host). |
 
-Treat a Linux backend as a valid, portable target that has had less field
-validation than the Windows reference host; validate thoroughly (§ 13).
+Treat a Linux backend as an **EXPECTED GOOD**, portable target — not field-validated to
+the same degree as the Windows reference host; validate thoroughly (§ 13).
 
 ---
 

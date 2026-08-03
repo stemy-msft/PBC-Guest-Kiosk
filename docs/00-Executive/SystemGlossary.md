@@ -107,6 +107,16 @@ screen and what an agent asks for when it calls `GET /api/print-jobs/pending`. Q
 health signals (a job stuck Pending, a stalled print, repeated failures) are derived
 read-only from each job's stored fields.
 
+### Claim Lease
+The short-lived, exclusive hold an agent takes on a Print Job before printing it
+(`PUT /api/print-jobs/{id}/claim`). A single atomic claim gives a job **one active
+claimant** at a time — a second agent racing for the same job is refused — and a
+**claim generation** marker causes any late report from a superseded lease to be
+rejected. This makes printing **duplicate-resistant**, *not* exactly-once: if an agent
+prints a badge and then crashes before reporting `Completed`, recovery can requeue the
+job and another agent may print a **second physical badge**. See
+[Print Architecture §7](../01-Architecture/PrintArchitecture.md#7-claim-leases-and-duplicate-resistant-printing).
+
 ### Reprint
 A **staff-initiated** action that creates a **new** Print Job for a visitor whose badge
 already exists (`POST /api/visitors/{id}/reprint`). Because it is an authenticated staff

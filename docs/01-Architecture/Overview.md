@@ -34,9 +34,12 @@ These goals are visible in the code and shape the architecture:
 - **Single source of truth per fact.** A visitor's print station is stored once, on the
   visitor. Agent/station liveness is derived from one place. Duplicated liveness paths
   were deliberately removed.
-- **Correctness at the claim, not the sweep.** Exactly-once printing is enforced by a
-  single atomic database claim; recovery of abandoned work is a conservative backstop, not
-  the primary mechanism (see [Print Architecture](PrintArchitecture.md)).
+- **Correctness at the claim, not the sweep.** A job has a **single active claimant** at a
+  time, enforced by a single atomic database claim; recovery of abandoned work is a
+  conservative backstop, not the primary mechanism. This makes printing
+  **duplicate-resistant** — it does not guarantee a single *physical* badge, because an
+  agent can print and then crash before reporting the job done (see
+  [Print Architecture](PrintArchitecture.md)).
 - **Small, self-hostable footprint.** A Python/FastAPI backend, a single-page React
   frontend, a SQLite database, and a lightweight print agent — no external cloud services
   are required to run.
@@ -145,8 +148,10 @@ supported deployment shapes are summarized in
 Printing is deliberately split into three concepts — **Printer** (hardware), **Print
 Agent** (software), and **Print Station** (logical destination). A badge is generated,
 queued as a **Print Job** bound to the visitor's station, then claimed and printed by an
-agent serving that station. Exactly-once behavior comes from a single atomic claim that
-leases the job; abandoned leases are recovered conservatively. The complete explanation —
+agent serving that station. A single atomic claim gives each job one active claimant and
+makes printing **duplicate-resistant**; abandoned leases are recovered conservatively, and
+a physical duplicate badge remains possible if an agent prints and then fails before
+reporting the job done. The complete explanation —
 including claim leases, heartbeats, retries, recovery, reprint, redirect, and offline-
 printer behavior — is in [Print Architecture](PrintArchitecture.md).
 
@@ -184,7 +189,7 @@ operational procedure is the [Disaster Recovery guide](../DISASTER-RECOVERY.md).
 - [Software Matrix](../06-Reference/SoftwareMatrix.md)
 - [Security Controls](../06-Reference/SecurityControls.md)
 
-**Operational guides (`docs/`):** [Installation](../INSTALL.md) ·
-[Administration](../ADMINISTRATION.md) · [Print Server](../PRINT-SERVER.md) ·
-[Disaster Recovery](../DISASTER-RECOVERY.md) · [Troubleshooting](../TROUBLESHOOTING.md) ·
-[Known-Good Build](../KNOWN_GOOD_BUILD.md) · [Cheat Sheet](../CHEATSHEET.md)
+**Operational guides:** [Installation](../02-Deployment/README.md) ·
+[Administration](../03-Operations/Administration.md) · [Print Server](../PRINT-SERVER.md) ·
+[Disaster Recovery](../DISASTER-RECOVERY.md) · [Troubleshooting](../03-Operations/Troubleshooting.md) ·
+[Known-Good Build](../KNOWN_GOOD_BUILD.md) · [Cheat Sheet](../03-Operations/QuickReference.md)

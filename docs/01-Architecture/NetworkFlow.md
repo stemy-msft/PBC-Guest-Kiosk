@@ -12,21 +12,30 @@ and deployment shapes live in the [Hardware Matrix](../06-Reference/HardwareMatr
 
 ## 1. The one rule: everything connects *to* the backend
 
-Every network conversation in the system is **initiated toward the Backend API** over
-HTTP/JSON. Browsers, print agents, and monitors all reach in to the backend; the backend
-never dials out to them. This pull-based shape is what makes the system easy to place on a
-simple local network.
+For the application's own traffic — **API calls, health checks, and print-agent polling** —
+every conversation is **initiated toward the Backend API** over HTTP/JSON. Browsers (once
+loaded), print agents, and monitors all reach in to the backend; the backend never dials
+out to them. This pull-based shape is what makes the system easy to place on a simple local
+network.
+
+The one separate flow is the **initial page load**: a browser first downloads the React
+single-page app (HTML, JS, CSS) from wherever the frontend is served — the Vite dev server
+in development, or a static file host in a deployed setup — and only then does the loaded
+app make its API calls to the backend. Static frontend assets are delivered from the
+frontend host; all data, health, and print traffic flows inward to the backend.
 
 ```mermaid
 flowchart LR
     subgraph LAN["Local network"]
         direction LR
+        FEhost["Frontend host<br/>(SPA static assets)"]
         Browser["Kiosk & staff browsers"]
         Agent["Print Agents"]
         Monitor["Uptime monitor / staff"]
         BE["Backend API<br/>(FastAPI / uvicorn)"]
     end
 
+    FEhost -- "HTTP: SPA assets (HTML/JS/CSS)" --> Browser
     Browser -- "HTTP/JSON (public + staff)" --> BE
     Agent -- "HTTP/JSON (bearer token)" --> BE
     Monitor -- "GET /health, /health/live" --> BE
@@ -143,8 +152,11 @@ The architecture assumes:
 - **A single, trusted local network** connecting kiosks, the backend host, and print
   stations. The tested model places the backend and print agents on the same LAN, with agents
   configured to a fixed backend host and port.
-- **Connections flow inward to the backend.** Browsers, agents, and monitors initiate; the
-  backend serves. The backend does not open connections back to clients or agents.
+- **Application traffic flows inward to the backend.** For API, health, and print-agent
+  traffic, browsers, agents, and monitors initiate; the backend serves and does not open
+  connections back to clients or agents. Delivering the frontend's own static assets to the
+  browser is a separate concern, handled by whatever serves the SPA (see
+  [§1](#1-the-one-rule-everything-connects-to-the-backend)).
 - **Cross-origin access is bounded by CORS.** Which origins may call the API is controlled by
   configuration, described in
   [Security Controls §4](../06-Reference/SecurityControls.md#4-cross-origin-resource-sharing-cors-f-008).

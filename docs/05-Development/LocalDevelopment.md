@@ -10,7 +10,7 @@ and the print agent.
 It is a *development* guide. For production installation and hosting, use the
 canonical deployment section instead:
 
-- Fastest production path → [../02-Deployment/QuickStart.md](../02-Deployment/QuickStart.md)
+- Fastest first-run / evaluation setup → [../02-Deployment/QuickStart.md](../02-Deployment/QuickStart.md)
 - Component deployment guides → [../02-Deployment/BackendDeployment.md](../02-Deployment/BackendDeployment.md),
   [../02-Deployment/FrontendDeployment.md](../02-Deployment/FrontendDeployment.md),
   [../02-Deployment/RaspberryPiPrintAgent.md](../02-Deployment/RaspberryPiPrintAgent.md)
@@ -198,8 +198,11 @@ cd frontend
 cp .env.example .env      # then set VITE_API_BASE=http://your-backend-host:8000
 ```
 
-- The backend loads the **root** `.env` via a bare `load_dotenv()` in
-  `backend/app/config.py`.
+- The backend loads the repository-root `.env` in two places:
+  `backend/app/config.py` calls a bare `load_dotenv()` (the administrator
+  bootstrap defaults), and `backend/app/auth.py` loads the same repository-root
+  `.env` for the JWT settings (`JWT_SECRET_KEY`, `JWT_ALGORITHM`,
+  `JWT_EXPIRE_MINUTES`) and fails fast if `JWT_SECRET_KEY` is unset.
 - `VITE_API_BASE` is baked into the frontend at **build time**; changing it
   requires a rebuild (or a dev-server restart for `npm run dev`).
 - The print agent reads `print-agent/.env` from a path co-located with the

@@ -19,8 +19,9 @@ Work from the outside in, and change one thing at a time:
 
 1. **Identify the component.** Kiosk (browser) → backend API → database, and
    separately backend → print agent → printer. Most problems are isolated to one of
-   these. The rule that makes this tractable: *everything connects **to** the
-   backend* — see [Network Flow §1](../01-Architecture/NetworkFlow.md#1-the-one-rule-everything-connects-to-the-backend).
+   these. The rule that makes this tractable: the app's *API, health, and print traffic
+   all connect **to** the backend* (the browser separately loads the page itself from the
+   frontend host) — see [Network Flow §1](../01-Architecture/NetworkFlow.md#1-the-one-rule-everything-connects-to-the-backend).
 2. **Confirm health first** ([§2](#2-system-health-checks)) before touching anything.
 3. **Prefer reversible actions.** Redirect or reprint before restarting; back up
    before restoring; disable before deleting.
@@ -78,10 +79,17 @@ always at the device/browser layer:
 
 - **Permission denied / no prompt:** grant camera permission for the kiosk site in the
   browser, then reload.
-- **Camera works elsewhere but not in the kiosk:** browsers only allow camera access in
-  a **secure context** (HTTPS, or `localhost`). If the kiosk is served over plain HTTP
-  from another machine, the browser will block the camera — serve it over HTTPS or from
-  localhost.
+- **Camera works elsewhere but not in the kiosk:** browsers only expose the camera in a
+  **secure context** — a page served from `localhost`/`127.0.0.1`, or over HTTPS. Plain HTTP
+  from another machine on the LAN is **not** a secure context, so a remote kiosk reached by
+  IP or hostname over plain HTTP **may have its camera blocked** — this is browser- and
+  version-dependent, not a server misconfiguration. This application ships **no HTTPS/TLS**,
+  so camera capture is only *guaranteed* in a secure context (a `localhost` browser, or an
+  HTTPS origin you provide). Where remote plain-HTTP capture is blocked there is no in-repo
+  fix, because none ships; the missing HTTPS support is an unresolved production-readiness
+  gap ([Software Matrix](../06-Reference/SoftwareMatrix.md#6-browser-compatibility-kiosk--admin-ui),
+  [Production Readiness](../02-Deployment/ProductionReadiness.md#7-reverse-proxy--tls-status)).
+  Do not expect a bundled certificate or reverse-proxy step.
 - **Wrong camera (e.g., rear vs. front on a tablet):** pick the correct camera in the
   browser/device settings.
 - **Frozen preview:** close other apps using the camera, then reload the page.
@@ -159,7 +167,8 @@ The database is a single SQLite file at `backend/visitor_kiosk.db`.
 
 ## 10. Network Problems
 
-All devices talk **to** the backend; the backend never calls out to them
+For API, health, and print traffic, all devices talk **to** the backend; the backend never
+calls out to them (the browser separately fetches the page assets from the frontend host)
 ([Network Flow](../01-Architecture/NetworkFlow.md#1-the-one-rule-everything-connects-to-the-backend)).
 So "can't reach the kiosk/backend" is almost always addressing or firewall.
 

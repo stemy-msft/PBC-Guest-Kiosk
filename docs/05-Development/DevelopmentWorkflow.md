@@ -112,9 +112,10 @@ and are the same ones documented in [Testing.md](Testing.md).
 | Frontend code style | `npm run lint` | `frontend/` |
 | Frontend build health | `npm run build` | `frontend/` |
 
-> The frontend lint currently reports a **known baseline of 11 problems (10
-> errors, 1 warning)**; the project does **not** gate on lint. Do not increase
-> that count. See [Testing.md](Testing.md#8-linting-and-static-checks).
+> As of `v1.0.0-rc.2` the frontend lint reported an **observed baseline of 11
+> problems (10 errors, 1 warning)** (run `npm run lint` to confirm the current
+> count); the project does **not** gate on lint. Do not increase that count. See
+> [Testing.md](Testing.md#8-linting-and-static-checks).
 
 Passing these checks is necessary but **not** a statement of operational or
 production readiness (§16 and [ReleaseManagement.md](ReleaseManagement.md)).

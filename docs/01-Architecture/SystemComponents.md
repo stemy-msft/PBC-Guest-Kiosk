@@ -87,7 +87,8 @@ environment-variable override for the database location at `v1.0.0-rc.2`. See
 
 ## 4. Print Queue
 
-**Purpose.** Coordinate exactly-once badge printing across one or more print agents.
+**Purpose.** Coordinate **duplicate-resistant** badge printing — a single active claimant
+per job — across one or more print agents.
 
 **Responsibilities.** Hold Print Jobs in one of four statuses (`Pending`, `Printing`,
 `Completed`, `Failed`); grant a job to exactly one agent via an atomic, leased claim;

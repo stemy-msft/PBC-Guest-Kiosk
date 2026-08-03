@@ -207,7 +207,7 @@ Across handoffs and seasons, preserve:
 - The **database** (`backend/visitor_kiosk.db`) and its uploads
   (`backend/uploads/`) — via verified backup snapshots, never committed.
 - Live **configuration** (`backend/config/system_settings.json`,
-  `user_themes.json`) and the backend `.env` secrets (e.g. `JWT_SECRET_KEY`).
+  `user_themes.json`) and the repository-root `.env` secrets (e.g. `JWT_SECRET_KEY`).
 - **Print-agent credentials/station assignment** — the agent's `.env`
   (`PBC_PRINT_AGENT_TOKEN`, `PBC_PRINT_AGENT_KEY`, `PBC_PRINT_STATION_SLUG`),
   which the agent self-populates and which are git-ignored.

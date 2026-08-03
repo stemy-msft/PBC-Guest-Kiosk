@@ -100,15 +100,17 @@ Data model view: [Data Flow §5](../01-Architecture/DataFlow.md#5-print-jobs).
 
 ## 6. Claim Leases
 
-To guarantee a badge prints **once**, an agent must **claim** a job before printing.
+To keep printing **duplicate-resistant**, an agent must **claim** a job before printing.
 A claim is a time-boxed **lease** (about two minutes): the backend hands the job to
 exactly one agent, and a second agent asking for the same job is refused. Each claim
 carries a generation marker so a late reply from a previous lease can never overwrite
 a newer claim.
 
-Operationally you rarely touch this — it is what prevents duplicate badges when two
-agents serve one busy station. The mechanism is
-[Print Architecture §7](../01-Architecture/PrintArchitecture.md#7-claim-leases-and-exactly-once-printing).
+Operationally you rarely touch this — it is what stops two agents from **concurrently**
+claiming and printing the same job. It does **not** prevent every duplicate: if an agent
+prints a badge and then crashes before reporting done, recovery can requeue the job and a
+second badge can print (see [§7](#7-failover-behavior)). The mechanism is
+[Print Architecture §7](../01-Architecture/PrintArchitecture.md#7-claim-leases-and-duplicate-resistant-printing).
 
 ## 7. Failover Behavior
 
@@ -129,6 +131,14 @@ Practical outcomes:
 | --- | --- |
 | **Station with more than one agent** | Self-heals — the surviving agent requeues and prints the dead agent's job. |
 | **Single-agent station, the agent dies** | The job waits in place. Recover by bringing the Pi back, **redirecting** the job to another station, or **reprinting** from the visitor record. |
+
+> **Possible duplicate badge.** Recovery requeues a job when its agent went away without
+> reporting `Completed`. If that agent had already printed the badge before it died, the
+> requeued job prints a **second** physical badge. This is expected failover behavior, not
+> a malfunction — the system favors "print again" over "silently skip." There is **no**
+> automatic duplicate detection, so when a station recovers or a redirect/reprint
+> completes, the operator at the printer should **check for and discard any duplicate
+> badge**.
 
 This mirrors the authoritative runbook —
 [Disaster Recovery §4](../DISASTER-RECOVERY.md#4-print-agent--print-job-recovery-automatic)
@@ -194,6 +204,7 @@ recovery guidance: [Disaster Recovery §4](../DISASTER-RECOVERY.md#4-print-agent
 | Job stays **Pending** | No online agent at the station | Check the agent ([§4](#4-print-agents)); redirect or reprint ([§8](#8-redirect-printing)) |
 | Job stuck **Printing** then requeues | Agent died mid-job; lease recovery | Let a healthy agent take it; recover a single-agent station manually ([§7](#7-failover-behavior)) |
 | Job **Failed** | Exhausted print attempts | Fix the printer/agent, then reprint |
+| Guest receives **two** badges | Recovery reprinted after an agent crashed post-print | Expected during failover; discard the extra badge ([§7](#7-failover-behavior)) |
 | Prints blank/garbled or printer red light | Wrong `PageSize` / driver | Apply known-good settings ([Print Server guide](../PRINT-SERVER.md#important-notes)) |
 | Claims but never prints | `PBC_PRINTER_NAME` ≠ CUPS queue name | Align the name ([Troubleshooting §8](Troubleshooting.md#8-print-agent-problems)) |
 | Photos look dithered/grainy | ptouch-ql driver limitation | Switch to the Brother driver ([Print Server guide](../PRINT-SERVER.md#option-2-brother-driver-best-badge-quality)) |

@@ -101,8 +101,9 @@ To produce an optimised static bundle:
 npm run build
 ```
 
-This runs `vite build`. The current bundle is a single-page app of roughly
-330–340 KB (gzipped assets under `assets/`).
+This runs `vite build`. At `v1.0.0-rc.2` the build produced a single-page bundle of
+roughly 330–340 KB of assets under `assets/` (run `npm run build` to see the current
+size).
 
 You can preview a built bundle locally with:
 
@@ -151,10 +152,15 @@ There are two verified options, and one important gap:
 - Validated browsers and platforms (iPad Safari/Chrome, Android Chrome/Edge,
   desktop Chromium) are listed in
   [SoftwareMatrix.md § 6](../06-Reference/SoftwareMatrix.md#6-browser-compatibility-kiosk--admin-ui).
-- Cameras generally require a **secure context** (HTTPS) *or* `localhost`. Over
-  plain HTTP on a LAN IP, some browsers restrict camera access; the reference
-  deployment operates on a trusted LAN. TLS is not provided by this repository
-  (see [ProductionReadiness.md § 7](ProductionReadiness.md#7-reverse-proxy--tls-status)).
+- The browser camera API (`getUserMedia`) is only available in a **secure context**: a
+  page served from `localhost`/`127.0.0.1`, or over **HTTPS**. Over plain HTTP from a LAN
+  IP or hostname — i.e. a **remote** kiosk device — camera access **may be blocked**,
+  depending on the browser and version; being on a "trusted LAN" does not make the origin
+  secure. This repository ships **no** TLS/HTTPS, so reliable camera capture is guaranteed
+  only for a `localhost` browser or an HTTPS origin you provide. Treat the missing HTTPS
+  support as an unresolved deployment / production-readiness gap
+  (see [ProductionReadiness.md § 7](ProductionReadiness.md#7-reverse-proxy--tls-status));
+  no certificate or reverse-proxy procedure ships.
 
 ---
 

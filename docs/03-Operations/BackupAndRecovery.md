@@ -17,8 +17,11 @@ The authoritative, scenario-driven runbook is
 ## 1. Backup Overview
 
 A **backup** is a single, verified snapshot of everything needed to resume operations
-with no loss of visitor records: the database, uploaded photos and badges, QR/theme
-assets, and runtime configuration. The database is copied with SQLite's online backup
+**as of the moment the snapshot is taken**: the database, uploaded photos and badges,
+QR/theme assets, and runtime configuration. A restore returns the system to that captured
+state — any check-ins, photos, or prints made *after* the snapshot are not in it and are
+lost on restore, so your recovery-point exposure depends on how recently you backed up
+(see [§5](#5-restore-process)). The database is copied with SQLite's online backup
 API, so a snapshot taken while the backend is running is transactionally consistent,
 and every snapshot is integrity-checked as it is written.
 
@@ -32,8 +35,8 @@ What is and is not captured (full table in
 - **Captured:** `backend/visitor_kiosk.db`, `backend/uploads/` (photos, badges,
   qr-codes, theme-logos), `backend/config/` (`system_settings.json`,
   `user_themes.json`).
-- **Not captured (back up by hand, securely):** `backend/.env` and `print-agent/.env`
-  — they hold secrets and are deliberately excluded. See
+- **Not captured (back up by hand, securely):** the repository-root `.env` and
+  `print-agent/.env` — they hold secrets and are deliberately excluded. See
   [Security Controls §8](../06-Reference/SecurityControls.md#8-backup-protections) and
   [§10](../06-Reference/SecurityControls.md#10-secrets-handling).
 
@@ -141,7 +144,7 @@ See also the runbook's [post-recovery checklist](../DISASTER-RECOVERY.md#5-post-
 | Failure | Recovery |
 | --- | --- |
 | **Corrupted database** | Stop services; restore the most recent snapshot that passes `verify` ([§5](#5-restore-process)). |
-| **Workstation lost/dead** | Reinstall per [INSTALL](../INSTALL.md); restore the latest **off-machine** snapshot; start the backend. |
+| **Workstation lost/dead** | Reinstall per the [Deployment guide](../02-Deployment/README.md); restore the latest **off-machine** snapshot; start the backend. |
 | **Fresh / clean rebuild** | Restore into the new install; `--no-safety` is fine when the target is empty. |
 | **Dead Raspberry Pi / print agent** | This is *not* a data-loss event — jobs recover automatically. Follow [Print Operations §10](PrintOperations.md#10-print-agent-replacement-procedure). |
 | **Accidental bad change to settings/data** | Restore the most recent good snapshot; the automatic pre-restore safety snapshot protects the current state. |
@@ -156,13 +159,13 @@ Print-side failures (a printer or agent, not data) are handled in
 ```mermaid
 flowchart TD
     Start([Problem detected]) --> Kind{What failed?}
-    Kind -- Printer/Pi/agent --> Print[No data loss:<br/>Print Operations §7 & §10]
+    Kind -- Printer/Pi/agent --> Print[No visitor-data loss:<br/>Print Operations §7 & §10]
     Kind -- Data/DB/settings --> Stop[Stop backend + all agents]
     Stop --> Have{Have a good snapshot?}
     Have -- Not sure --> Verify["verify --from &lt;snapshot&gt;"]
     Verify --> Have
     Have -- Yes --> Restore["restore --from &lt;snapshot&gt;<br/>(auto safety snapshot taken)"]
-    Have -- No, workstation lost --> Reinstall[Reinstall per INSTALL,<br/>restore off-machine copy]
+    Have -- No, workstation lost --> Reinstall[Reinstall per Deployment guide,<br/>restore off-machine copy]
     Restore --> Validate[Validate after restore §6]
     Reinstall --> Validate
     Print --> Validate

@@ -23,7 +23,7 @@ support for each component, and mark each as **Required**, **Recommended**, or
 | Component | OS | Level | Notes |
 | --- | --- | --- | --- |
 | Backend | Windows 11 | **Recommended** | The validated backend host (known-good build). |
-| Backend | Linux (x86-64) | Optional | Portable Python; not the validated host. |
+| Backend | Linux (x86-64) | Optional | Portable Python; **EXPECTED GOOD**, not the validated host — not field-validated. See [HardwareMatrix.md](HardwareMatrix.md). |
 | Frontend | Windows 11 | **Recommended** | Validated host; any OS with Node 20+ can build/serve. |
 | Print agent | Raspberry Pi OS Lite (64-bit) / Linux with CUPS | **Required** | The agent uses CUPS (`lp`/`lpstat`); a CUPS-capable Linux host is mandatory. Windows is **not supported** — see [HardwareMatrix.md](HardwareMatrix.md#4-print-agents). |
 
@@ -52,8 +52,8 @@ to run. Key packages:
 | `starlette` | 1.3.1 | ASGI toolkit (FastAPI dependency, pinned). |
 | `sqlalchemy` | 2.0.51 | ORM over SQLite. |
 | `pydantic` | 2.13.4 | Request/response validation. |
-| `python-jose[cryptography]` | 3.5.0 | JWT encode/decode. |
-| `pwdlib[argon2]` | 0.3.0 | Password hashing (Argon2). |
+| `python-jose` | 3.5.0 | JWT encode/decode (the manifest pins `cryptography` separately rather than via the `[cryptography]` extra). |
+| `pwdlib` | 0.3.0 | Password hashing (Argon2; the manifest pins `argon2-cffi` separately rather than via the `[argon2]` extra). |
 | `argon2-cffi` | 25.1.0 | Argon2 backend for `pwdlib`. |
 | `python-multipart` | 0.0.32 | Multipart/form-data (uploads). |
 | `Pillow` | 12.3.0 | Image decode/normalize/re-encode; bomb guard. |
@@ -92,9 +92,19 @@ Source of truth: `print-agent/requirements.txt`.
 | Item | Version | Level | Role |
 | --- | --- | --- | --- |
 | `requests` | 2.34.2 | **Required** | HTTP polling of the backend. |
+| `python-dotenv` | (used by code; **undeclared**) | **Required (manifest defect)** | `print_agent.py` imports it (`from dotenv import load_dotenv`) but it is **not** listed in `print-agent/requirements.txt`. See the defect note below. |
 | CUPS (`lp`, `lpstat`) | System | **Required** | The agent shells out to CUPS to print and to query the queue. Must be installed and configured on the host. |
 | Brother `ql800pdrv` driver | 2.1.4-0 | **Recommended** | Best photo quality on the QL-800 (validated). |
 | `ptouch-ql` driver | System | Optional | Open-source alternative; works with visible halftoning (see [PRINT-SERVER.md](../PRINT-SERVER.md)). |
+
+> **Open RC manifest defect (print agent):** `print-agent/print_agent.py` imports
+> `python-dotenv` at module load (`from dotenv import load_dotenv`), but
+> `print-agent/requirements.txt` declares only `requests`. On a clean install the agent
+> therefore fails to start with `ModuleNotFoundError: No module named 'dotenv'` until the
+> package is installed. Installing it by hand (`pip install python-dotenv`) is a
+> **temporary workaround**, not a substitute for correcting the manifest. This is an open
+> defect against `v1.0.0-rc.2`; this documentation pass intentionally leaves the manifest
+> unchanged. See [RaspberryPiPrintAgent.md](../02-Deployment/RaspberryPiPrintAgent.md).
 
 ---
 
@@ -116,6 +126,14 @@ photo check-in. Validated browsers (from
 Requirements for the check-in flow: a camera and permission to use it, and
 (if the UI and API are on different origins) network reachability to
 `VITE_API_BASE` — see [EnvironmentVariables.md](EnvironmentVariables.md#2-frontend).
+
+> **Secure context (camera):** browsers expose `getUserMedia` only in a **secure context** —
+> `localhost`/`127.0.0.1` or **HTTPS**. This project ships **no** TLS/HTTPS, so a *remote*
+> kiosk served over plain HTTP (even on a trusted LAN) **may have its camera blocked**,
+> depending on the browser and version. Camera capture is guaranteed only from a `localhost`
+> browser or an HTTPS origin you provide; the missing HTTPS support is an unresolved
+> production-readiness gap (see
+> [ProductionReadiness.md § 7](../02-Deployment/ProductionReadiness.md#7-reverse-proxy--tls-status)).
 
 ---
 

@@ -135,7 +135,8 @@ The system is designed for a **single local network**. Two common models:
 
 **Not in scope for v1:** container/Docker deployment and cloud/off-site hosting are
 **not** part of this release — the project ships no container assets and requires no
-cloud service. Step-by-step installation lives in [INSTALL.md](../INSTALL.md); this
+cloud service. Step-by-step installation lives in the deployment guides under
+[`02-Deployment/`](../02-Deployment/README.md); this
 section only describes the shape of a deployment.
 
 ---
@@ -165,8 +166,11 @@ At a glance (full classification and evidence in
   completed in Milestone 8.
 - **Hardening:** Security hardening (account lockout, CORS, upload boundaries),
   backup/recovery hardening, and repository hygiene are complete for RC1.
-- **What "RC" means:** feature-complete and validated, undergoing final release
-  candidate verification before a `1.0.0` general release.
+- **What "RC" means:** the release-candidate feature set is code-complete and under
+  final validation. Specific workflows have recorded validation evidence (the bullets
+  above and the [known-good build](../KNOWN_GOOD_BUILD.md)); this documentation does
+  **not** by itself establish production or operational sign-off for a `1.0.0` general
+  release.
 
 ---
 
@@ -185,13 +189,13 @@ At a glance (full classification and evidence in
 
 **Operational & setup guides:**
 
-- [INSTALL.md](../INSTALL.md) — installation steps.
+- [02-Deployment/](../02-Deployment/README.md) — installation and deployment steps.
 - [PRINT-SERVER.md](../PRINT-SERVER.md) — Raspberry Pi + CUPS + Brother QL-800
   setup.
-- [ADMINISTRATION.md](../ADMINISTRATION.md) — day-to-day administration.
-- [CHEATSHEET.md](../CHEATSHEET.md) — quick command/reference sheet.
+- [03-Operations/Administration.md](../03-Operations/Administration.md) — day-to-day administration.
+- [03-Operations/QuickReference.md](../03-Operations/QuickReference.md) — printable operational quick reference.
 - [DISASTER-RECOVERY.md](../DISASTER-RECOVERY.md) — backup and restore runbook.
-- [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) — common problems and fixes.
+- [03-Operations/Troubleshooting.md](../03-Operations/Troubleshooting.md) — common problems and fixes.
 - [KNOWN_GOOD_BUILD.md](../KNOWN_GOOD_BUILD.md) — the validated reference build.
 
 **Project root:**

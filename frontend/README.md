@@ -38,4 +38,4 @@ npm run lint     # ESLint
 
 - Project overview and architecture: [../README.md](../README.md)
 - Local development setup (all components): [../docs/05-Development/LocalDevelopment.md](../docs/05-Development/LocalDevelopment.md)
-- Full installation and deployment: [../docs/INSTALL.md](../docs/INSTALL.md)
+- Full installation and deployment: [../docs/02-Deployment/README.md](../docs/02-Deployment/README.md)

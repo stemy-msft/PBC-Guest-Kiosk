@@ -25,8 +25,8 @@ repository; re-run them to confirm current numbers.
 
 | Suite | Framework | Location | Files | Tests (demonstrated) |
 | --- | --- | --- | --- | --- |
-| Backend | pytest | `backend/tests/` | 16 test modules + `conftest.py` | **225 passed** |
-| Frontend | Vitest | `frontend/src/` | `api.test.js`, `lib/viewModel.test.js` (+ `test/setup.js`) | **14 passed** |
+| Backend | pytest | `backend/tests/` | 16 test modules + `conftest.py` | **225 passed** *(rc.2)* |
+| Frontend | Vitest | `frontend/src/` | `api.test.js`, `lib/viewModel.test.js` (+ `test/setup.js`) | **14 passed** *(rc.2)* |
 | Print agent | — | — | none | no automated tests |
 
 Backend test modules and what they cover (by name):
@@ -72,8 +72,9 @@ installed (`pip install -r requirements-dev.txt`):
 python -m pytest
 ```
 
-Demonstrated result: **225 passed, 146 warnings** in ~60s. The warnings are
-pre-existing `datetime.utcnow()` deprecation warnings and are not failures.
+Demonstrated result at `v1.0.0-rc.2` (re-run to confirm the current count): **225
+passed, 146 warnings** in ~60s. The warnings are pre-existing `datetime.utcnow()`
+deprecation warnings and are not failures.
 
 ---
 
@@ -90,8 +91,8 @@ Run from `frontend/`:
 npm run test        # vitest run
 ```
 
-Demonstrated result: **14 passed** (`lib/viewModel.test.js` 11,
-`api.test.js` 3).
+Demonstrated result at `v1.0.0-rc.2` (re-run to confirm the current count): **14
+passed** (`lib/viewModel.test.js` 11, `api.test.js` 3).
 
 ---
 
@@ -147,7 +148,8 @@ The frontend has ESLint configured (`frontend/eslint.config.js`):
 npm run lint        # eslint .
 ```
 
-> **Known baseline: 11 problems (10 errors, 1 warning).** The errors are
+> **Observed lint baseline at `v1.0.0-rc.2`: 11 problems (10 errors, 1 warning)** —
+> run `npm run lint` to confirm the current count. The errors are
 > `no-unused-vars` findings in `src/App.jsx` and there is one
 > `react-hooks/set-state-in-effect` warning. The project **does not gate** on
 > lint (ESLint exits non-zero, by design of the tool). Treat the baseline as a

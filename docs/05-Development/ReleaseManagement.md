@@ -85,10 +85,11 @@ A release or RC advancement should be backed by **explicit evidence**, not
 assertions:
 
 - **Automated suites:** the exact commands and results — backend
-  `python -m pytest` (demonstrated: 225 passed) and frontend `npm run test`
-  (demonstrated: 14 passed). See [Testing.md](Testing.md).
+  `python -m pytest` (demonstrated at `v1.0.0-rc.2`: 225 passed) and frontend
+  `npm run test` (demonstrated at `v1.0.0-rc.2`: 14 passed); re-run both to confirm
+  the current numbers. See [Testing.md](Testing.md).
 - **Frontend build/lint:** `npm run build` succeeds; `npm run lint` not above the
-  known 11-problem baseline.
+  observed 11-problem baseline (as of `v1.0.0-rc.2`).
 - **Manual campaign:** device/browser validation, print-path validation on
   Linux/CUPS, and a backup/restore exercise — each described with what was run
   and observed.

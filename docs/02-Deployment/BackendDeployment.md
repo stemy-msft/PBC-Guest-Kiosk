@@ -85,12 +85,14 @@ cp .env.example .env
 
 Key points, all verified in code:
 
-- Configuration is loaded with `python-dotenv` (`load_dotenv()` in
-  `app/config.py`). The supported deployment procedure starts the backend from
-  the `backend/` directory (see § 6) with the `.env` file at the **repository
-  root** as shown above. Other invocation locations have not been validated and
-  may change configuration discovery or the location of the relative SQLite
-  database file.
+- Configuration is loaded with `python-dotenv` from the repository-root `.env`
+  in two places: `app/config.py` calls `load_dotenv()` (the administrator
+  bootstrap defaults), and `app/auth.py` loads the same repository-root `.env`
+  for the JWT settings (`JWT_SECRET_KEY`, `JWT_ALGORITHM`, `JWT_EXPIRE_MINUTES`).
+  The supported deployment procedure starts the backend from the `backend/`
+  directory (see § 6) with the `.env` file at the **repository root** as shown
+  above. Other invocation locations have not been validated and may change
+  configuration discovery or the location of the relative SQLite database file.
 - `JWT_SECRET_KEY` is **required** — the backend fails fast on startup if it is
   missing. Set a long random value.
 - `PBC_DEFAULT_ADMIN_USERNAME` / `PBC_DEFAULT_ADMIN_PASSWORD` /

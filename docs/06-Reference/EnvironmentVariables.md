@@ -191,9 +191,9 @@ Read at agent startup.
 | `PBC_PRINT_AGENT_POLL_SECONDS` | Optional | `2` | `print-agent/print_agent.py` |
 | `PBC_PRINT_TIMEOUT_SECONDS` | Optional | `60` | `print-agent/print_agent.py` |
 | `PBC_PRINT_DOWNLOAD_DIR` | Optional | `./downloaded-badges` | `print-agent/print_agent.py` |
-| `PBC_PRINT_AGENT_TOKEN` | Optional | `""` (empty) | `print-agent/print_agent.py` |
-| `PBC_PRINT_AGENT_KEY` | Optional (managed) | `""` (empty) | `print-agent/print_agent.py` |
-| `PBC_PRINT_STATION_SLUG` | Optional (managed) | `""` (empty) | `print-agent/print_agent.py` |
+| `PBC_PRINT_AGENT_TOKEN` | Managed | `""` (empty) | `print-agent/print_agent.py` |
+| `PBC_PRINT_AGENT_KEY` | Managed | `""` (empty) | `print-agent/print_agent.py` |
+| `PBC_PRINT_STATION_SLUG` | Managed | `""` (empty) | `print-agent/print_agent.py` |
 
 - **`PBC_API_BASE`** — Backend API URL reachable from the print server. A trailing
   slash is stripped. Point this at your real backend host. *Example:*
@@ -205,17 +205,22 @@ Read at agent startup.
 - **`PBC_PRINT_TIMEOUT_SECONDS`** — Per-job print timeout. *Example:* `60`
 - **`PBC_PRINT_DOWNLOAD_DIR`** — Local directory the agent uses to stage badge
   images before printing. *Example:* `./downloaded-badges`
-- **`PBC_PRINT_AGENT_TOKEN`** — Optional bearer token sent to the backend if set;
-  leave blank if unused.
-  - *Security implications:* When set, this is a credential — keep the agent
+- **`PBC_PRINT_AGENT_TOKEN`** — The agent's bearer credential. Agent authentication is
+  **mandatory**: the backend issues this token **once** when the agent enrolls, and the
+  agent writes it back into its own `.env`. Leave it blank **only** before the agent's
+  first enrollment; afterwards it is required and populated automatically. Do **not**
+  invent, copy, or hand-edit it — the only exception is a verified replacement or recovery
+  procedure that explicitly instructs you to.
+  - *Security implications:* this is a credential — keep the agent
     `.env` readable only by the agent's user.
 - **`PBC_PRINT_AGENT_KEY`** and **`PBC_PRINT_STATION_SLUG`** — Station-enrollment
   identity. **These are managed automatically:** the agent writes them back to its
-  own `.env` the first time it registers with the backend and is assigned to a
-  print station. Leave both blank on a fresh install; do not set them by hand.
+  own `.env` the first time it registers with the backend and an Administrator approves
+  and assigns it to a print station. Leave both blank on a fresh install; the agent
+  populates them — do not set them by hand.
   - *Security implications:* `PBC_PRINT_AGENT_KEY` is the agent's issued identity
     key — treat the agent `.env` as secret once enrollment has populated it.
-  - *Example:* *(blank on first run; populated by the agent after enrollment)*
+  - *Example:* *(blank before first run; populated by the agent after enrollment)*
 
 ---
 
