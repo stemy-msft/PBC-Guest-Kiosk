@@ -92,19 +92,14 @@ Source of truth: `print-agent/requirements.txt`.
 | Item | Version | Level | Role |
 | --- | --- | --- | --- |
 | `requests` | 2.34.2 | **Required** | HTTP polling of the backend. |
-| `python-dotenv` | (used by code; **undeclared**) | **Required (manifest defect)** | `print_agent.py` imports it (`from dotenv import load_dotenv`) but it is **not** listed in `print-agent/requirements.txt`. See the defect note below. |
+| `python-dotenv` | 1.2.2 | **Required** | `print_agent.py` imports it (`from dotenv import load_dotenv`); declared in `print-agent/requirements.txt`. |
 | CUPS (`lp`, `lpstat`) | System | **Required** | The agent shells out to CUPS to print and to query the queue. Must be installed and configured on the host. |
 | Brother `ql800pdrv` driver | 2.1.4-0 | **Recommended** | Best photo quality on the QL-800 (validated). |
 | `ptouch-ql` driver | System | Optional | Open-source alternative; works with visible halftoning (see [PRINT-SERVER.md](../PRINT-SERVER.md)). |
 
-> **Open RC manifest defect (print agent):** `print-agent/print_agent.py` imports
-> `python-dotenv` at module load (`from dotenv import load_dotenv`), but
-> `print-agent/requirements.txt` declares only `requests`. On a clean install the agent
-> therefore fails to start with `ModuleNotFoundError: No module named 'dotenv'` until the
-> package is installed. Installing it by hand (`pip install python-dotenv`) is a
-> **temporary workaround**, not a substitute for correcting the manifest. This is an open
-> defect against `v1.0.0-rc.2`; this documentation pass intentionally leaves the manifest
-> unchanged. See [RaspberryPiPrintAgent.md](../02-Deployment/RaspberryPiPrintAgent.md).
+> Both packages the agent imports (`requests` and `python-dotenv`) are declared in
+> `print-agent/requirements.txt`, so a clean `pip install -r requirements.txt` installs
+> everything it needs. See [RaspberryPiPrintAgent.md](../02-Deployment/RaspberryPiPrintAgent.md).
 
 ---
 

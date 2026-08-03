@@ -79,6 +79,7 @@ repo_files.txt
 # Backup snapshots — contain the database and visitor PII (photos). Never track.
 backend/backups/
 backups/
+*.bak
 
 # Internal docs
 docs/reviews

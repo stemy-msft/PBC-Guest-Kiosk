@@ -101,21 +101,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Known dependency gap (verify before relying on it):**
-> `print_agent.py` imports `python-dotenv` (`from dotenv import load_dotenv`),
-> but `print-agent/requirements.txt` currently lists only `requests`. On a clean
-> host the agent will fail with `ModuleNotFoundError: No module named 'dotenv'`
-> until `python-dotenv` is present. As a stop-gap, install it explicitly:
->
-> ```bash
-> pip install python-dotenv
-> ```
->
-> This is an **open RC defect**: the fix belongs in the application/manifest
-> (declare `python-dotenv` in `print-agent/requirements.txt`) and requires
-> clean-install validation before RC sign-off (see § 16). The manual install
-> above is a temporary stop-gap, derived directly from the agent's own imports,
-> not a substitute for the manifest correction.
+> `print-agent/requirements.txt` declares both `requests` and `python-dotenv`,
+> so this installs everything `print_agent.py` imports.
 
 ---
 
@@ -251,11 +238,6 @@ improvise it — follow:
 
 ## 16. Known limitations
 
-- **Incomplete dependency manifest (open RC defect):** `print-agent/requirements.txt`
-  declares only `requests`, but the agent imports `python-dotenv` (§ 6).
-  Resolution requires an application/manifest correction plus clean-install
-  validation before RC sign-off — it is not a routine install step. Until
-  corrected, `python-dotenv` must be installed manually.
 - **Linux/CUPS only:** no Windows support; the agent depends on `lp`/`lpstat`.
 - **No auto-start:** foreground process only; a reboot requires a manual restart
   (§ 14).

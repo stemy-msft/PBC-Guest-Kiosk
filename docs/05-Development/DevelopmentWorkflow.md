@@ -62,7 +62,7 @@ Before changing behavior, understand the current design:
 change rather than committing directly to `main`:
 
 ```bash
-git switch -c fix/print-agent-dotenv-docs
+git switch -c docs/clarify-backup-cadence
 ```
 
 Use a concise, descriptive branch name. Because no naming scheme is enforced,
@@ -72,9 +72,8 @@ consistency is a courtesy to reviewers, not a gate.
 
 ## 5. Making Focused Changes
 
-- Keep each change to one concern. If you discover an unrelated defect (for
-  example the print-agent manifest defect), record it — do **not** fold an
-  unrelated fix into your change.
+- Keep each change to one concern. If you discover an unrelated defect, record
+  it separately — do **not** fold an unrelated fix into your change.
 - Respect the source/runtime boundary in
   [RepositoryStructure.md](RepositoryStructure.md#13-generated-runtime-and-source-controlled-boundaries):
   never hand-edit generated or runtime files.
@@ -217,10 +216,6 @@ that no generated/runtime files or secrets were committed.
 4. Re-run the relevant validation (§7) and confirm the new/updated test passes.
 5. Update any documentation the defect touched.
 6. In the commit/PR, describe root cause, fix, and the evidence that it works.
-
-For a known example that is intentionally **not** fixed as part of unrelated
-work, see the print-agent `python-dotenv` manifest defect in
-[DependencyMaintenance.md](DependencyMaintenance.md).
 
 ---
 

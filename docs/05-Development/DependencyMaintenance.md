@@ -62,17 +62,17 @@ lockfile).
 
 ## 4. Print-Agent Python Dependencies
 
-`print-agent/requirements.txt` declares exactly one package:
+`print-agent/requirements.txt` declares the two packages the agent imports:
 
 ```text
+python-dotenv==1.2.2
 requests==2.34.2
 ```
 
-However, `print-agent/print_agent.py` also imports `python-dotenv`
-(`from dotenv import load_dotenv`). That package is **not declared** in the
-manifest. This omission is a **known, open manifest defect** (see §13). Until it
-is corrected under change control, a clean install from the manifest alone will
-fail at startup with `ModuleNotFoundError: No module named 'dotenv'`.
+`print-agent/print_agent.py` imports both (`import requests` and
+`from dotenv import load_dotenv`), so a clean `pip install -r requirements.txt`
+installs everything the agent needs. `python-dotenv` is pinned to the same
+`1.2.2` used by the backend.
 
 ---
 
@@ -162,9 +162,8 @@ Cross-reference security-relevant packages (auth/JWT/hashing/TLS) with
   for exact installs.
 - **Backend:** there is no separate lockfile because `requirements.txt` is fully
   pinned (it serves the same purpose). Keep it exhaustive and exact.
-- **Print agent:** the single exact pin is trivially reproducible — plus the
-  undeclared `python-dotenv` (§4/§13), which is *not* reproducible from the
-  manifest until corrected.
+- **Print agent:** both exact pins (`requests` and `python-dotenv`) are trivially
+  reproducible from the manifest.
 
 ---
 
@@ -199,22 +198,14 @@ Passing validation still does not equal operational approval
 
 ## 13. Known Manifest Defects
 
-**Print agent — undeclared `python-dotenv` (OPEN, release-candidate).**
+**None currently known.**
 
-| Aspect | Fact |
-| --- | --- |
-| Required by implementation | `print_agent.py` imports `from dotenv import load_dotenv` |
-| Declared by manifest | `print-agent/requirements.txt` lists **only** `requests==2.34.2` |
-| Result of a clean install | `ModuleNotFoundError: No module named 'dotenv'` at startup |
-| Temporary workaround (local only) | `pip install python-dotenv` |
-| Correct resolution | Add `python-dotenv` to `print-agent/requirements.txt` as its **own** scoped, reviewed change |
-
-> This document **does not fix** the manifest. Do not add the dependency as a
-> side effect of unrelated work. The three-way distinction above
-> (required-by-code vs. declared-by-manifest vs. temporary manual install) must
-> be preserved until the defect is closed deliberately.
-
-No other manifest defects are known at this time.
+An earlier release candidate omitted `python-dotenv` from
+`print-agent/requirements.txt` even though `print_agent.py` imports it, which
+made a clean install fail at startup with
+`ModuleNotFoundError: No module named 'dotenv'`. The manifest was corrected
+(the pin `python-dotenv==1.2.2` was added on 2026-08-03), so no manual
+`pip install python-dotenv` workaround is required. See §4.
 
 ---
 
@@ -226,8 +217,6 @@ versions, update the docs in the same change:
 - Required software / setup → [LocalDevelopment.md](LocalDevelopment.md)
 - Supported software versions → [../06-Reference/SoftwareMatrix.md](../06-Reference/SoftwareMatrix.md)
 - Security-relevant packages → [../06-Reference/SecurityControls.md](../06-Reference/SecurityControls.md)
-- If the print-agent defect is fixed, update §4/§13 here **and**
-  [LocalDevelopment.md](LocalDevelopment.md#7-print-agent-development-setup).
 
 ---
 
@@ -240,4 +229,3 @@ versions, update the docs in the same change:
 - [ ] Changelog reviewed for breaking changes on major bumps.
 - [ ] Lockfile committed with the `package.json` change (frontend).
 - [ ] Documentation updated where versions/setup changed (§14).
-- [ ] Print-agent manifest defect left intact unless intentionally closing it.

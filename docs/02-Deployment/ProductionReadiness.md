@@ -161,13 +161,10 @@ Operational use: [Troubleshooting.md § 2](../03-Operations/Troubleshooting.md#2
   on the validated Pi + QL-800 build.
 - ❌ No auto-start for the agent (foreground process; manual restart after
   reboot).
-- 🟡 **Dependency-manifest defect (open RC defect):** `print-agent/requirements.txt`
-  declares only `requests`, but `print_agent.py` imports `python-dotenv`
-  (`from dotenv import load_dotenv`). On a clean host the agent will not start
-  until `python-dotenv` is installed. Resolution requires an application/manifest
-  correction (a code change, out of scope for this documentation) **plus
-  clean-install validation** before RC sign-off; it is not a routine install
-  step. See
+- ✅ **Dependencies declared:** `print-agent/requirements.txt` declares both
+  `requests` and `python-dotenv`, matching the agent's imports, so a clean
+  `pip install -r requirements.txt` installs everything `print_agent.py` needs.
+  See
   [RaspberryPiPrintAgent.md § 6](RaspberryPiPrintAgent.md#6-repository-and-agent-installation).
 - ❌ No Windows print agent (CUPS-only).
 
@@ -199,7 +196,6 @@ that has not been started. Do not document or assume a container deployment path
 | Data loss | Single SQLite file; manual backups (§ 4, § 8) | Frequent manual backups + off-host copies. |
 | No transport encryption | No TLS (§ 7) | Trusted, isolated LAN only. |
 | Camera blocked off secure origin | No HTTPS (§ 7) | Serve via `localhost`/`127.0.0.1`, or add HTTPS/TLS yourself; a plain-HTTP trusted LAN is **not** a secure context (§ 7). |
-| Print agent won't start on clean host | Missing `python-dotenv` (§ 10) | Install `python-dotenv` manually. |
 | Indefinite PII retention | No retention/purge feature | Operational policy; see [SecurityControls.md](../06-Reference/SecurityControls.md). |
 | Concurrency limits | Single-process SQLite | Single backend process only; do not run multiple workers. |
 
@@ -235,8 +231,7 @@ from documentation alone.
   cover production packaging, which is not implemented.
 - **Production readiness:** NOT READY. Process supervision / auto-start (§ 5),
   production frontend hosting (§ 6), TLS / reverse proxy (§ 7), and scheduled
-  backups (§ 8) are not implemented, and the print-agent dependency-manifest
-  defect (§ 10) is an open RC defect.
+  backups (§ 8) are not implemented.
 - **Operational readiness:** Not established by this documentation. Whether the
   system may be used for any real activity depends on completing or confirming
   the RC validation campaign (§ 14). Do not infer operational approval from these
@@ -248,7 +243,6 @@ The blocking gaps for unattended production are, in priority order:
 2. No production frontend host (§ 6).
 3. No TLS / reverse proxy (§ 7).
 4. Manual-only backups — no schedule (§ 8).
-5. Print-agent dependency-manifest defect (§ 10).
 
 These align with the project's own roadmap, which places production packaging and
 containerisation at Milestone 10 (RTM) — not yet started. Any deployment carried

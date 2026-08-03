@@ -142,32 +142,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Open release-candidate manifest defect (do not "fix" here)
-
-`print-agent/print_agent.py` imports `python-dotenv`:
-
-```python
-from dotenv import load_dotenv
-```
-
-but `print-agent/requirements.txt` declares **only** `requests==2.34.2`. As a
-result, a clean install from the manifest alone will crash on startup:
-
-```text
-ModuleNotFoundError: No module named 'dotenv'
-```
-
-This is a **known, open release-candidate manifest defect**, tracked (not
-resolved) in [DependencyMaintenance.md](DependencyMaintenance.md). Until it is
-corrected under proper change control, install the missing package manually as a
-temporary workaround **in your local environment only**:
-
-```bash
-pip install python-dotenv
-```
-
-Do **not** edit `print-agent/requirements.txt` as part of unrelated work; the
-manifest correction is its own scoped change.
+`print-agent/requirements.txt` declares both packages the agent imports
+(`requests` and `python-dotenv==1.2.2`), so the `pip install -r requirements.txt`
+above installs everything `print_agent.py` needs. `python-dotenv` is pinned to
+the same `1.2.2` used by the backend.
 
 ---
 
@@ -264,8 +242,8 @@ The dev server proxies nothing; it calls the backend directly at the
 > **Only run the print agent against a development backend, on a Linux/CUPS
 > host.** It self-registers and mutates its own `.env`.
 
-From the `print-agent/` directory, with the virtual environment active and the
-temporary `python-dotenv` workaround installed (section 7):
+From the `print-agent/` directory, with the virtual environment active and
+dependencies installed (section 7):
 
 ```bash
 python print_agent.py
@@ -345,7 +323,7 @@ is a deployment concern documented (as a future task) in the deployment section.
 
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
-| `ModuleNotFoundError: No module named 'dotenv'` when starting the print agent | The known manifest defect — `python-dotenv` is imported but not declared | Temporary local workaround: `pip install python-dotenv` (section 7). Do not edit the manifest as unrelated work. |
+| `ModuleNotFoundError: No module named 'dotenv'` when starting the print agent | Dependencies not installed in the active environment | `pip install -r requirements.txt` from `print-agent/` (section 7). |
 | Backend creates a database in the wrong folder / "no such table" oddities | uvicorn started from the wrong working directory | Always `cd backend` before starting uvicorn (section 9). |
 | Frontend calls the wrong backend / CORS errors | `VITE_API_BASE` unset or wrong; backend CORS allowlist does not include the dev origin | Set `VITE_API_BASE` in `frontend/.env` and rebuild/restart; review CORS settings in [../06-Reference/EnvironmentVariables.md](../06-Reference/EnvironmentVariables.md). |
 | `uvicorn: command not found` | Virtual environment not activated, or dependencies not installed | Activate `.venv` and `pip install -r requirements.txt` from `backend/`. |
@@ -372,8 +350,8 @@ Your local environment is ready when:
 - [ ] The frontend can reach the backend (correct `VITE_API_BASE`).
 - [ ] (Optional) `pip install -r requirements-dev.txt` succeeds and the backend
   test suite runs — see [Testing.md](Testing.md).
-- [ ] (Linux only) The print agent starts after the temporary `python-dotenv`
-  workaround and registers against your development backend.
+- [ ] (Linux only) The print agent starts after `pip install -r requirements.txt`
+  and registers against your development backend.
 
 ---
 
@@ -381,9 +359,6 @@ Your local environment is ready when:
 
 - **No Windows print agent.** Print-agent development requires a Linux/CUPS host
   to exercise printing end to end.
-- **Open manifest defect.** The print agent needs the temporary `python-dotenv`
-  workaround until the manifest is corrected under change control
-  ([DependencyMaintenance.md](DependencyMaintenance.md)).
 - **No process supervision in-repo.** All components run in the foreground;
   service/daemon packaging is a deployment/RTM concern, not part of the
   development setup.

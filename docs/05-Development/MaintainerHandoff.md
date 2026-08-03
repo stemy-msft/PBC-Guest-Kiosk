@@ -65,10 +65,6 @@ from `frontend/`); and, for print work, set up the agent on Linux per
 Confirm your environment by running the test suites (§ [Testing.md](Testing.md)):
 backend `python -m pytest`, frontend `npm run test`.
 
-> Note the **print-agent `python-dotenv` manifest defect** during setup
-> (§11) — a clean agent install needs the temporary local workaround until the
-> defect is closed under change control.
-
 ---
 
 ## 5. Operational Responsibilities
@@ -158,9 +154,10 @@ release or production approval.
 
 Carry these forward — they are real and currently open:
 
-- **Print-agent `python-dotenv` manifest defect** — the agent imports
-  `python-dotenv` but the manifest declares only `requests`; clean installs fail
-  until a temporary local `pip install python-dotenv`. **Not fixed**; see
+- **Print-agent `python-dotenv` manifest (resolved)** —
+  `print-agent/requirements.txt` now declares both `requests` and
+  `python-dotenv==1.2.2`, matching the agent's imports; a clean
+  `pip install -r requirements.txt` installs everything it needs. See
   [DependencyMaintenance.md](DependencyMaintenance.md#13-known-manifest-defects).
 - **Version alignment (resolved)** — the in-code version sources now read
   `1.0.0-rc.2` (`1.0.0 RC2`), matching the `v1.0.0-rc.2` candidate; the earlier
@@ -224,7 +221,6 @@ in the repository.
 - [ ] Read the critical documents (§3).
 - [ ] Stand up a local dev environment ([LocalDevelopment.md](LocalDevelopment.md)).
 - [ ] Run both test suites green ([Testing.md](Testing.md)).
-- [ ] Reproduce and understand the print-agent `python-dotenv` defect (§11).
 - [ ] Take a **verified** backup and perform a **restore** into a scratch
   environment ([DatabaseMaintenance.md](DatabaseMaintenance.md)).
 - [ ] Trace one check-in→badge→print workflow end to end (dev backend + frontend;
@@ -261,7 +257,7 @@ Accept the handoff only when all of the following are true:
 - [ ] You can take and restore a verified backup.
 - [ ] You understand the database/migration model and its working-directory
   sensitivity.
-- [ ] You understand the dependency layout and the open `python-dotenv` defect.
+- [ ] You understand the dependency layout (backend, frontend, and print-agent manifests).
 - [ ] You understand the release/versioning model and the `1.0.0-rc.2` version alignment.
 - [ ] You know the location of every canonical operational, deployment, and
   security document.

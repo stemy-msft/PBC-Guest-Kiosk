@@ -109,8 +109,7 @@ Before release, confirm the documentation matches the shipped behavior:
 - Operational and deployment docs reflect the release
   ([../03-Operations/](../03-Operations/Administration.md),
   [../02-Deployment/](../02-Deployment/README.md)).
-- Known defects (e.g. the print-agent `python-dotenv` manifest defect) are stated
-  where a reader will encounter them
+- Any known defects are stated where a reader will encounter them
   ([DependencyMaintenance.md](DependencyMaintenance.md#13-known-manifest-defects)).
 
 ---
@@ -171,8 +170,7 @@ for each RC/release, capture concisely:
 - What changed (fixes, hardening) — the milestone-prefixed commits make a natural
   source.
 - Validation evidence (§6).
-- Known open defects and limitations (e.g. the `python-dotenv` manifest defect,
-  and any items from
+- Known open defects and limitations (e.g. items from
   [../02-Deployment/ProductionReadiness.md](../02-Deployment/ProductionReadiness.md)).
 
 ---

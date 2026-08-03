@@ -34,7 +34,7 @@ rule.
 5. **[DatabaseMaintenance.md](DatabaseMaintenance.md)** — How the SQLite schema
    is created and migrated, and how to change it safely.
 6. **[DependencyMaintenance.md](DependencyMaintenance.md)** — How dependencies
-   are pinned and how to update them safely, including a known manifest defect.
+   are pinned and how to update them safely.
 7. **[ReleaseManagement.md](ReleaseManagement.md)** — Version sources, release
    stages, and the tagging practice the repository history actually shows.
 8. **[MaintainerHandoff.md](MaintainerHandoff.md)** — The one-stop orientation
@@ -72,7 +72,3 @@ order above.
 - **Passing automated tests are necessary but not sufficient for release.** They
   do not, by themselves, constitute operational or production approval. See
   [Testing.md](Testing.md) and [ReleaseManagement.md](ReleaseManagement.md).
-- **There is one open release-candidate manifest defect** in the print agent
-  (an undeclared `python-dotenv` dependency). It is documented, not fixed, in
-  [DependencyMaintenance.md](DependencyMaintenance.md) and
-  [LocalDevelopment.md](LocalDevelopment.md).

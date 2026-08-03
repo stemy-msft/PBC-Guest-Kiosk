@@ -215,12 +215,6 @@ Windows:
 
 ➡️ [RaspberryPiPrintAgent.md](RaspberryPiPrintAgent.md)
 
-> **Known dependency defect:** the print agent imports `python-dotenv`, but
-> `print-agent/requirements.txt` does not declare it, so on a clean host the
-> agent fails to start until it is installed manually. This is an open RC defect;
-> follow the stop-gap in
-> [RaspberryPiPrintAgent.md § 6](RaspberryPiPrintAgent.md#6-repository-and-agent-installation).
-
 Until an agent is enrolled, approved, and assigned to a print station, badges
 are still generated and viewable on-screen; they simply are not physically
 printed.

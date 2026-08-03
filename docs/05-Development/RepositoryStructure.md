@@ -126,16 +126,14 @@ output `dist/` are generated and git-ignored (§7, §13).
 ```text
 print-agent/
 ├── print_agent.py      The agent: polls the backend, downloads and prints badges
-├── requirements.txt    Declares only requests==2.34.2 (see the known defect below)
+├── requirements.txt    Declares python-dotenv==1.2.2 and requests==2.34.2
 ├── .env.example        Example agent configuration (tracked)
 └── .env                Agent configuration (git-ignored; self-populated)
 ```
 
-`print_agent.py` imports `python-dotenv` (`from dotenv import load_dotenv`) but
-`requirements.txt` does **not** declare it. This is a known, open manifest
-defect — documented, not fixed, in
-[DependencyMaintenance.md](DependencyMaintenance.md) and
-[LocalDevelopment.md](LocalDevelopment.md).
+`print_agent.py` imports `requests` and `python-dotenv`
+(`from dotenv import load_dotenv`), and `requirements.txt` declares both, so a
+clean `pip install -r requirements.txt` installs everything the agent needs.
 
 At runtime the agent creates `print-agent/downloaded-badges/` (git-ignored) for
 temporary badge downloads and writes registration values back into
