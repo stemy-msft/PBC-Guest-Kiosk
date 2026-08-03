@@ -9,7 +9,7 @@ The PBC Guest Kiosk has three independent dependency sets:
 | Backend (runtime) | `backend/requirements.txt` | none (the pinned manifest *is* the lock) | fully pinned `==`, flat |
 | Backend (tests) | `backend/requirements-dev.txt` | none | range-pinned |
 | Frontend | `frontend/package.json` | `frontend/package-lock.json` | semver ranges + lockfile |
-| Print agent | `print-agent/requirements.txt` | none | single pinned `==` |
+| Print agent | `print-agent/requirements.txt` | none | fully pinned `==` |
 
 There is **no automated dependency tooling configured** in this repository — no
 Dependabot/Renovate (there is no `.github/`), and no `pip-audit`/`npm audit`
@@ -87,7 +87,7 @@ document does not change them:
   separate from runtime so the runtime install is unchanged.
 - **Frontend:** semver caret ranges plus a committed lockfile (the lockfile is
   the reproducibility anchor).
-- **Print agent:** a single exact `==` pin.
+- **Print agent:** exact `==` pins (`python-dotenv==1.2.2`, `requests==2.34.2`).
 
 ---
 
