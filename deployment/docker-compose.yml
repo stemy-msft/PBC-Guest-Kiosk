@@ -1,7 +1,16 @@
 # PBC Visitor Kiosk — container deployment (Option A: direct IP:PORT access).
 #
+# Prerequisites (fresh host):
+#   * Docker Engine with Compose v2 and BuildKit (default in Docker Desktop).
+#     Legacy docker-compose v1 is NOT supported.
+#   * Internet access for the first build (pulls base images and pip/npm/apt
+#     packages).
+#   * A .env file in this directory — REQUIRED. `env_file` below aborts the
+#     command if it is missing. Copy it from the example first.
+#   * Host port ${FRONTEND_PORT} (default 8080) must be free.
+#
 # Usage (from this directory):
-#   cp .env.example .env      # then edit secrets/values
+#   cp .env.example .env      # REQUIRED first; then edit secrets/values
 #   docker compose up -d --build
 #
 # The frontend is published on the host; the backend stays on the internal
