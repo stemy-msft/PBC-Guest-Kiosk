@@ -190,11 +190,15 @@ There are two verified options, and one important gap:
 
 ## 12. Known limitations
 
-- **No shipped production host:** the repository provides no production web
-  server or hosting config for `frontend/dist/` (§ 8).
+- **Native path has no production host:** the native procedure in this guide
+  provides no production web server for `frontend/dist/` (§ 8). The optional
+  container path serves it with nginx; see
+  [../container-deployment.md](../container-deployment.md).
 - **Build-time API base:** `VITE_API_BASE` is fixed at build/dev-start time; it
   cannot be changed at runtime without restarting/rebuilding.
 - **No client-side routing:** navigation is in-app screen state; there are no
   deep-linkable per-screen URLs.
-- **No TLS from this repo:** camera-sensitive browsers may require HTTPS; the LAN
-  reference build relies on a trusted network rather than TLS.
+- **Native path has no TLS:** camera-sensitive browsers may require HTTPS; the
+  LAN reference build relies on a trusted network. The optional Caddy container
+  variant provides HTTPS when the operator supplies authorized DNS and exposes
+  ports 80/443.

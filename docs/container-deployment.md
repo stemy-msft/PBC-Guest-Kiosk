@@ -29,7 +29,7 @@ containers: one container for the **backend** (FastAPI) and one for the
                                           kiosk_db / kiosk_uploads /
                                           kiosk_logs / kiosk_config
 
-   Raspberry Pi print agent ──▶ backend /api (separate host, not in Docker)
+  Raspberry Pi print agent ──▶ public frontend/Caddy origin ──▶ backend /api
 ```
 
 - The **frontend** container serves the compiled SPA and reverse-proxies
@@ -37,15 +37,27 @@ containers: one container for the **backend** (FastAPI) and one for the
   a single origin, **no cross-origin (CORS) requests occur** in normal use.
 - The **backend** container is **not published** to the host. It is reachable
   only from the frontend (and Caddy) over the internal Docker network.
-- All mutable state lives in **named volumes**, so containers can be rebuilt or
-  upgraded without data loss.
+- All mutable state lives in **named volumes**. Rebuilds/upgrades preserve it
+  only when the same Compose project volumes are reused and `-v` is not used.
 
 Two deployment options are provided:
 
 | Option | Compose file | Public entry point | TLS |
 |--------|--------------|--------------------|-----|
 | **A — Direct** | `docker-compose.yml` | `http://<host>:<FRONTEND_PORT>` | none |
-| **B — Caddy** | `docker-compose.caddy.yml` | `http(s)://<CADDY_SITE_ADDRESS>` | automatic (Let's Encrypt) |
+| **B — Caddy** | `docker-compose.caddy.yml` | `http(s)://<CADDY_SITE_ADDRESS>` | automatic HTTPS capability; public ACME untested |
+
+Commands below use `docker compose` for Option A. For Option B, use
+`docker compose -f docker-compose.caddy.yml` for **every** lifecycle, status,
+backup, restore, and log command. Do not switch Compose files or override the
+project name mid-deployment: that can select a different set of named volumes.
+
+**Validation boundary:** clean image builds, direct Compose runtime, health
+checks, nginx routing/DNS re-resolution, SQLite persistence, print-agent API
+proxy reachability, and the Caddy **HTTP** proxy chain were tested in Docker
+Desktop. Public ACME certificate issuance, a real printer, a real camera, and
+cross-release database restore compatibility were **not** tested. This deployment
+is approved for pilot validation, not production approval.
 
 ---
 
@@ -55,7 +67,7 @@ Two deployment options are provided:
 |-----------|-----------|---------|---------|---------|
 | `backend` | `python:3.13-slim` | `uvicorn app.main:app` | `appuser` (uid 10001) | `8000` (internal) |
 | `frontend`| `nginxinc/nginx-unprivileged:1.27-alpine` | nginx | `nginx` (uid 101) | `8080` |
-| `caddy` *(Option B)* | `caddy:2-alpine` | Caddy | non-root | `80`, `443` |
+| `caddy` *(Option B)* | `caddy:2-alpine` | Caddy | root (official image default; binds privileged ports) | `80`, `443` |
 
 ### Files
 
@@ -102,6 +114,10 @@ reads this file for both interpolation and the backend runtime environment.
 | `VITE_API_BASE` | *(empty)* | **Build-time** API base baked into the SPA. Leave empty for same-origin proxying. |
 | `CADDY_SITE_ADDRESS` | `:80` | Caddy site address (Option B). Use a domain for automatic HTTPS. |
 
+The frontend nginx always listens on container port `8080`; `FRONTEND_PORT`
+changes only the Option A host-side published port. Backend port `8000` is
+internal-only in both variants.
+
 ### Backend runtime (see `.env.example` for the full annotated list)
 
 | Variable | Required | Purpose |
@@ -118,11 +134,20 @@ reads this file for both interpolation and the backend runtime environment.
 > **Important:** `VITE_API_BASE` is consumed at **build time**. Changing it
 > requires rebuilding the frontend image (`--build`).
 
+On the first backend start, the tracked `system_settings.template.json` included
+in the image seeds `/app/config/system_settings.json` when no live settings file
+exists. The `kiosk_config` volume then preserves live system settings and user
+themes across rebuilds and upgrades **only while that same volume is reused**;
+an existing live file is never overwritten by image initialization.
+
 ---
 
 ## 5. Build instructions
 
-Prerequisites: Docker Engine 24+ and the Docker Compose plugin.
+Prerequisites: Docker Engine 24+ with Docker Compose v2 and BuildKit (included
+with current Docker Desktop), internet access for the first build, and a free
+host port (`FRONTEND_PORT`, default `8080`). Legacy `docker-compose` v1 is not
+supported.
 
 ```bash
 cd deployment
@@ -132,6 +157,9 @@ cp .env.example .env
 # Build both images without starting:
 docker compose build
 ```
+
+On Windows PowerShell, replace `cp .env.example .env` with
+`Copy-Item .env.example .env`. The remaining Docker commands are the same.
 
 Images are tagged `pbc-guest-kiosk-backend:${IMAGE_TAG}` and
 `pbc-guest-kiosk-frontend:${IMAGE_TAG}`.
@@ -165,31 +193,54 @@ Caddy obtains and renews a Let's Encrypt certificate automatically when
 `CADDY_SITE_ADDRESS` is a public domain and ports 80/443 are reachable. For
 plain HTTP / IP access, set `CADDY_SITE_ADDRESS=:80`.
 
+Only the Caddy HTTP proxy chain was validated locally. Public DNS, ACME account/
+certificate issuance, renewal, and HTTPS camera behavior remain production-site
+acceptance tests.
+
 ### Verify
 
 ```bash
 docker compose ps                         # both services should be "healthy"
 curl -f http://<host>:8080/healthz        # frontend -> "ok"
 curl -f http://<host>:8080/health/live    # proxied backend -> {"status":"alive"}
+curl -f http://<host>:8080/health         # deep readiness -> status "healthy"
 ```
+
+`/health/live` proves only that the backend process responds. `/health` checks
+the database, writable directories, live configuration, backup subsystem, and
+print infrastructure; it returns HTTP `503` with details when a critical check
+fails. With Caddy, use the public Caddy origin instead of `:8080`.
 
 ---
 
 ## 7. Upgrade instructions
 
+**Before every upgrade, create and copy a verified snapshot off the Docker
+volumes using §11.** Do not rely on image tags alone: application rollback does
+not roll back SQLite data, uploads, or live configuration.
+
+> **CAUTION — volume deletion:** never use `docker compose down -v` or
+> `docker volume rm` during a normal upgrade. Both can permanently remove the
+> active data needed for upgrade or rollback.
+
 ```bash
 cd deployment
+docker compose ps                          # start only from a healthy stack
+# Complete the verified pre-upgrade backup in §11 before continuing.
 git pull                                  # get the new code
 docker compose build --pull               # rebuild images
 docker compose up -d                      # recreate containers
-
-# Optional: remove the now-unused old image layers
-docker image prune -f
+docker compose ps                          # confirm both services are healthy
+curl -f http://<host>:8080/health         # confirm deep readiness
 ```
 
 Named volumes are preserved across upgrades, so the database, uploads, logs and
-config survive. If `VITE_API_BASE` changed, ensure the frontend was rebuilt
-(`--build` / `build`).
+config survive when the same Compose project and volumes are reused. If
+`VITE_API_BASE` changed, ensure the frontend was rebuilt (`--build` / `build`).
+
+> **CAUTION — rollback images:** `docker image prune -f` removes unused image
+> layers and may remove the local image needed for rollback. Run it only after
+> the upgrade is accepted and a known-good image is available elsewhere.
 
 ---
 
@@ -199,8 +250,8 @@ Images are tagged, so roll back by redeploying a previous tag:
 
 ```bash
 cd deployment
-# Rebuild a known-good commit under a distinct tag, or reuse a saved image:
-IMAGE_TAG=known-good docker compose up -d
+# Set IMAGE_TAG=known-good in deployment/.env to reuse a saved image, then:
+docker compose up -d
 
 # Or check out the previous code revision and rebuild:
 git checkout <previous-commit>
@@ -211,9 +262,9 @@ Because data is in volumes, application rollback does **not** roll back data.
 For a data rollback, restore from a backup snapshot (see §11) **before**
 starting the older image, and verify the schema is compatible.
 
-Tip: capture a restore point before upgrading —
-`IMAGE_TAG=$(date +%Y%m%d) docker compose build` keeps a dated image you can
-return to.
+Tip: before building, set `IMAGE_TAG` in `deployment/.env` to a dated value such
+as `20260814`. This keeps a tagged image you can return to. Restore the intended
+`IMAGE_TAG` value in `.env` after rollback or testing.
 
 ---
 
@@ -256,7 +307,9 @@ docker compose exec backend python -c "import urllib.request;print(urllib.reques
 
 ---
 
-## 11. Backup considerations
+## 11. Backup and restore
+
+### Persistent data
 
 All persistent state is in named volumes:
 
@@ -267,27 +320,95 @@ All persistent state is in named volumes:
 | `kiosk_logs` | `/app/logs` | Rotating application log |
 | `kiosk_config` | `/app/config` | System settings / user themes JSON |
 
-Back up the database and uploads together to keep them consistent. Example
-snapshot to a tarball on the host:
+The Caddy `caddy_data` volume stores certificates and account state; back it up
+when using Option B. The `caddy_config` volume is runtime state and is also
+preserved by Compose. Do not delete either Caddy volume unintentionally. The
+repository-root/deployment `.env` files contain secrets and are deliberately
+excluded from application snapshots; store an encrypted copy separately.
+
+### Create a verified application snapshot (SAFE while running)
+
+Use the built-in backup tool with the **container paths explicitly supplied**.
+Its native defaults point under `/app` and do not locate the container database
+at `/data/visitor_kiosk.db`. The command below uses SQLite's online-backup API,
+captures uploads plus live configuration, verifies the snapshot, and stores it
+temporarily under `/data/backups` on the database volume:
 
 ```bash
-# Database
-docker run --rm -v pbc-guest-kiosk_kiosk_db:/data -v "$PWD":/backup alpine \
-  tar czf /backup/kiosk_db-$(date +%F).tar.gz -C /data .
+docker compose exec -T backend python -m app.backup backup \
+  --db /data/visitor_kiosk.db \
+  --uploads /app/uploads \
+  --config-dir /app/config \
+  --dest /data/backups \
+  --label pre-upgrade
 
-# Uploads
-docker run --rm -v pbc-guest-kiosk_kiosk_uploads:/data -v "$PWD":/backup alpine \
-  tar czf /backup/kiosk_uploads-$(date +%F).tar.gz -C /data .
+docker compose exec -T backend python -m app.backup list --dest /data/backups
 ```
 
-Restore by extracting the tarballs back into the same volumes **while the stack
-is stopped** (`docker compose down`), then starting it again. The application
-also ships its own backup/restore tooling (`backend/app/backup.py`,
-`scripts/`), which can be run inside the backend container against `/data`,
-`/app/uploads` and `/app/config`.
+Copy the reported snapshot directory off the Docker volume immediately (replace
+`<snapshot>` with the directory name printed by the backup command):
+
+```bash
+# Unix/Linux/macOS
+mkdir -p backups
+docker compose cp backend:/data/backups/<snapshot> ./backups/<snapshot>
+```
+
+```powershell
+# Windows PowerShell
+New-Item -ItemType Directory -Force -Path backups | Out-Null
+docker compose cp backend:/data/backups/<snapshot> ./backups/<snapshot>
+```
+
+Copy the resulting `backups/` directory to separate storage. A snapshot left
+only in `kiosk_db` is **not** an off-host backup and will be lost if that volume
+is deleted.
+
+### Restore a verified snapshot (DESTRUCTIVE)
+
+> **CAUTION — data replacement:** restore reproduces the snapshot exactly. Live
+> database content, managed upload categories, and live configuration absent
+> from the snapshot are replaced or removed. Stop the backend and print agents,
+> keep the automatic pre-restore safety snapshot enabled, and never use
+> `--no-safety` during normal operations. Use only a verified snapshot already
+> copied off the Docker volumes.
+
+Copy the snapshot into the existing backend container, stop writes, restore
+through a one-off backend container using explicit paths, then verify readiness:
+
+```bash
+docker compose cp ./backups/<snapshot> backend:/data/backups/<snapshot>
+docker compose stop backend
+
+docker compose run --rm --no-deps backend python -m app.backup restore \
+  --from /data/backups/<snapshot> \
+  --db /data/visitor_kiosk.db \
+  --uploads /app/uploads \
+  --config-dir /app/config
+
+docker compose start backend
+docker compose ps
+curl -f http://<host>:8080/health
+```
+
+The restore command verifies the source first and creates a `pre-restore`
+safety snapshot under `/data/backups` before changing live data. Copy that
+safety snapshot off-volume before any subsequent cleanup. Restore an older
+release's data only after engineering confirms schema compatibility.
+
+### Shutdown versus permanent deletion
+
+- **SAFE:** `docker compose stop` and `docker compose down` stop/remove
+  containers and networks but preserve named volumes.
+- **DESTRUCTIVE:** `docker compose down -v` deletes the database, uploads, logs,
+  live configuration, and (for the Caddy variant) certificate volumes.
+- **DESTRUCTIVE:** `docker volume rm pbc-guest-kiosk_<volume>` permanently
+  deletes that volume. Never use either destructive command as routine shutdown.
 
 > Volume names are prefixed with the compose project name (`pbc-guest-kiosk`).
-> Confirm exact names with `docker volume ls`.
+> Confirm exact names with `docker volume ls`. Changing the project name (for
+> example with `-p` or `COMPOSE_PROJECT_NAME`) creates/selects a different set
+> of named volumes and can make existing data appear missing.
 
 ---
 
@@ -297,5 +418,9 @@ also ships its own backup/restore tooling (`backend/app/backup.py`,
 - Point DNS at the host and open ports 80/443 (Option B) or the chosen
   `FRONTEND_PORT` (Option A).
 - Configure the separate print agent's `PBC_API_BASE` to reach the backend
-  (via the frontend origin, e.g. `http://<host>:8080`).
+  using the origin only, with no `/api` suffix: the frontend origin for Option A
+  (e.g. `http://<host>:8080`) or the HTTPS Caddy origin for Option B. Never use
+  container-internal `backend:8000` from the print-agent host.
 - Change the bootstrap administrator password at first login.
+- Complete physical printer and camera acceptance testing; neither was part of
+  the Docker runtime validation.

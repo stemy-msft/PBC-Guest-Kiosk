@@ -54,6 +54,8 @@ PBC-guest-kiosk/
 ├── frontend/           React/Vite user interface
 ├── backend/            FastAPI backend and API
 ├── print-agent/        Raspberry Pi print service
+├── deployment/         Docker Compose, Caddy, and container environment examples
+├── scripts/            Backup and restore command-line wrappers
 ├── docs/               Documentation
 │
 ├── .env                Backend configuration (created locally from .env.example; git-ignored, never committed)
@@ -212,9 +214,10 @@ as the single source of truth for printer configuration.
 > production use. The commands below are a quick foreground reference for
 > evaluation.
 >
-> These commands run each service in the foreground for evaluation. Packaging
-> the backend as an auto-starting Windows service (unattended production
-> hosting) is a Milestone 10 (RTM) task and is not yet documented.
+> These commands run each service in the foreground for evaluation. An optional
+> backend/frontend container deployment (direct access or Caddy + HTTPS) is
+> documented in [docs/container-deployment.md](docs/container-deployment.md) and
+> validated for pilot use. No auto-starting Windows service ships.
 
 > **Developing or maintaining the kiosk?** See
 > **[docs/05-Development/](docs/05-Development/README.md)** for local development
@@ -323,10 +326,14 @@ Milestone 9 (RC1) — complete:
 - M9.3 Security hardening (F-008 CORS, F-009 account lockout, F-010 upload boundaries)
 - M9.4 RC1 stabilization and release-identity reconciliation
 
+Post-RC packaging completed:
+
+- Optional Docker deployment for the backend and frontend, with direct-access
+        and Caddy/HTTPS Compose variants (pilot-validated)
+
 Next (Milestone 10 — RTM):
 
-- Deployment / containerization
-- Production release-to-manufacturing work
+- Production acceptance, operational sign-off, and release-to-manufacturing work
 
 ---
 

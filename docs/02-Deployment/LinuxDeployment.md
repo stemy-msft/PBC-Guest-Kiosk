@@ -236,8 +236,10 @@ data-loss risk is low — but the pre-upgrade backup is still mandatory.
 - **Windows is the validated backend host, not Linux:** Linux is portable but
   less field-validated.
 - **Relative SQLite path:** start the backend from `backend/`.
-- **No production frontend host** and **no TLS/reverse proxy** ship in this
-  repository. See [ProductionReadiness.md](ProductionReadiness.md).
+- **Native path has no production frontend host or TLS/reverse proxy.** The
+   optional container path ships nginx and an optional Caddy/HTTPS variant; see
+   [../container-deployment.md](../container-deployment.md) and
+   [ProductionReadiness.md](ProductionReadiness.md).
 
 ---
 

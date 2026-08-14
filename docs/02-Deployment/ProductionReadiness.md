@@ -57,7 +57,7 @@ for pilot use; the native foreground process remains the default described below
 
 ## 3. Manual steps required
 
-Every deployment today is **manual**:
+The native deployment path is **manual**:
 
 - Create virtual environments and install dependencies by hand.
 - Copy and edit two (or three, with printing) `.env` files.
@@ -65,13 +65,17 @@ Every deployment today is **manual**:
 - Restart everything by hand after any reboot or crash.
 - Enrol, approve, and assign the print agent through the admin UI.
 
-There is no one-command install, no orchestration, and no unattended bring-up.
+The optional container path provides Compose orchestration and `restart:
+unless-stopped` for the backend/frontend containers, but still requires manual
+environment setup, backup scheduling, print-agent setup, and release operations.
+See [../container-deployment.md](../container-deployment.md).
 
 ---
 
 ## 4. Persistence requirements
 
-The following **must** be preserved and backed up (all under `backend/`):
+For the native path, the following **must** be preserved and backed up (all
+under `backend/`):
 
 - `backend/visitor_kiosk.db` — the SQLite datastore.
 - `backend/uploads/` — photos, badges, QR codes, theme logos.
@@ -81,6 +85,11 @@ The following **must** be preserved and backed up (all under `backend/`):
 The database path is fixed in code (no `DATABASE_URL`); the file is created in
 the backend's start directory, so the backend must be started from `backend/`.
 See [BackendDeployment.md § 6–7](BackendDeployment.md#6-database-initialisation).
+
+For containers, the equivalent state is stored in the `kiosk_db`,
+`kiosk_uploads`, `kiosk_logs`, and `kiosk_config` named volumes. The database is
+`/data/visitor_kiosk.db`; live settings/themes are under `/app/config`. See
+[Container Deployment §11](../container-deployment.md#11-backup-and-restore).
 
 ---
 
@@ -94,8 +103,10 @@ See [BackendDeployment.md § 6–7](BackendDeployment.md#6-database-initialisati
   unsupported and unvalidated, and you must handle the working-directory
   requirement (start the backend from `backend/`) yourself.
 
-**Consequence:** the system is **not unattended-restart-safe** as shipped. A
-reboot leaves it down until a human restarts both processes.
+**Consequence:** the native path is **not unattended-restart-safe** as shipped.
+A reboot leaves it down until a human restarts both processes. The container
+backend/frontend use `restart: unless-stopped`; the separate print agent still
+requires its own startup supervision or a manual restart.
 
 ---
 
@@ -103,29 +114,36 @@ reboot leaves it down until a human restarts both processes.
 
 - ✅ The Vite **dev server** (`npm run dev`) is the validated way the UI is
   served, and `npm run build` produces a static bundle in `frontend/dist/`.
-- ❌ No production static-file host, web-server config, or CDN setup ships for
-  `frontend/dist/`.
+- ✅ The optional container path serves `frontend/dist/` with unprivileged nginx
+  and has been validated for pilot use.
+- ❌ The native path does not ship a standalone production static-file service,
+  service unit, or CDN setup for `frontend/dist/`.
 - 🟡 `npm run preview` can serve a built bundle for local checking, but it is a
   preview server, not a production host.
 
-**Consequence:** running the UI behind a real web server is a bring-your-own,
-unsupported step. See [FrontendDeployment.md § 8](FrontendDeployment.md#8-serving-the-built-frontend).
+**Consequence:** native production hosting remains bring-your-own. Use the
+pilot-validated container path when the shipped nginx configuration is
+appropriate. See [FrontendDeployment.md § 8](FrontendDeployment.md#8-serving-the-built-frontend)
+and [Container Deployment](../container-deployment.md).
 
 ---
 
 ## 7. Reverse-Proxy / TLS Status
 
-- ❌ No reverse proxy (nginx/Caddy/etc.) configuration ships.
-- ❌ No TLS termination, certificate provisioning, or HTTPS setup ships. The
-  backend serves plain HTTP; the dev server serves plain HTTP.
-- The reference deployment operates on a **trusted LAN** rather than using TLS.
+- ✅ The container path ships nginx reverse-proxy configuration and an optional
+  Caddy variant configured to request automatic HTTPS for an authorized public
+  domain; public ACME issuance remains a production-site acceptance test.
+- ❌ The native foreground path does not provide TLS termination or certificate
+  provisioning; the backend and Vite dev server use plain HTTP.
+- The validated native reference deployment operates on a **trusted LAN**.
 
-**Consequence:** there is no shipped HTTPS. Browsers expose the camera only in a **secure
-context** (`localhost` or HTTPS), so a **remote** kiosk reaching the server over plain HTTP
+**Consequence:** native/direct HTTP deployments do not provide a secure origin.
+Browsers expose the camera only in a **secure context** (`localhost` or HTTPS),
+so a **remote** kiosk reaching the server over plain HTTP
 — even on a trusted LAN — **may have its camera blocked**, depending on the browser. Camera
-capture is guaranteed only from a `localhost` browser or an HTTPS origin you provide;
-enabling it on remote kiosk devices over the network is an **unresolved production-readiness
-gap**, not a supported configuration. Related:
+capture is guaranteed only from a `localhost` browser or an HTTPS origin. For
+remote container kiosks, use the Caddy/HTTPS variant; public certificate issuance
+still requires operator-controlled DNS and reachable ports 80/443. Related:
 [FrontendDeployment.md § 9](FrontendDeployment.md#9-browser-and-camera-requirements).
 
 ---
@@ -198,10 +216,10 @@ process (documented in this folder) remains the default path.
 
 | Risk | Cause | Mitigation today |
 | --- | --- | --- |
-| Downtime after reboot/crash | No process supervision (§ 5) | Manual restart; add your own supervision. |
+| Downtime after reboot/crash | Native path and print agent lack supervision (§ 5) | Use container restart policies for backend/frontend; provide print-agent/native supervision or a manual restart procedure. |
 | Data loss | Single SQLite file; manual backups (§ 4, § 8) | Frequent manual backups + off-host copies. |
-| No transport encryption | No TLS (§ 7) | Trusted, isolated LAN only. |
-| Camera blocked off secure origin | No HTTPS (§ 7) | Serve via `localhost`/`127.0.0.1`, or add HTTPS/TLS yourself; a plain-HTTP trusted LAN is **not** a secure context (§ 7). |
+| No transport encryption (native/direct HTTP) | TLS not enabled (§ 7) | Trusted isolated LAN only, or use the container Caddy/HTTPS variant. |
+| Camera blocked off secure origin | Plain HTTP (§ 7) | Serve via `localhost`/`127.0.0.1` or use the container Caddy/HTTPS variant; a plain-HTTP trusted LAN is **not** a secure context. |
 | Indefinite PII retention | No retention/purge feature | Operational policy; see [SecurityControls.md](../06-Reference/SecurityControls.md). |
 | Concurrency limits | Single-process SQLite | Single backend process only; do not run multiple workers. |
 
@@ -218,8 +236,15 @@ Before relying on the system for a real event:
 - [ ] A **restore drill** from a backup on a scratch copy
       ([BackupAndRecovery.md § 6](../03-Operations/BackupAndRecovery.md#6-validation-after-restore)).
 - [ ] A documented manual restart procedure for after a reboot.
-- [ ] Network isolation / trusted-LAN confirmation (no TLS is provided).
+- [ ] For native/direct HTTP: network isolation and trusted-LAN confirmation.
+  For remote kiosks: Caddy/HTTPS with authorized DNS and validated camera access.
 - [ ] A decided, written backup cadence and off-host copy plan.
+
+For a container deployment, also complete the checks in
+[Container Deployment §6](../container-deployment.md#6-deployment-instructions),
+verify `/health` through the published frontend/Caddy origin, complete a
+backup/restore drill, and verify the separate print agent against that same
+public origin.
 
 ---
 
@@ -229,26 +254,29 @@ This verdict separates documentation completeness from system and operational
 readiness. They are not the same, and operational approval cannot be inferred
 from documentation alone.
 
-- **Documentation readiness:** READY. The supported manual deployment paths in
-  this folder are complete and source-verified.
+- **Documentation readiness:** **READY FOR RTM DOCUMENTATION FREEZE PENDING
+  OWNER CONTENT.** The supported manual deployment paths in this folder and the
+  pilot-validated container path are complete and source-verified.
 - **Deployment documentation scope:** Complete for the currently supported manual
   deployment paths (single-host, Linux backend + frontend, backend-only,
-  frontend build/serve, and the Raspberry Pi + CUPS print agent). It does not
-  cover production packaging, which is not implemented.
-- **Production readiness:** NOT READY. Process supervision / auto-start (§ 5),
-  production frontend hosting (§ 6), TLS / reverse proxy (§ 7), and scheduled
-  backups (§ 8) are not implemented.
+  frontend build/serve, and the Raspberry Pi + CUPS print agent), plus the
+  optional pilot-validated container path.
+- **Production readiness:** NOT READY. The container path addresses backend/
+  frontend restart policy, static hosting, reverse proxy, and optional TLS, but
+  public TLS issuance, print-agent startup supervision, scheduled backups, and
+  final operational acceptance remain operator responsibilities.
 - **Operational readiness:** Not established by this documentation. Whether the
   system may be used for any real activity depends on completing or confirming
   the RC validation campaign (§ 14). Do not infer operational approval from these
   documents.
 
-The blocking gaps for unattended production are, in priority order:
+The remaining product and operational release gates are, in priority order:
 
-1. No process supervision / auto-start (§ 5).
-2. No production frontend host (§ 6).
-3. No TLS / reverse proxy (§ 7).
-4. Manual-only backups — no schedule (§ 8).
+1. Production-domain DNS, public TLS issuance, and network validation (§ 7).
+2. Physical printer and camera acceptance testing on target hardware (§ 14).
+3. Backup scheduling and off-host retention ownership (§ 8).
+4. Print-agent startup supervision / auto-start (§ 5, § 10).
+5. Final release acceptance evidence (§ 14).
 
 The project roadmap placed production packaging and containerisation at Milestone
 10 (RTM); the container path is now available (§ 11,

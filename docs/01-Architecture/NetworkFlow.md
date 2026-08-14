@@ -62,11 +62,20 @@ The frontend is a single-page app that calls the backend at the base URL configu
 
 Uploaded photos and generated badges are served back as static files under `/uploads`.
 
+In the optional container deployment, the browser uses one public origin:
+frontend nginx serves the SPA and proxies `/api/*`, `/uploads/*`, and `/health*`
+to the internal backend. With Caddy, traffic flows Caddy → frontend nginx →
+backend. Backend port `8000` is not published to the host.
+
 ## 3. Print agent to backend
 
 Each print agent reaches the backend at the address in its `PBC_API_BASE` setting. **All**
 traffic is agent-initiated; the backend never connects to an agent. Over one poll cycle
 (every couple of seconds) an agent makes these calls, each carrying its bearer token:
+
+For containers, `PBC_API_BASE` is the public frontend/Caddy origin rather than
+the internal `backend:8000` address; nginx preserves and forwards the `/api/*`
+paths used below. Configure the origin only; do not append `/api`.
 
 ```mermaid
 sequenceDiagram

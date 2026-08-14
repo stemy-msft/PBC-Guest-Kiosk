@@ -128,6 +128,13 @@ Edit `print-agent/.env`:
 | `PBC_PRINT_AGENT_KEY` | *(blank)* | Auto-managed — leave blank initially. |
 | `PBC_PRINT_STATION_SLUG` | *(blank)* | Auto-managed — set by station assignment. |
 
+For a native deployment, `PBC_API_BASE` normally points directly to the backend
+on port `8000`. For a container deployment, backend port `8000` is intentionally
+not published: set `PBC_API_BASE` to the externally reachable frontend origin
+(for example, `http://<kiosk-host>:8080`) or the Caddy HTTPS origin. nginx
+forwards every required `/api/*` agent route to the backend. Configure the
+origin only; do not append `/api`.
+
 The agent **writes** the key, token, and station slug back into this `.env`
 after enrollment/assignment, so the file must be writable. Full variable
 reference: [EnvironmentVariables.md § 3](../06-Reference/EnvironmentVariables.md#3-print-agent).

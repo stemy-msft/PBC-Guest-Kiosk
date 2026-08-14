@@ -80,6 +80,12 @@ Key configuration (in `print-agent/.env`): `PBC_API_BASE`, `PBC_PRINTER_NAME`
 `PBC_PRINT_STATION_SLUG`, and the credential values `PBC_PRINT_AGENT_TOKEN` /
 `PBC_PRINT_AGENT_KEY`. See [Environment Variables](../06-Reference/EnvironmentVariables.md).
 
+`PBC_API_BASE` must be reachable from the print-agent host. Use the direct
+backend URL for a native deployment. For containers, use the published frontend
+origin (direct Compose) or Caddy origin; backend port `8000` is internal-only and
+the frontend proxies the agent's `/api/*` requests. Configure the origin only;
+do not append `/api`.
+
 A **newly registered agent enrolls disabled** and cannot print until an administrator
 approves it — a deliberate safeguard
 ([Security Controls §7](../06-Reference/SecurityControls.md#7-print-agent-authentication)).
@@ -181,12 +187,13 @@ Replacing a **Raspberry Pi / print agent** (dead Pi, or adding a spare):
 
 1. Build the Pi and printer per the [Print Server guide](../PRINT-SERVER.md) until a
    CUPS test page prints.
-2. Install the print agent and set `print-agent/.env`: `PBC_API_BASE` (the backend),
-   `PBC_PRINTER_NAME` (the CUPS queue), and `PBC_PRINT_STATION_SLUG` (the station this
-   Pi serves).
+2. Install the print agent and set `print-agent/.env`: `PBC_API_BASE` (the native
+  backend or container frontend/Caddy origin) and `PBC_PRINTER_NAME` (the CUPS
+  queue). Leave the managed key, token, and station slug blank initially.
 3. Start it: `python print_agent.py`. On first contact it **self-enrolls disabled**.
-4. In the app, go to **Administration → Print Agents** and **approve/enable** the new
-   agent ([Administration §10](Administration.md#10-print-agent-monitoring)).
+4. In the app, go to **Administration → Print Agents**, **approve/enable** the new
+  agent, and assign it to the intended station
+  ([Administration §10](Administration.md#10-print-agent-monitoring)).
 5. **Disable the old/dead agent** so it no longer counts as a station member.
 6. Print a test badge and confirm the job completes and the agent shows online.
 

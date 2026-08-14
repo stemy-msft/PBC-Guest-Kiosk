@@ -196,8 +196,11 @@ Read at agent startup.
 | `PBC_PRINT_STATION_SLUG` | Managed | `""` (empty) | `print-agent/print_agent.py` |
 
 - **`PBC_API_BASE`** — Backend API URL reachable from the print server. A trailing
-  slash is stripped. Point this at your real backend host. *Example:*
-  `http://192.168.0.210:8000`
+  slash is stripped. For a native deployment, point this at the backend host
+  (for example, `http://<backend-host>:8000`). For containers, point it at the
+  published frontend origin (for example, `http://<kiosk-host>:8080`) or the
+  Caddy HTTPS origin; backend port `8000` is internal-only and nginx proxies the
+  required `/api/*` routes. Configure the origin only; do not append `/api`.
 - **`PBC_PRINTER_NAME`** — CUPS printer **queue** name on the print server (as
   shown by `lpstat -p`). *Example:* `QL800_BROTHER`
 - **`PBC_PRINT_AGENT_POLL_SECONDS`** — How often the agent polls the backend for
