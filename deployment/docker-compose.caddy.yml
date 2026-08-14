@@ -1,0 +1,91 @@
+# PBC Visitor Kiosk — container deployment (Option B: Caddy reverse proxy).
+#
+# Adds a Caddy front door that terminates HTTP/HTTPS and forwards to the
+# frontend. Caddy obtains and renews Let's Encrypt certificates automatically
+# when CADDY_SITE_ADDRESS is a public domain name.
+#
+# Usage (from this directory):
+#   cp .env.example .env        # set CADDY_SITE_ADDRESS + secrets
+#   docker compose -f docker-compose.caddy.yml up -d --build
+#
+# In this variant the frontend is NOT published directly; only Caddy is.
+
+name: pbc-guest-kiosk
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: pbc-guest-kiosk-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"
+    volumes:
+      - kiosk_db:/data
+      - kiosk_uploads:/app/uploads
+      - kiosk_logs:/app/logs
+      - kiosk_config:/app/config
+    networks:
+      - kiosk-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: "${VITE_API_BASE:-}"
+    image: pbc-guest-kiosk-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Internal only — Caddy is the public entry point.
+    expose:
+      - "8080"
+    networks:
+      - kiosk-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # ":80" = HTTP only (IP access); "kiosk.example.org" = automatic HTTPS.
+      CADDY_SITE_ADDRESS: "${CADDY_SITE_ADDRESS:-:80}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - kiosk-net
+
+networks:
+  kiosk-net:
+    driver: bridge
+
+volumes:
+  kiosk_db:
+  kiosk_uploads:
+  kiosk_logs:
+  kiosk_config:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,22 @@
+# Keep the build context small; node_modules and dist are (re)built in the image.
+
+node_modules/
+dist/
+dist-ssr/
+coverage/
+
+# Local env / secrets (VITE_API_BASE is supplied as a build ARG instead, so a
+# stray .env cannot override the intended same-origin default).
+.env
+.env.*
+!.env.example
+
+# Logs, caches, editor and OS artifacts
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+Desktop.ini

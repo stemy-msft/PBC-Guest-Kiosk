@@ -1,0 +1,19 @@
+# PBC Visitor Kiosk — Caddy reverse proxy.
+#
+# CADDY_SITE_ADDRESS controls TLS behaviour:
+#   :80                  -> HTTP only, any host (IP access, no certificate)
+#   kiosk.example.org    -> automatic HTTPS via Let's Encrypt (ports 80+443)
+#
+# All traffic is forwarded to the frontend container, which serves the SPA and
+# proxies /api, /uploads and /health to the backend.
+
+{$CADDY_SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Match the frontend/backend upload ceiling (5 MB photos + overhead).
+	request_body {
+		max_size 8MB
+	}
+
+	reverse_proxy frontend:8080
+}

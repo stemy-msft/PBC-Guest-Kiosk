@@ -1,0 +1,43 @@
+# Keep the build context small and never bake local state/secrets into the image.
+
+# Python environments & caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Tests and dev-only requirements (not needed in the production image)
+tests/
+requirements-dev.txt
+pytest.ini
+
+# Local runtime state — provided at runtime via named volumes
+logs/
+uploads/
+config/
+*.db
+*.db-journal
+*.db.old
+*.db.bak
+*.sqlite
+*.sqlite3
+*.log
+
+# Secrets / local env (examples remain available if ever needed)
+.env
+.env.*
+!.env.example
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+Desktop.ini
