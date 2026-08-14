@@ -54,6 +54,12 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY app ./app
 
+# Ship only the tracked settings template. On first run the app seeds
+# config/system_settings.json from it (main.py), and the empty config volume is
+# initialized from this image path — so readiness (/health) is healthy without
+# manual setup. Live config files are git-ignored and never baked in.
+COPY config/system_settings.template.json ./config/system_settings.template.json
+
 # Writable state:
 #   /data          -> SQLite DB (runtime WORKDIR; DATABASE_URL is CWD-relative)
 #   /app/uploads   -> visitor photos, badges, qr-codes, theme-logos (BASE_DIR)

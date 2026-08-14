@@ -22,7 +22,11 @@ pytest.ini
 # Local runtime state — provided at runtime via named volumes
 logs/
 uploads/
-config/
+# Live, environment-specific config (git-ignored). The tracked template
+# system_settings.template.json is intentionally NOT excluded so the image can
+# seed it into the config volume on first run.
+config/system_settings.json
+config/user_themes.json
 *.db
 *.db-journal
 *.db.old
