@@ -133,9 +133,11 @@ The system is designed for a **single local network**. Two common models:
   [EnvironmentVariables.md](../06-Reference/EnvironmentVariables.md)
   (`VITE_API_BASE`, `PBC_CORS_ALLOWED_ORIGINS`).
 
-**Not in scope for v1:** container/Docker deployment and cloud/off-site hosting are
-**not** part of this release — the project ships no container assets and requires no
-cloud service. Step-by-step installation lives in the deployment guides under
+**Optional / out of scope for the native v1 path:** an optional container
+deployment is now available (Docker images, Compose, and an optional Caddy reverse
+proxy with TLS) — see [container-deployment.md](../container-deployment.md).
+Cloud/off-site hosting is **not** part of this release and requires no cloud
+service. Step-by-step installation lives in the deployment guides under
 [`02-Deployment/`](../02-Deployment/README.md); this
 section only describes the shape of a deployment.
 

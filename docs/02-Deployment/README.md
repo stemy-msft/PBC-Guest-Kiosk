@@ -10,13 +10,14 @@ planning notes. Where the code and older documentation disagree, **the code
 wins**.
 
 > **Read this first:** As shipped, the kiosk runs as a **foreground backend
-> process plus a foreground frontend dev server**. There is **no** Docker image,
-> **no** service/`systemd` unit, **no** reverse proxy, **no** TLS termination,
-> and **no** production static-frontend host in this repository. It is **not
-> production-ready**, and this documentation does **not** certify it for any
-> particular operational use. See [ProductionReadiness.md](ProductionReadiness.md)
-> for the full gap list and the documentation-versus-operational readiness
-> distinction before deploying.
+> process plus a foreground frontend dev server**, with **no** service/`systemd`
+> unit for that native path. An **optional container deployment** (backend +
+> frontend images, Docker Compose, and an optional Caddy reverse proxy with TLS)
+> is now available and validated for pilot use — see
+> [../container-deployment.md](../container-deployment.md). This documentation does
+> **not** certify the native path for any particular operational use. See
+> [ProductionReadiness.md](ProductionReadiness.md) for the full gap list and the
+> documentation-versus-operational readiness distinction before deploying.
 
 ## Documents in this folder
 
@@ -28,6 +29,7 @@ wins**.
 | [FrontendDeployment.md](FrontendDeployment.md) | Install, configure, build, and serve the React/Vite frontend. |
 | [RaspberryPiPrintAgent.md](RaspberryPiPrintAgent.md) | Set up the Raspberry Pi + CUPS print agent that drives the Brother QL-800. |
 | [ProductionReadiness.md](ProductionReadiness.md) | Understand exactly what is production-ready, what is technically possible but unsupported, and what is not implemented. |
+| [../container-deployment.md](../container-deployment.md) | Deploy the backend and frontend as Docker containers (Compose, optional Caddy + HTTPS) — the containerized path. |
 
 ## Related references (do not duplicate — link)
 

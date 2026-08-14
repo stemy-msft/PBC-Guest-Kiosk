@@ -15,6 +15,7 @@
   [Linux](02-Deployment/LinuxDeployment.md) ·
   [Raspberry Pi print agent](02-Deployment/RaspberryPiPrintAgent.md)
 - **Before any production use:** [02-Deployment/ProductionReadiness.md](02-Deployment/ProductionReadiness.md)
+- **Docker / container deployment:** [container-deployment.md](container-deployment.md)
 - **Every configuration variable:** [06-Reference/EnvironmentVariables.md](06-Reference/EnvironmentVariables.md)
 
 This file is intentionally a stub: it contains no installation commands or

@@ -44,11 +44,14 @@ printer) is recorded in [KNOWN_GOOD_BUILD.md](../KNOWN_GOOD_BUILD.md).
 - Operational tooling: backup/restore scripts and the
   [DISASTER-RECOVERY.md](../DISASTER-RECOVERY.md) runbook.
 
-**What does not ship (❌):** Dockerfiles, Docker Compose, `systemd`/init units,
-reverse-proxy or web-server configs, TLS/certificate tooling, a production
-static-frontend host, and CI/CD deployment pipelines. A repository search
-confirms there are **no** `Dockerfile`, `docker-compose*`, `*.service`,
-`Procfile`, or `gunicorn` files.
+**What does not ship (❌):** `systemd`/init units, `Procfile`/`gunicorn` process
+management, and CI/CD deployment pipelines.
+
+**What now ships (✅, added post-RC):** an optional container deployment —
+Dockerfiles, Docker Compose (direct and Caddy variants), an nginx reverse proxy
+for the frontend, and optional Caddy TLS termination. See
+[../container-deployment.md](../container-deployment.md). This path is validated
+for pilot use; the native foreground process remains the default described below.
 
 ---
 
@@ -172,9 +175,12 @@ Operational use: [Troubleshooting.md § 2](../03-Operations/Troubleshooting.md#2
 
 ## 11. Docker Status
 
-❌ **Not implemented.** There are no Docker or Compose assets in this repository.
-Containerisation is listed by the project as a future (Milestone 10 / RTM) item
-that has not been started. Do not document or assume a container deployment path.
+✅ **Available (optional).** The repository now ships a container deployment:
+backend and frontend Dockerfiles, Docker Compose (direct and Caddy variants),
+and named-volume persistence. It has been validated end-to-end on Docker Desktop
+and is **approved for pilot** use. Full instructions:
+[../container-deployment.md](../container-deployment.md). The native foreground
+process (documented in this folder) remains the default path.
 
 ---
 
@@ -244,7 +250,9 @@ The blocking gaps for unattended production are, in priority order:
 3. No TLS / reverse proxy (§ 7).
 4. Manual-only backups — no schedule (§ 8).
 
-These align with the project's own roadmap, which places production packaging and
-containerisation at Milestone 10 (RTM) — not yet started. Any deployment carried
-out from these documents must be treated as unvalidated until the § 14 checks
-have been completed on the target hardware, and must not be run unattended.
+The project roadmap placed production packaging and containerisation at Milestone
+10 (RTM); the container path is now available (§ 11,
+[../container-deployment.md](../container-deployment.md)) and validated for pilot.
+Any native deployment carried out from these documents must be treated as
+unvalidated until the § 14 checks have been completed on the target hardware, and
+must not be run unattended.

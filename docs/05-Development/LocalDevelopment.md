@@ -367,5 +367,6 @@ Your local environment is ready when:
   ([DatabaseMaintenance.md](DatabaseMaintenance.md)).
 - **Frontend config is build-time.** `VITE_API_BASE` is baked in at build time;
   a production build points at a fixed backend origin.
-- **No containerized dev environment.** There is no Docker or Compose asset in
-  this repository; setup is the native toolchain described above.
+- **No containerized dev environment.** Local development uses the native
+  toolchain described above. Container assets exist for *deployment* only (see
+  [../container-deployment.md](../container-deployment.md)), not for the dev inner loop.

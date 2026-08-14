@@ -231,9 +231,11 @@ During the RC phase, apply extra discipline:
 - **Do not equate a passing test suite with release readiness.** Automated tests
   are one input; the RC validation campaign and operational sign-off are separate
   (see [ReleaseManagement.md](ReleaseManagement.md)).
-- **Do not** introduce deployment mechanisms (Docker, service units,
-  reverse-proxy/TLS), CI, migration tooling, or a Windows print agent as a side
-  effect of an RC change; those are out of scope for the current phase.
+- **Do not** introduce new deployment mechanisms (service units, additional
+  reverse-proxy/TLS beyond the documented container path), CI, migration tooling,
+  or a Windows print agent as a side effect of an RC change; those are out of
+  scope for the current phase. (The optional container deployment is documented
+  separately in [../container-deployment.md](../container-deployment.md).)
 
 ---
 

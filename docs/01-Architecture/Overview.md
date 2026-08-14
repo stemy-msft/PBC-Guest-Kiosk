@@ -140,8 +140,10 @@ are enumerated in the [Hardware Matrix](../06-Reference/HardwareMatrix.md), and 
 supported deployment shapes are summarized in
 [What Is the PBC Guest Kiosk? §7](../00-Executive/WhatIsGuestKiosk.md#7-supported-deployment-models).
 
-> This document does not describe container/Docker deployment. No container assets exist in
-> the repository, and none are implied by the architecture.
+> This document describes the native (non-container) architecture. An optional
+> container deployment now exists (see
+> [../container-deployment.md](../container-deployment.md)); it packages these same
+> components without changing the architecture.
 
 ## 8. Printing Architecture Summary
 

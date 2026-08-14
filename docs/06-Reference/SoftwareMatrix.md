@@ -142,7 +142,7 @@ SaaS, cloud service, or internet access at runtime**.
 | Internet access | Optional | Needed only to **install** dependencies (`pip`, `npm`, OS packages). Not needed to run. |
 | LAN connectivity between components | **Required** | Backend, kiosk browser(s), and print agent communicate over the local network (HTTP). |
 | Package registries (PyPI / npm) | Optional | Install-time only. |
-| Docker / container runtime | **Not used** | The project ships no container assets; there is no container-based deployment path in v1. |
+| Docker / container runtime | **Optional** | An optional container deployment ships (Dockerfiles + Compose, optional Caddy). Base images: `python:3.13-slim`, `node:22-alpine`, `nginxinc/nginx-unprivileged:1.27-alpine`, `caddy:2-alpine`. See [../container-deployment.md](../container-deployment.md). |
 
 ---
 

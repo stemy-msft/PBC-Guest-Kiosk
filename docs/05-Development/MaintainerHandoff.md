@@ -89,10 +89,11 @@ Deployment and upgrade are covered under Deployment:
 agent, quick start). The known-good, validated build is recorded in
 [../KNOWN_GOOD_BUILD.md](../KNOWN_GOOD_BUILD.md).
 
-> The current phase runs components in the foreground. There is **no** Docker,
-> systemd/service supervision, reverse proxy, or TLS termination in this
-> repository, and service packaging is noted as future work. Do not assume or
-> introduce those as part of maintenance.
+> The native phase runs components in the foreground (no systemd/service
+> supervision for that path). An optional container deployment now provides
+> Docker images, an nginx reverse proxy, and optional TLS via Caddy — see
+> [../container-deployment.md](../container-deployment.md). Do not introduce
+> *additional* deployment mechanisms as part of routine maintenance.
 
 ---
 
