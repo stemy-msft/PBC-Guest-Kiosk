@@ -128,6 +128,55 @@ def test_migration_is_idempotent(db_session):
     assert second == []
 
 
+def test_badge_image_resolves_app_relative_path(
+    client, db_session, tmp_path, monkeypatch
+):
+    upload_root = tmp_path / "uploads"
+    badge_path = upload_root / "badges" / "test.png"
+    badge_path.parent.mkdir(parents=True)
+    badge_path.write_bytes(b"test-image")
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(main, "UPLOAD_DIR", upload_root)
+
+    station = _make_station(db_session)
+    _, token = _make_agent_with_token(db_session, station_id=station.id)
+    job = _make_job(db_session, station.id)
+    job.badge_path = "uploads/badges/test.png"
+    db_session.commit()
+
+    response = client.get(
+        f"/api/print-jobs/{job.id}/badge-image",
+        headers=_agent_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"test-image"
+
+
+def test_badge_image_rejects_path_outside_uploads(
+    client, db_session, tmp_path, monkeypatch
+):
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    outside_path = tmp_path / "secret.png"
+    outside_path.write_bytes(b"not-a-badge")
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(main, "UPLOAD_DIR", upload_root)
+
+    station = _make_station(db_session)
+    _, token = _make_agent_with_token(db_session, station_id=station.id)
+    job = _make_job(db_session, station.id)
+    job.badge_path = "secret.png"
+    db_session.commit()
+
+    response = client.get(
+        f"/api/print-jobs/{job.id}/badge-image",
+        headers=_agent_headers(token),
+    )
+
+    assert response.status_code == 404
+
+
 # --- Step 1: strict enforcement (grace removed) ------------------------------
 
 def test_claim_without_token_is_rejected_401(client, db_session):

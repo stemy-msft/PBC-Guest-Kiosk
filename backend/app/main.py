@@ -2184,6 +2184,22 @@ def get_print_job_badge_image(
 
     badge_path = Path(print_job.badge_path)
 
+    # Print-job paths are stored as application-relative values such as
+    # ``uploads/badges/<file>.png``. Resolve them from BASE_DIR rather than the
+    # process working directory: the container deliberately runs from /data
+    # for its SQLite database while uploads are mounted at /app/uploads.
+    if not badge_path.is_absolute():
+        badge_path = BASE_DIR / badge_path
+
+    badge_path = badge_path.resolve()
+    upload_root = UPLOAD_DIR.resolve()
+
+    if badge_path != upload_root and upload_root not in badge_path.parents:
+        raise HTTPException(
+            status_code=404,
+            detail="Badge image file not found",
+        )
+
     if not badge_path.exists():
         raise HTTPException(
             status_code=404,
