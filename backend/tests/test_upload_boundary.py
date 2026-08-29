@@ -14,6 +14,7 @@ from PIL import Image
 
 from app import main
 from app.models import Visitor
+from app.services import badge_service
 
 
 def _make_visitor(db_session):
@@ -88,6 +89,14 @@ def test_upload_resets_badge_and_sets_photo_path(
     assert resp.status_code == 200
     body = resp.json()
     assert body["photo_path"] == f"uploads/photos/{visitor.id}.jpg"
+
+
+def test_badge_photo_path_resolves_from_application_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(badge_service, "APP_ROOT", tmp_path)
+
+    resolved = badge_service._resolve_photo_path("uploads/photos/42.jpg")
+
+    assert resolved == tmp_path / "uploads" / "photos" / "42.jpg"
 
 
 # --------------------------------------------------------------------------- #

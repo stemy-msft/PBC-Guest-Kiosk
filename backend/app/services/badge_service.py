@@ -7,6 +7,8 @@ from .badge_themes import BADGE_THEMES
 from .badge_layouts import BADGE_LAYOUTS
 import os
 
+APP_ROOT = Path(__file__).resolve().parents[2]
+
 THEME = BADGE_THEMES[
     os.getenv("PBC_BADGE_THEME", "PBC_standard")
 ]
@@ -125,6 +127,11 @@ def _draw_label(
     )
 
 
+def _resolve_photo_path(photo_path: str) -> Path:
+    path = Path(photo_path)
+    return path if path.is_absolute() else APP_ROOT / path
+
+
 def generate_visitor_badge(visitor, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -152,9 +159,14 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
     )
 
     photo_box = LAYOUT["photo_box"]
+    photo_path = (
+        _resolve_photo_path(visitor.photo_path)
+        if visitor.photo_path
+        else None
+    )
 
-    if visitor.photo_path and Path(visitor.photo_path).exists():
-        photo = Image.open(visitor.photo_path).convert("RGB")
+    if photo_path and photo_path.exists():
+        photo = Image.open(photo_path).convert("RGB")
         photo = ImageOps.fit(
             photo,
             (480, 480),
