@@ -31,9 +31,7 @@ Desktop.ini
 
 # Environment files (never commit real secrets; examples are tracked)
 .env
-.env.*
-!.env.example
-!**/.env.example
+.env
 
 # Python virtual environments
 .venv/
