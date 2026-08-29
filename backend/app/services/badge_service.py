@@ -230,7 +230,7 @@ def generate_visitor_badge(visitor, output_path: Path) -> Path:
     type_font = _font(46, bold=True)
     draw.text(
         (text_x, LAYOUT["visitor_type_y"]),
-        f"{visitor.visitor_type} Visitor",
+        visitor.visitor_type,
         fill=FOREGROUND,
         font=type_font,
     )
